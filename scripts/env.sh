@@ -63,3 +63,23 @@ dodgc_engine_sha() {
 dodgc_repo_sha() {
 	git -C "$DODGC_ROOT" rev-parse --short=10 HEAD 2>/dev/null || echo "unknown"
 }
+
+# Kill only Dolphin processes whose argv includes -u <dod-gc profile path>.
+# NEVER pkill -f dolphin-emu — that closes every Dolphin on the machine
+# (including sandboxed trials in other projects).
+dodgc_pkill_own_dolphin() {
+	local pattern
+	for pattern in "$@"; do
+		[[ -n "$pattern" ]] || continue
+		pkill -f -- "-u ${pattern}" 2>/dev/null || true
+	done
+}
+
+# Kill only this repo's tap hub (by script path and optional --path).
+dodgc_pkill_own_tap_hub() {
+	local tap="${1:-}"
+	if [[ -n "$tap" ]]; then
+		pkill -f -- "dolphin-tap-hub.py --path ${tap}" 2>/dev/null || true
+	fi
+	pkill -f -- "${DODGC_ROOT}/scripts/dolphin-tap-hub.py" 2>/dev/null || true
+}

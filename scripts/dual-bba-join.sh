@@ -103,8 +103,9 @@ cleanup() {
 }
 trap cleanup EXIT
 
-pkill -f dolphin-emu 2>/dev/null || true
-pkill -f dolphin-tap-hub.py 2>/dev/null || true
+# Only prior dod-gc dual-bba profiles / this repo's tap hub — never bare dolphin-emu.
+dodgc_pkill_own_dolphin "${XDG_RUNTIME_DIR:-/tmp}/dodgc-dual-"
+dodgc_pkill_own_tap_hub "$TAP_PATH"
 sleep 1
 rm -f -- "$TAP_PATH"
 

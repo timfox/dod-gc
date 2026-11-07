@@ -118,7 +118,8 @@ EOF
 } > "$NOTE"
 
 echo "==> Dolphin fly-through ${DURATION}s ready-regex=$READY_RE"
-pkill -f dolphin-emu 2>/dev/null || true
+# Only prior dod-gc flythrough profiles — never bare dolphin-emu (kills other projects).
+dodgc_pkill_own_dolphin "${XDG_RUNTIME_DIR:-/tmp}/dodgc-fly-"
 sleep 1
 set +e
 "$DOLPHIN" -u "$USER_DIR" -e "$ISO" >"$LOG" 2>&1 &

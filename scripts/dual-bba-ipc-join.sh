@@ -98,8 +98,9 @@ cleanup() {
 }
 trap cleanup EXIT
 
-pkill -f dolphin-emu 2>/dev/null || true
-pkill -f dolphin-tap-hub.py 2>/dev/null || true
+# Only prior dod-gc IPC profiles / this repo's tap hub — never bare dolphin-emu.
+dodgc_pkill_own_dolphin "${XDG_RUNTIME_DIR:-/tmp}/dodgc-ipc-"
+dodgc_pkill_own_tap_hub
 sleep 1
 
 echo "==> BBA IPC (EXI=$EXI_IPC) hostISO=$HOST_ISO"
@@ -163,29 +164,44 @@ for _ in $(seq 1 90); do
 	sleep 1
 done
 
-# After accept, give the peer time to load client progs and finish signon/map.
+# After accept, wait for hard signon (ca_active). Soft Serverdata alone is not play.
+SOFT_SIGNON=0
+HARD_SIGNON=0
 if [[ "$JOIN" -eq 1 ]]; then
-	echo "==> join=$JOIN — waiting for peer signon/map"
-	for _ in $(seq 1 90); do
-		# Soft: spawn/signon1. Hard: SignonReply 2 / active / map.
-		if rg -a -q 'CL_SignonReply: 2|SCR_EndLoadingPlaque|ca_active|Game started|loading status MAP READY' "$CLOG" 2>/dev/null; then
-			SIGNON=1
+	echo "==> join=$JOIN — waiting for peer ca_active / SignonReply 2"
+	for _ in $(seq 1 180); do
+		# Hard only: real in-game (do NOT treat local MAP READY / Game started as done).
+		if rg -a -q 'CL_SignonReply: 2|G159 ca_active|G159 live GX present ca_active|SCR_EndLoadingPlaque|cls\.state = ca_active|state=ca_active' "$CLOG" 2>/dev/null; then
+			HARD_SIGNON=1
+			SOFT_SIGNON=1
 			break
 		fi
-		if rg -a -q 'serverdata spawn shortcut|CL_SignonReply: 1|peer client progs ready|Serverdata packet received' "$CLOG" 2>/dev/null; then
-			SIGNON=1
+		if rg -a -q 'serverdata spawn shortcut|CL_SignonReply: 1|Serverdata packet received' "$CLOG" 2>/dev/null; then
+			SOFT_SIGNON=1
 		fi
 		if rg -a -q 'FATAL|out of memory|Mem_FreeBlockBig|mem FAIL subsystem=Client Edicts' "$CLOG" 2>/dev/null; then
-			rg -a -q 'Serverdata packet received' "$CLOG" 2>/dev/null && SIGNON=1
 			break
 		fi
 		sleep 1
 	done
-	sleep 10
+	# Extra settle only after hard signon evidence.
+	if [[ "$HARD_SIGNON" -eq 1 ]]; then
+		sleep 8
+	elif [[ "$SOFT_SIGNON" -eq 1 ]]; then
+		echo "==> soft Serverdata only — holding 45s more for SignonReply 2" >&2
+		for _ in $(seq 1 45); do
+			if rg -a -q 'CL_SignonReply: 2|G159 ca_active|G159 live GX present ca_active|SCR_EndLoadingPlaque' "$CLOG" 2>/dev/null; then
+				HARD_SIGNON=1
+				break
+			fi
+			sleep 1
+		done
+	fi
 else
 	sleep 6
 fi
-echo "==> signon=$SIGNON"
+SIGNON=$HARD_SIGNON
+echo "==> soft_signon=$SOFT_SIGNON hard_signon=$HARD_SIGNON (playable=$SIGNON)"
 
 cp -f "$HLOG" "$SHOT_DIR/host-dolphin.log"
 cp -f "$CLOG" "$SHOT_DIR/client-dolphin.log"
@@ -196,7 +212,7 @@ cp -f "$CLOG" "$SHOT_DIR/client-dolphin.log"
 	echo "- Host ISO: \`$HOST_ISO\`"
 	echo "- Client ISO: \`$CLIENT_ISO\`"
 	echo "- EXI: EthernetIPC ($EXI_IPC)"
-	echo "- host_ready=$HOST_READY progress=$PROGRESS sendto=$SENDTO join=$JOIN signon=$SIGNON"
+	echo "- host_ready=$HOST_READY progress=$PROGRESS sendto=$SENDTO join=$JOIN soft_signon=$SOFT_SIGNON hard_signon=$HARD_SIGNON"
 	echo
 	echo "## Host OSReport keys"
 	echo '```'
@@ -205,10 +221,11 @@ cp -f "$CLOG" "$SHOT_DIR/client-dolphin.log"
 	echo
 	echo "## Client OSReport keys"
 	echo '```'
-	tr -d '\000' < "$CLOG" | rg -n 'screen init minimal|net ready|peer connect|peer resend|peer connected|peer client progs|deferred client|Serverdata|signon|CL_SignonReply|Connecting|Connected|challenge|sendto|rejected|timeout|FATAL|out of memory|gcnetip|ClientFrame connect|heap mark stage=host_main' | head -160 || true
+	tr -d '\000' < "$CLOG" | rg -n 'screen init minimal|net ready|peer connect|peer resend|peer connected|peer client progs|deferred client|Serverdata|signon|CL_SignonReply|G159|SCR_End|Connecting|Connected|challenge|sendto|rejected|timeout|FATAL|out of memory|gcnetip|ClientFrame connect|spawn shortcut|heap mark stage=host_main' | head -200 || true
 	echo '```'
 } | tee "$NOTE"
 
 echo "==> note: $NOTE"
 echo "==> shots: $SHOT_DIR"
-[[ "$JOIN" -eq 1 ]]
+# Playable bar: join + hard signon (ca_active / SignonReply 2).
+[[ "$JOIN" -eq 1 && "$HARD_SIGNON" -eq 1 ]]
