@@ -56,3 +56,5 @@ playtests/screenshots/*.bmp
 *.swp
 .vscode/
 .idea/
+social-media/
+playtests/

@@ -13,11 +13,13 @@ usage: scripts/playtest.sh [options] [ISO]
   --build          rebuild out/dodgc.iso first
   --record         record window+audio to playtests/videos/ (default)
   --no-record      skip video recording
+  --duration SEC   auto-quit Dolphin after SEC (default: wait forever)
   --note TEXT      write a dated playtest note
   --shot           grab a window screenshot after Dolphin starts
   -h, --help
 
 ISO defaults to out/dodgc.iso. Evidence never lands in the HL1 .ai/ tree.
+For timed milestone probes prefer: scripts/probe-playtest.sh
 EOF
 }
 
@@ -25,6 +27,7 @@ BUILD=0
 RECORD=1
 NOTE=""
 SHOT=0
+DURATION=0
 ISO="$DODGC_ISO"
 
 while [[ $# -gt 0 ]]; do
@@ -32,6 +35,10 @@ while [[ $# -gt 0 ]]; do
 		--build) BUILD=1 ;;
 		--record) RECORD=1 ;;
 		--no-record) RECORD=0 ;;
+		--duration)
+			DURATION="${2:-0}"
+			shift
+			;;
 		--note)
 			NOTE="${2:-}"
 			shift
@@ -152,9 +159,21 @@ if (( SHOT )) && command -v import >/dev/null 2>&1; then
 	(
 		sleep 12
 		SHOT_PATH="$DODGC_SHOTS/${STAMP}-dolphin.png"
-		# Best-effort grab of root or focused window; continue if it fails.
-		import -window root "$SHOT_PATH" 2>/dev/null || true
+		# Prefer GameCube render window over full desktop.
+		WIN=$(xwininfo -root -tree 2>/dev/null | rg '\("dolphin-emu" "GameCube"\)' | rg -v '800x600' | head -1 | awk '{print $1}')
+		if [[ -n "${WIN:-}" ]]; then
+			import -window "$WIN" "$SHOT_PATH" 2>/dev/null || true
+		else
+			import -window root "$SHOT_PATH" 2>/dev/null || true
+		fi
 		[[ -f "$SHOT_PATH" ]] && echo "==> screenshot: $SHOT_PATH"
+	) &
+fi
+
+if (( DURATION > 0 )); then
+	(
+		sleep "$DURATION"
+		kill "$DOLPHIN_PID" 2>/dev/null || true
 	) &
 fi
 

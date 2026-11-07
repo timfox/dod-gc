@@ -56,9 +56,17 @@ Progress screenshots and session videos are **recorded by default** into
 `playtests/` (not the HL1 `.ai/playtests` tree):
 
 ```bash
-scripts/playtest.sh --build --shot --note "first DoD boot smoke"
+# Timed probe with video + milestone screenshots (preferred for progress logs)
+scripts/probe-playtest.sh --route intro-menu --duration 40 out/dodgc.iso
+scripts/probe-playtest.sh --route menu --duration 30 out/dodgc-menu.iso
+
+# Interactive playtest (optional --duration auto-quit)
+scripts/playtest.sh --shot --duration 60 --note "first DoD boot smoke"
 scripts/capture-progress.sh --screenshot "menu chrome matches retail"
-scripts/capture-progress.sh --from-file ./frame.png "map load"
+
+# Lean MEM1 discs (logo fix + optional single map)
+scripts/build-lean-iso.sh
+scripts/build-lean-iso.sh --smoke stalkyard   # HL DM map under dod gamedir
 ```
 
 - Videos → `playtests/videos/*.mp4` + `.json` sidecars  

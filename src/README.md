@@ -13,5 +13,14 @@ Plan for this tree:
 4. Link the result into `dodgc.dol` via the xash3d-gc GameCube HLSDK path
    (`HLSDK_GAMECUBE_GAMEDIR=dod`), packaged as `out/dodgc.iso`.
 
+## Current files
+
+| File | Role |
+|------|------|
+| `dod_game.h` / `dod_game.c` | Local gamerules stubs (teams / classes / objectives). Not linked yet — runtime is still HL1SDK DM archives under `OUT/hlsdk-gamecube/dod`. |
+
+Next wiring: fold these hooks into hlsdk-portable `gamerules` / client HUD, then
+rebuild with `HLSDK_GAMECUBE_GAMEDIR=dod`.
+
 Do not patch HL1 release artifacts (`halflife1.dol`, `boot.dol`,
 `xash3d-gc.iso`) from this repo.
