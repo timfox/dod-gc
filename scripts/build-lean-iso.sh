@@ -21,6 +21,9 @@ usage: scripts/build-lean-iso.sh [options]
   --listen MAP     solo local listen server (gamecube.cfg listenserver MAP)
   --connect ADDR   peer client (gamecube.cfg connect ADDR); use with --net
   --net-ip IP      optional static guest IP (gamecube.cfg netstatic IP)
+  --full-map       stage mapmodels/weapons/sprites/WADs with --map/--smoke/--listen
+  --world-render   smoke path: gamecube.cfg gcworldrender (Flipper world)
+  --dumpframes     smoke path: gamecube.cfg dumpframes (-gcdumpframes stills)
   --skip-stage     reuse existing lean cache trees
   -h, --help
 
@@ -33,6 +36,9 @@ INTRO=1
 SKIP_STAGE=0
 SKIP_STARTUP_VIDS=0
 WANT_NET=0
+FULL_MAP=0
+WORLD_RENDER=0
+DUMPFRAMES=0
 MAP=""
 SMOKE=""
 LISTEN=""
@@ -46,6 +52,9 @@ while [[ $# -gt 0 ]]; do
 		--intro-only) INTRO=1; MENU=0 ;;
 		--skip-startup-vids) SKIP_STARTUP_VIDS=1 ;;
 		--net) WANT_NET=1 ;;
+		--full-map) FULL_MAP=1; STAGE_ARGS+=(--full-map) ;;
+		--world-render) WORLD_RENDER=1 ;;
+		--dumpframes) DUMPFRAMES=1 ;;
 		--net-ip)
 			NET_IP="${2:-}"
 			[[ -n "$NET_IP" ]] || { echo "error: --net-ip needs IP" >&2; exit 2; }
@@ -77,6 +86,10 @@ while [[ $# -gt 0 ]]; do
 	esac
 	shift
 done
+if (( WORLD_RENDER || DUMPFRAMES )) && [[ -z "$SMOKE" ]]; then
+	echo "error: --world-render / --dumpframes require --smoke MAP" >&2
+	exit 2
+fi
 if [[ -n "$SMOKE" && -n "$LISTEN" ]]; then
 	echo "error: --smoke and --listen are mutually exclusive" >&2
 	exit 2
@@ -128,6 +141,8 @@ pack() {
 	(( SKIP_STARTUP_VIDS )) && args+=(--skip-startup-vids)
 	if [[ -n "$SMOKE" ]]; then
 		args+=(--smoke-map "$SMOKE")
+		(( WORLD_RENDER )) && args+=(--world-render)
+		(( DUMPFRAMES )) && args+=(--probe-dumpframes)
 	fi
 	if [[ -n "$LISTEN" ]]; then
 		{
@@ -152,8 +167,13 @@ pack() {
 				echo "netstatic"
 			fi
 			echo "connect $CONNECT"
+			# Peer BSP tip path needs -gcmap (high-slot surfaces); without it
+			# Mod_LoadWorld OOMs on planes/surfaces (dual IPC 20261107-005100).
+			if [[ -n "$MAP" ]]; then
+				echo "map $MAP"
+			fi
 		} > "$LEAN/gamecube.cfg"
-		echo "==> connect cfg: $CONNECT net=netstatic${NET_IP:+ $NET_IP}"
+		echo "==> connect cfg: $CONNECT net=netstatic${NET_IP:+ $NET_IP} map=${MAP:-}"
 	fi
 	echo "==> packaging $out ($mode) startup_vids=$([[ $SKIP_STARTUP_VIDS -eq 0 ]] && echo on || echo off) net=$([[ $WANT_NET -eq 1 ]] && echo on || echo off) listen=${LISTEN:-} connect=${CONNECT:-} net_ip=${NET_IP:-}"
 	if ! TMPDIR="$XASH3D_GC_ISO_CACHE" \

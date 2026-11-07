@@ -9,13 +9,17 @@ source "$SCRIPT_DIR/env.sh"
 
 usage() {
 	cat <<'EOF'
-usage: scripts/stage-lean-dod.sh [--map NAME]
+usage: scripts/stage-lean-dod.sh [--map NAME] [--full-map]
 
   --map NAME   copy one .bsp into lean maps/ (searches content/dod then valve)
+               aliases: de_avalanche → dod_avalanche
+  --full-map   with --map: also stage map cfg, mapmodels, player/weapon MDLs,
+               sprites, and common DoD WADs for full visual / multiplayer probes
 EOF
 }
 
 MAP_NAME=""
+FULL_MAP=0
 while [[ $# -gt 0 ]]; do
 	case "$1" in
 		--map)
@@ -23,11 +27,24 @@ while [[ $# -gt 0 ]]; do
 			[[ -n "$MAP_NAME" ]] || { echo "error: --map needs a name" >&2; exit 2; }
 			shift
 			;;
+		--full-map) FULL_MAP=1 ;;
 		-h|--help) usage; exit 0 ;;
 		*) echo "unknown option: $1" >&2; usage >&2; exit 2 ;;
 	esac
 	shift
 done
+
+# CS-style de_* alias → retail DoD dod_* stem.
+case "$MAP_NAME" in
+	de_avalanche) MAP_NAME=dod_avalanche; echo "alias: de_avalanche → dod_avalanche" ;;
+	de_*)
+		alt="dod_${MAP_NAME#de_}"
+		if [[ -f "$DODGC_CONTENT_DOD/maps/${alt}.bsp" ]]; then
+			echo "alias: $MAP_NAME → $alt"
+			MAP_NAME="$alt"
+		fi
+		;;
+esac
 
 dodgc_require_content
 
@@ -97,11 +114,92 @@ if [[ -n "$MAP_NAME" ]]; then
 		[[ -f "$SRC/maps/${stem}.${ext}" ]] && cp -f "$SRC/maps/${stem}.${ext}" "$LEAN/maps/"
 		[[ -f "$VALVE/maps/${stem}.${ext}" ]] && cp -f "$VALVE/maps/${stem}.${ext}" "$LEAN/maps/"
 	done
+	# Map-local DoD rules (classes / bazooka spawn / etc.).
+	if [[ -f "$SRC/${stem}.cfg" ]]; then
+		cp -f "$SRC/${stem}.cfg" "$LEAN/"
+		echo "staged map cfg: ${stem}.cfg"
+	fi
 	# Create Game needs maps.lst on disc-only (refresh cannot rewrite).
 	printf '%s "Local match"\n' "$stem" > "$LEAN/maps.lst"
 	echo "staged maps.lst for $stem"
 	if [[ ! -f "$LEAN/listenserver.cfg" ]]; then
-		printf 'mp_timelimit 0\nmp_fraglimit 0\n' > "$LEAN/listenserver.cfg"
+		{
+			printf 'mp_timelimit 0\nmp_fraglimit 0\n'
+			printf 'mp_teamplay 1\n'
+			# Mirror retail DoD listen defaults when present.
+			[[ -f "$SRC/listenserver.cfg" ]] && cat "$SRC/listenserver.cfg"
+			[[ -f "$SRC/${stem}.cfg" ]] && cat "$SRC/${stem}.cfg"
+		} > "$LEAN/listenserver.cfg"
+		echo "staged listenserver.cfg (DoD mp + map rules)"
+	fi
+
+	if (( FULL_MAP )); then
+		echo "==> full-map assets for $stem"
+		# Shared DoD WADs (textures beyond the per-map wad).
+		for wad in dod.wad dod_shared.wad gfx.wad; do
+			if [[ -f "$SRC/$wad" ]] && [[ ! -f "$LEAN/$wad" ]]; then
+				cp -f "$SRC/$wad" "$LEAN/"
+				echo "staged wad: $wad"
+			fi
+		done
+		# Mapmodels (props / objectives). Cap by size for MEM1/disc budget.
+		if [[ -d "$SRC/models/mapmodels" ]]; then
+			mkdir -p "$LEAN/models/mapmodels"
+			# Prefer names matching the map stem; else copy all under 18 MiB budget.
+			copied=0
+			budget_bytes=$((18 * 1024 * 1024))
+			used=0
+			shopt -s nullglob
+			for m in "$SRC/models/mapmodels"/*; do
+				[[ -f "$m" ]] || continue
+				sz=$(wc -c < "$m" | tr -d ' ')
+				if (( used + sz > budget_bytes )); then
+					continue
+				fi
+				cp -f "$m" "$LEAN/models/mapmodels/"
+				used=$((used + sz))
+				copied=$((copied + 1))
+			done
+			shopt -u nullglob
+			echo "staged mapmodels: $copied files ($(numfmt --to=iec "$used" 2>/dev/null || echo "${used}B"))"
+		fi
+		# Player / weapon / gib stubs used by listen + client render.
+		mkdir -p "$LEAN/models"
+		for m in \
+			player.mdl \
+			allied_grunt.mdl axis_grunt.mdl \
+			allied_ammo.mdl axis_ammo.mdl brit_ammo.mdl \
+			allied_gibs.mdl axis_gibs.mdl \
+			null.mdl \
+			p_garand.mdl p_k98.mdl p_mp40.mdl p_thompson.mdl \
+			p_bar.mdl p_mg34.mdl p_30cal.mdl p_bazooka.mdl p_pschreck.mdl \
+			v_garand.mdl v_k98.mdl v_mp40.mdl v_thompson.mdl \
+			v_bar.mdl v_mg34.mdl v_30cal.mdl v_bazooka.mdl v_pschreck.mdl \
+			w_garand.mdl w_k98.mdl w_mp40.mdl w_thompson.mdl
+		do
+			[[ -f "$SRC/models/$m" ]] && cp -f "$SRC/models/$m" "$LEAN/models/"
+		done
+		# Sprites for HUD / effects (small).
+		if [[ -d "$SRC/sprites" ]]; then
+			mkdir -p "$LEAN/sprites"
+			# Cap: copy hud + common effect sheets only.
+			shopt -s nullglob
+			for s in "$SRC/sprites"/hud* "$SRC/sprites"/radar* \
+				"$SRC/sprites"/scope* "$SRC/sprites"/smoke* \
+				"$SRC/sprites"/explode* "$SRC/sprites"/blood* \
+				"$SRC/sprites"/laser* "$SRC/sprites"/flame*
+			do
+				[[ -f "$s" ]] && cp -f "$s" "$LEAN/sprites/"
+			done
+			shopt -u nullglob
+			echo "staged sprites: $(find "$LEAN/sprites" -type f | wc -l) files"
+		fi
+		# Sound: keep map-critical cues only (objectives / round) if tiny.
+		if [[ -d "$SRC/sound/ambience" ]]; then
+			mkdir -p "$LEAN/sound/ambience"
+			# Skip bulk ambience — too large for lean flythrough discs.
+		fi
+		echo "full-map stage size: $(du -sh "$LEAN" | awk '{print $1}')"
 	fi
 fi
 
