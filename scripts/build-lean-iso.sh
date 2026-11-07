@@ -22,8 +22,8 @@ usage: scripts/build-lean-iso.sh [options]
   --connect ADDR   peer client (gamecube.cfg connect ADDR); use with --net
   --net-ip IP      optional static guest IP (gamecube.cfg netstatic IP)
   --full-map       stage mapmodels/weapons/sprites/WADs with --map/--smoke/--listen
-  --world-render   smoke path: gamecube.cfg gcworldrender (Flipper world)
-  --dumpframes     smoke path: gamecube.cfg dumpframes (-gcdumpframes stills)
+  --world-render   gamecube.cfg gcworldrender (Flipper world; smoke/listen/connect)
+  --dumpframes     gamecube.cfg dumpframes (-gcdumpframes stills; with --smoke)
   --skip-stage     reuse existing lean cache trees
   -h, --help
 
@@ -86,8 +86,12 @@ while [[ $# -gt 0 ]]; do
 	esac
 	shift
 done
-if (( WORLD_RENDER || DUMPFRAMES )) && [[ -z "$SMOKE" ]]; then
-	echo "error: --world-render / --dumpframes require --smoke MAP" >&2
+if (( DUMPFRAMES )) && [[ -z "$SMOKE" && -z "$LISTEN" && -z "$CONNECT" ]]; then
+	echo "error: --dumpframes requires --smoke, --listen, or --connect" >&2
+	exit 2
+fi
+if (( WORLD_RENDER )) && [[ -z "$SMOKE" && -z "$LISTEN" && -z "$CONNECT" ]]; then
+	echo "error: --world-render needs --smoke, --listen, or --connect" >&2
 	exit 2
 fi
 if [[ -n "$SMOKE" && -n "$LISTEN" ]]; then
@@ -156,8 +160,11 @@ pack() {
 					echo "netstatic"
 				fi
 			fi
+			# Flipper world tris (otherwise R_EdgeDrawing skips as gcmap smoke).
+			(( WORLD_RENDER )) && echo "gcworldrender"
+			(( DUMPFRAMES )) && echo "dumpframes"
 		} > "$LEAN/gamecube.cfg"
-		echo "==> listenserver cfg: $LISTEN net=$([[ $WANT_NET -eq 1 ]] && echo netstatic${NET_IP:+ $NET_IP} || echo off)"
+		echo "==> listenserver cfg: $LISTEN net=$([[ $WANT_NET -eq 1 ]] && echo netstatic${NET_IP:+ $NET_IP} || echo off) world_render=$WORLD_RENDER dumpframes=$DUMPFRAMES"
 	elif [[ -n "$CONNECT" ]]; then
 		{
 			echo "video prog"
@@ -172,8 +179,10 @@ pack() {
 			if [[ -n "$MAP" ]]; then
 				echo "map $MAP"
 			fi
+			(( WORLD_RENDER )) && echo "gcworldrender"
+			(( DUMPFRAMES )) && echo "dumpframes"
 		} > "$LEAN/gamecube.cfg"
-		echo "==> connect cfg: $CONNECT net=netstatic${NET_IP:+ $NET_IP} map=${MAP:-}"
+		echo "==> connect cfg: $CONNECT net=netstatic${NET_IP:+ $NET_IP} map=${MAP:-} world_render=$WORLD_RENDER dumpframes=$DUMPFRAMES"
 	fi
 	echo "==> packaging $out ($mode) startup_vids=$([[ $SKIP_STARTUP_VIDS -eq 0 ]] && echo on || echo off) net=$([[ $WANT_NET -eq 1 ]] && echo on || echo off) listen=${LISTEN:-} connect=${CONNECT:-} net_ip=${NET_IP:-}"
 	if ! TMPDIR="$XASH3D_GC_ISO_CACHE" \

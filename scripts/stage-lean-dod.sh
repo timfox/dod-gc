@@ -100,9 +100,42 @@ if [[ -n "$MAP_NAME" ]]; then
 	cp -f "$bsp" "$LEAN/maps/${stem}.bsp"
 	echo "staged map: $bsp ($(du -h "$bsp" | awk '{print $1}'))"
 	# Map-specific + common WADs (skip decals.wad — Host_InitDecals OOM).
-	for wad in "${stem}.wad" dod.wad dod_shared.wad hlbasics.wad; do
+	# Also pull sibling DoD map WADs named in the BSP "wad" entity key
+	# (dod_flash references dod_donner.wad; without it CapFaces stay magenta).
+	map_wads=("${stem}.wad" dod.wad dod_shared.wad hlbasics.wad)
+	if command -v python3 >/dev/null 2>&1; then
+		while IFS= read -r wad; do
+			[[ -n "$wad" ]] || continue
+			[[ "$wad" == "decals.wad" ]] && continue
+			map_wads+=("$wad")
+		done < <(python3 - "$bsp" <<'PY'
+import re, struct, sys
+from pathlib import Path
+b = Path(sys.argv[1]).read_bytes()
+off, length = struct.unpack_from("<ii", b, 4)
+ents = b[off:off+length].decode("latin1", "replace")
+m = re.search(r'"wad"\s+"([^"]+)"', ents)
+if not m:
+    raise SystemExit
+for part in m.group(1).split(";"):
+    part = part.strip()
+    if not part:
+        continue
+    name = part.replace("\\", "/").split("/")[-1]
+    if name.lower().endswith(".wad"):
+        print(name)
+PY
+)
+	fi
+	for wad in "${map_wads[@]}"; do
 		for root in "$SRC" "$VALVE"; do
 			if [[ -f "$root/$wad" ]]; then
+				# Cap giant Valve WADs on lean discs (halflife.wad ~38M).
+				sz=$(stat -c%s "$root/$wad" 2>/dev/null || stat -f%z "$root/$wad")
+				if [[ "${sz:-0}" -gt $((12 * 1024 * 1024)) ]]; then
+					echo "skip oversized wad: $wad ($(du -h "$root/$wad" | awk '{print $1}'))"
+					break
+				fi
 				cp -f "$root/$wad" "$LEAN/"
 				echo "staged wad: $wad"
 				break
