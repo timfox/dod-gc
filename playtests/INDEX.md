@@ -4,6 +4,13 @@ Screenshots: `playtests/screenshots/` · Videos: `playtests/videos/` · Notes: `
 
 | Date | File | Route | Duration | Size | Commit |
 |------|------|-------|----------|------|--------|
+| 2026-11-06T23:23:09 | `20261106-232309-play-041754d36a.mp4` | play | 59.6s | 0.4 MB | `041754d36a` |
+| 2026-11-06T23:19:35 | `20261106-231935-play-041754d36a.mp4` | play | 74.4s | 0.2 MB | `041754d36a` |
+| 2026-11-06T23:12:42 | `20261106-231242-play-041754d36a.mp4` | play | 49.4s | 0.4 MB | `041754d36a` |
+| 2026-11-06T23:11:13 | `20261106-231113-play-041754d36a.mp4` | play | 78.0s | 0.3 MB | `041754d36a` |
+| 2026-11-06T22:33:52 | `20261106-223352-play-041754d36a.mp4` | play | 77.2s | 0.1 MB | `041754d36a` |
+| 2026-11-06T22:31:11 | `20261106-223111-solo-listen-local-041754d36a.mp4` | solo-listen-local | 50.8s | 0.1 MB | `041754d36a` |
+| 2026-11-06T22:29:21 | `20261106-222921-local-create-match-041754d36a.mp4` | local-create-match | 86.1s | 0.8 MB | `041754d36a` |
 | 2026-11-06T21:41:43 | `20261106-214143-solo-listen-local-4213cb9781.mp4` | solo-listen-local | 48.1s | 0.3 MB | `4213cb9781` |
 | 2026-11-06T21:39:03 | `20261106-213903-hlsdk-mp-tour-4213cb9781.mp4` | hlsdk-mp-tour | 27.4s | 0.4 MB | `4213cb9781` |
 | 2026-11-06T21:37:32 | `20261106-213732-bba-listen-port-4213cb9781.mp4` | bba-listen-port | 54.6s | 0.4 MB | `4213cb9781` |

@@ -36,6 +36,7 @@ def main() -> int:
 	clients: List[socket.socket] = []
 	bufs: Dict[socket.socket, bytearray] = {}
 	frames = 0
+	bytes_in = 0
 	last_report = 0.0
 
 	try:
@@ -46,7 +47,10 @@ def main() -> int:
 			readable, _, _ = select.select(rlist, [], [], 1.0)
 			now = time.time()
 			if now - last_report >= 5.0:
-				print(f"stats clients={len(clients)} frames={frames}", flush=True)
+				print(
+					f"stats clients={len(clients)} frames={frames} bytes_in={bytes_in}",
+					flush=True,
+				)
 				last_report = now
 			for sock in readable:
 				if sock is srv:
@@ -69,6 +73,11 @@ def main() -> int:
 					except OSError:
 						pass
 					continue
+				bytes_in += len(chunk)
+				if args.verbose and len(chunk) <= 64:
+					print(f"recv {len(chunk)}B raw={chunk[:32].hex()}", flush=True)
+				elif args.verbose:
+					print(f"recv {len(chunk)}B", flush=True)
 				bufs[sock].extend(chunk)
 				buf = bufs[sock]
 				while True:
