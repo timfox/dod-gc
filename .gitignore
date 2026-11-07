@@ -1,48 +1,32 @@
-# Prerequisites
+# Build / object noise
 *.d
-
-# Object files
 *.o
 *.ko
 *.obj
 *.elf
-
-# Linker output
 *.ilk
 *.map
 *.exp
-
-# Precompiled Headers
 *.gch
 *.pch
-
-# Libraries
 *.lib
 *.a
 *.la
 *.lo
-
-# Shared objects (inc. Windows DLLs)
 *.dll
 *.so
 *.so.*
 *.dylib
-
-# Executables
 *.exe
 *.out
 *.app
 *.i*86
 *.x86_64
 *.hex
-
-# Debug files
 *.dSYM/
 *.su
 *.idb
 *.pdb
-
-# Kernel Module Compile Results
 *.mod*
 *.cmd
 .tmp_versions/
@@ -50,6 +34,25 @@ modules.order
 Module.symvers
 Mkfile.old
 dkms.conf
-
-# debug information files
 *.dwo
+
+# Local GameCube artifacts (regenerate with scripts/build-dodgc.sh)
+out/**
+!out/.gitkeep
+out/iso-cache/
+
+# Large playtest media (notes + INDEX stay tracked; binaries stay local)
+playtests/videos/*
+!playtests/videos/.gitkeep
+playtests/screenshots/*
+!playtests/screenshots/.gitkeep
+# Ignore huge dumps only; dated .md notes are intentional progress records
+playtests/screenshots/*.tga
+playtests/screenshots/*.bmp
+
+# Editor / OS
+.DS_Store
+*~
+*.swp
+.vscode/
+.idea/
