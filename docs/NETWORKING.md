@@ -67,9 +67,10 @@ DODGC_BBA_PLACE=sp1 scripts/builtin-bba-netprobe.sh
 
 Success bar (see `playtests/notes/*-dual-ipc-join.md`, `*-builtin-bba-netprobe.md`):
 
-- host: `net ready`, `Server IPv4 …:27015`, `MAP READY`, `client frames BSS slot=0`
-- client: `Connecting…`, `Serverdata`, signon / peer present path
+- host: `net ready`, `Server IPv4 …:27015`, `MAP READY`, `client frames BSS slot=0`, peer `PutInServer` complete
+- client: `Connecting…`, `Serverdata`, **`CL_SignonReply: 2`** (soft Serverdata alone is not playable)
 - BuiltIn: `Created Built in network interface` + `net ready` (SP1 only; Slot B alone fails)
+- Proven playable dual IPC: `20261107-092212-dual-ipc-join` (`hard_signon=1`)
 
 Scripts only `pkill` Dolphin instances whose `-u` path is under `dodgc-ipc-` /
 `dodgc-dual-` / `dodgc-builtin-` / `dodgc-fly-` — never bare `dolphin-emu`.
@@ -89,10 +90,10 @@ Scripts only `pkill` Dolphin instances whose `-u` path is under `dodgc-ipc-` /
 
 - Engine: `engine/platform/gamecube/net_gamecube.*` (via this repo’s `engine/` symlink).
 - DoD DOL builds default `XASH_GAMECUBE_LINK_BBA=1` (libbba); without it join is offline-stub only.
-- Emulator dual join: **proven** on EthernetIPC — stalkyard and **dod_flash** (2026-11-07),
-  with `net ready`, `sendto`, `Serverdata`, `game-rejected=0`.
+- Emulator dual join: **proven playable** on EthernetIPC — **dod_flash** `hard_signon=1`
+  (`CL_SignonReply: 2`, PutInServer complete) — note `20261107-092212-dual-ipc-join`.
 - BuiltIn BBA: **proven** single-guest listen/`net ready` on SP1 (EXI=12). Dual BuiltIn on one
   host **fails** (UDP bind) — use IPC for two Dolphins; use BuiltIn for eth2sp1-shaped bring-up.
-- Hardware BBA / eth2sp1: same guest code path; validate on device with the steps above.
+- Hardware BBA / eth2sp1: same guest libbba path as BuiltIn/IPC; optional on-device confirm.
 - Lean menu discs are SP bring-up friendly; online maps need `--full-map` (or fuller packs).
 - Compact BSP (strip LUMP_LIGHTING) + world-array spill required for dense DoD maps under BBA MEM1.
