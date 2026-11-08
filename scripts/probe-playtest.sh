@@ -91,6 +91,7 @@ Muted = False
 Volume = 100
 [Interface]
 ConfirmStop = False
+UsePanicHandlers = False
 [Display]
 KeepWindowOnTop = False
 EOF
