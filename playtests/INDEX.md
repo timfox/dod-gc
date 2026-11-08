@@ -4,6 +4,14 @@ Screenshots: `playtests/screenshots/` · Videos: `playtests/videos/` · Notes: `
 
 | Date | File | Route | Duration | Size | Commit |
 |------|------|-------|----------|------|--------|
+| 2026-11-07T15:58:30 | `20261107-155830-flash-solo-edge-stable-7335013c78.mp4` | flash-solo-edge-stable | 45.6s | 0.9 MB | `7335013c78` |
+| 2026-11-07T15:56:30 | `20261107-155630-flash-solo-lofs-7335013c78.mp4` | flash-solo-lofs | 49.6s | 0.9 MB | `7335013c78` |
+| 2026-11-07T15:52:33 | `20261107-155233-flash-solo-lm-fit-7335013c78.mp4` | flash-solo-lm-fit | 55.6s | 1.1 MB | `7335013c78` |
+| 2026-11-07T15:49:08 | `20261107-154908-flash-solo-edge-restore-7335013c78.mp4` | flash-solo-edge-restore | 54.6s | 1.1 MB | `7335013c78` |
+| 2026-11-07T15:45:01 | `20261107-154501-flash-solo-lm-sparse2-7335013c78.mp4` | flash-solo-lm-sparse2 | 70.6s | 1.2 MB | `7335013c78` |
+| 2026-11-07T15:43:27 | `20261107-154327-flash-solo-lm-sparse-7335013c78.mp4` | flash-solo-lm-sparse | 54.6s | 0.9 MB | `7335013c78` |
+| 2026-11-07T15:37:12 | `20261107-153712-flash-solo-edge-prefetch-7335013c78.mp4` | flash-solo-edge-prefetch | 69.6s | 1.3 MB | `7335013c78` |
+| 2026-11-07T15:25:30 | `20261107-152530-flash-solo-loadproof-7335013c78.mp4` | flash-solo-loadproof | 58.1s | 0.6 MB | `7335013c78` |
 | 2026-11-06T23:23:09 | `20261106-232309-play-041754d36a.mp4` | play | 59.6s | 0.4 MB | `041754d36a` |
 | 2026-11-06T23:19:35 | `20261106-231935-play-041754d36a.mp4` | play | 74.4s | 0.2 MB | `041754d36a` |
 | 2026-11-06T23:12:42 | `20261106-231242-play-041754d36a.mp4` | play | 49.4s | 0.4 MB | `041754d36a` |
