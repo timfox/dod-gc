@@ -58,3 +58,5 @@ playtests/screenshots/*.bmp
 .idea/
 social-media/
 playtests/
+web/
+web-*

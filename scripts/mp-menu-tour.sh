@@ -165,7 +165,7 @@ START_TS=$(date +%s)
 READY=0
 while kill -0 "$DPID" 2>/dev/null; do
 	elapsed=$(( $(date +%s) - START_TS ))
-	if rg -a -q 'gc_menu_ready set 1|retail menu steam background ready' "$LOG" 2>/dev/null; then
+	if rg -a -q 'gc_menu_ready set 1' "$LOG" 2>/dev/null; then
 		READY=1
 		break
 	fi
@@ -235,7 +235,7 @@ with open(pipe_path, "a", buffering=1) as f:
     f.write("SET MAIN 0.5 0.5\nSET C 0.5 0.5\n")
     f.flush()
 
-# Main menu: New / Find servers / Options / Quit — highlight each, then open submenus.
+# Day of Defeat main menu: New / Find servers / Options (Quit hidden).
 shots = []
 grab("01-main-newgame"); shots.append("01")
 
@@ -245,46 +245,32 @@ grab("02-main-findservers")
 pad("PRESS D_DOWN")
 grab("03-main-options")
 
-pad("PRESS D_DOWN")
-grab("04-main-quit")
-
 # Back to New game
 pad("PRESS D_UP")
 pad("PRESS D_UP")
-pad("PRESS D_UP")
-grab("05-main-newgame-again")
+grab("04-main-newgame-again")
 
 # Open Create Game (New game → A)
 pad("PRESS A", hold=0.15, gap=1.4)
-grab("06-creategame")
+grab("05-creategame")
 
 # Back
 pad("PRESS B", hold=0.15, gap=1.2)
-grab("07-back-main")
+grab("06-back-main")
 
 # Options / Configuration BEFORE Find servers (HTTP masterlist currently fatals)
 pad("PRESS D_DOWN", gap=0.5)
 pad("PRESS D_DOWN", gap=0.5)
 pad("PRESS A", hold=0.15, gap=1.6)
-grab("08-options")
+grab("07-options")
 
 pad("PRESS B", hold=0.15, gap=1.2)
-grab("09-back-main2")
-
-# Quit confirm (open then cancel with B)
-pad("PRESS D_DOWN", gap=0.45)
-pad("PRESS A", hold=0.15, gap=1.2)
-grab("10-quit-prompt")
-pad("PRESS B", hold=0.15, gap=1.0)
-grab("11-final-main")
+grab("08-back-main2")
 
 # Find servers last — may fatal on HTTP alloc until BBA/net pool is wired
-pad("PRESS D_UP", gap=0.4)
-pad("PRESS D_UP", gap=0.4)
-pad("PRESS D_UP", gap=0.4)
-pad("PRESS D_DOWN", gap=0.5)
+pad("PRESS D_UP", gap=0.5)
 pad("PRESS A", hold=0.15, gap=2.0)
-grab("12-findservers")
+grab("09-findservers")
 
 
 print("tour done", flush=True)
@@ -306,7 +292,7 @@ NOTE="$DODGC_NOTES/${STAMP}-hlsdk-mp-tour.md"
 	echo "- Pad: Dolphin \`Pipe/0/gcpad\`"
 	echo "- Shots: \`playtests/screenshots/${STAMP}-hlsdk-mp-tour/\`"
 	echo "- Video: \`playtests/videos/*-hlsdk-mp-tour-*.mkv\` (see INDEX.md)"
-	echo "- Flow: New game → CreateGame, Find servers → InternetGames, Options, Quit prompt"
+	echo "- Flow: New game → CreateGame, Find servers → InternetGames, Options (Quit hidden)"
 	echo
 	echo "## Frame hashes"
 	echo '```'

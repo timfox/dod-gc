@@ -57,6 +57,19 @@ VALVE="$DODGC_CONTENT_VALVE"
 rm -rf "$LEAN" "$VMIN"
 mkdir -p "$LEAN"/{media,resource,maps,gfx} "$VMIN"/{gfx,resource}
 
+# Retail DoD mainui starts media/gamestartup on the main menu. Convert to a
+# disc-streamable PCM asset for GameCube; the MP3 decoder is too expensive on
+# Gekko and the retail mainui requests the extensionless track name.
+if [[ -f "$SRC/media/gamestartup.mp3" ]]; then
+	command -v ffmpeg >/dev/null 2>&1 || {
+		echo "error: ffmpeg is required to stage DoD main-menu music" >&2
+		exit 1
+	}
+	ffmpeg -v error -y -i "$SRC/media/gamestartup.mp3" -ar 22050 -ac 2 \
+		-c:a pcm_s16le "$LEAN/media/gamestartup.wav"
+	echo "staged DoD main-menu music: media/gamestartup.wav (22.05 kHz stereo PCM)"
+fi
+
 # Identity / FS markers (HasGameAssets needs marker + maps/ for non-valve).
 cp -f "$SRC/liblist.gam" "$LEAN/"
 cp -f "$SRC/delta.lst" "$LEAN/" 2>/dev/null || true
@@ -99,6 +112,39 @@ if [[ -n "$MAP_NAME" ]]; then
 	fi
 	cp -f "$bsp" "$LEAN/maps/${stem}.bsp"
 	echo "staged map: $bsp ($(du -h "$bsp" | awk '{print $1}'))"
+	# Stage only WAVs named by BSP message keys so map soundscapes work on
+	# lean discs without copying the full retail sound tree.
+	python3 - "$bsp" "$SRC/sound" "$LEAN/sound" <<'PY'
+import re
+import shutil
+import struct
+import sys
+from pathlib import Path
+
+bsp, source_root, target_root = map(Path, sys.argv[1:])
+data = bsp.read_bytes()
+offset, length = struct.unpack_from("<II", data, 4)
+entities = data[offset : offset + length].decode("latin1", "ignore")
+source_root = source_root.resolve()
+target_root = target_root.resolve()
+copied = []
+for raw in sorted(set(re.findall(r'"message"\s*"([^"\\]+\.wav)"', entities, re.I))):
+	name = raw.replace("\\\\", "/").lstrip("/")
+	if name.lower().startswith("sound/"):
+		name = name[6:]
+	path = Path(name)
+	if path.is_absolute() or ".." in path.parts:
+		continue
+	source = (source_root / path).resolve()
+	if not source.is_relative_to(source_root) or not source.is_file():
+		continue
+	target = target_root / path
+	target.parent.mkdir(parents=True, exist_ok=True)
+	shutil.copy2(source, target)
+	copied.append((name, source.stat().st_size))
+print(f"staged {len(copied)} map sound(s): " + ", ".join(n for n, _ in copied))
+print(f"map sound total: {sum(size for _, size in copied) / 1048576:.2f} MiB")
+PY
 	# Map-specific + common WADs (skip decals.wad — Host_InitDecals OOM).
 	# Also pull sibling DoD map WADs named in the BSP "wad" entity key
 	# (dod_flash references dod_donner.wad; without it CapFaces stay magenta).

@@ -24,6 +24,8 @@ usage: scripts/build-lean-iso.sh [options]
   --full-map       stage mapmodels/weapons/sprites/WADs with --map/--smoke/--listen
   --world-render   gamecube.cfg gcworldrender (Flipper world; smoke/listen/connect)
   --dumpframes     gamecube.cfg dumpframes (-gcdumpframes stills; with --smoke)
+  --dumpeye "x y z [pitch] [yaw]"
+                   CapFaces camera override in gamecube.cfg (spawn atlas)
   --skip-stage     reuse existing lean cache trees
   -h, --help
 
@@ -39,6 +41,7 @@ WANT_NET=0
 FULL_MAP=0
 WORLD_RENDER=0
 DUMPFRAMES=0
+DUMPEYE=""
 MAP=""
 SMOKE=""
 LISTEN=""
@@ -55,6 +58,11 @@ while [[ $# -gt 0 ]]; do
 		--full-map) FULL_MAP=1; STAGE_ARGS+=(--full-map) ;;
 		--world-render) WORLD_RENDER=1 ;;
 		--dumpframes) DUMPFRAMES=1 ;;
+		--dumpeye)
+			DUMPEYE="${2:-}"
+			[[ -n "$DUMPEYE" ]] || { echo "error: --dumpeye needs coords" >&2; exit 2; }
+			shift
+			;;
 		--net-ip)
 			NET_IP="${2:-}"
 			[[ -n "$NET_IP" ]] || { echo "error: --net-ip needs IP" >&2; exit 2; }
@@ -163,6 +171,7 @@ pack() {
 			# Flipper world tris (otherwise R_EdgeDrawing skips as gcmap smoke).
 			(( WORLD_RENDER )) && echo "gcworldrender"
 			(( DUMPFRAMES )) && echo "dumpframes"
+			[[ -n "$DUMPEYE" ]] && echo "dumpeye $DUMPEYE"
 		} > "$LEAN/gamecube.cfg"
 		echo "==> listenserver cfg: $LISTEN net=$([[ $WANT_NET -eq 1 ]] && echo netstatic${NET_IP:+ $NET_IP} || echo off) world_render=$WORLD_RENDER dumpframes=$DUMPFRAMES"
 	elif [[ -n "$CONNECT" ]]; then
