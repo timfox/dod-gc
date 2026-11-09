@@ -133,13 +133,24 @@ if [[ -n "$MAP_NAME" ]]; then
 	fi
 	python3 "$SCRIPT_DIR/stage_dod_audio.py" "${MAP_AUDIO_ARGS[@]}"
 	# Map-specific + common WADs (skip decals.wad — Host_InitDecals OOM).
-	# Also pull sibling DoD map WADs named in the BSP "wad" entity key
-	# (dod_flash references dod_donner.wad; without it CapFaces stay magenta).
-	map_wads=("${stem}.wad" dod.wad dod_shared.wad hlbasics.wad)
+	# Do NOT auto-mount sibling map WADs from the BSP "wad" key (e.g. flash
+	# lists dod_donner.wad). Each foreign map WAD costs ~6 KiB searchpaths and
+	# tipfix proved flash CapFaces drawn=365 without donner; denser maps need
+	# that headroom. CapFaces packs supply world textures on -gcworldrender.
+	map_wads=("${stem}.wad" hlbasics.wad)
+	if (( FULL_MAP )); then
+		map_wads+=(dod.wad dod_shared.wad)
+	fi
 	if command -v python3 >/dev/null 2>&1; then
 		while IFS= read -r wad; do
 			[[ -n "$wad" ]] || continue
 			[[ "$wad" == "decals.wad" ]] && continue
+			[[ "$wad" == "halflife.wad" ]] && continue
+			# Skip other maps' WADs (dod_donner.wad while staging dod_flash, etc.).
+			if [[ "$wad" == dod_*.wad && "$wad" != "${stem}.wad" ]]; then
+				echo "skip foreign map wad: $wad (tip searchpaths)"
+				continue
+			fi
 			map_wads+=("$wad")
 		done < <(python3 - "$bsp" <<'PY'
 import re, struct, sys
@@ -160,6 +171,15 @@ for part in m.group(1).split(";"):
 PY
 )
 	fi
+	# Drop any leftover foreign map WADs from a prior lean stage.
+	shopt -s nullglob
+	for leftover in "$LEAN"/dod_*.wad; do
+		base=$(basename "$leftover")
+		[[ "$base" == "${stem}.wad" ]] && continue
+		rm -f "$leftover"
+		echo "removed leftover wad: $base"
+	done
+	shopt -u nullglob
 	for wad in "${map_wads[@]}"; do
 		for root in "$SRC" "$VALVE"; do
 			if [[ -f "$root/$wad" ]]; then

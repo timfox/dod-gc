@@ -4,6 +4,11 @@ Screenshots: `playtests/screenshots/` · Videos: `playtests/videos/` · Notes: `
 
 | Date | File | Route | Duration | Size | Commit |
 |------|------|-------|----------|------|--------|
+| 2026-11-08T22:26:05 | `20261108-222605-tipfix-donner-cf-332c91d943.mp4` | tipfix-donner-cf | 54.5s | 0.4 MB | `332c91d943` |
+| 2026-11-08T22:24:53 | `20261108-222453-tipfix-avalanche-cf-332c91d943.mp4` | tipfix-avalanche-cf | 55.6s | 0.4 MB | `332c91d943` |
+| 2026-11-08T22:23:38 | `20261108-222338-tipfix-flash-nobba-332c91d943.mp4` | tipfix-flash-nobba | 49.5s | 0.3 MB | `332c91d943` |
+| 2026-11-08T22:17:18 | `20261108-221718-tipfix-flash-cf-332c91d943.mp4` | tipfix-flash-cf | 46.1s | 0.2 MB | `332c91d943` |
+| 2026-11-08T22:16:49 | `20261108-221649-tipfix-flash-cf-332c91d943.mp4` | tipfix-flash-cf | 45.6s | 0.4 MB | `332c91d943` |
 | 2026-11-08T19:40:53 | `20261108-194053-promo-cf-avalanche-a7cbdc94ca.mp4` | promo-cf-avalanche | 69.5s | 1.1 MB | `a7cbdc94ca` |
 | 2026-11-08T19:39:49 | `20261108-193949-promo-cf-flash-a7cbdc94ca.mp4` | promo-cf-flash | 55.6s | 0.7 MB | `a7cbdc94ca` |
 | 2026-11-08T15:41:28 | `20261108-154128-tip-donner-spillfirst4-451be11298.mp4` | tip-donner-spillfirst4 | 55.3s | 0.1 MB | `451be11298` |

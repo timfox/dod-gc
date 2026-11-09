@@ -47,30 +47,16 @@ out.write_text("\n".join(rows) + ("\n" if rows else ""))
 print(f"worklist {len(rows)} jobs → {out}")
 PY
 
-stage_all_maps() {
-	echo "==> Staging lean listen base then copying all BSPs"
-	bash "$SCRIPT_DIR/build-lean-iso.sh" --menu-only --listen dod_flash --world-render --skip-startup-vids \
-		>/tmp/dodgc-atlas-stage.log 2>&1 || {
-		tail -40 /tmp/dodgc-atlas-stage.log
-		exit 1
-	}
-	mkdir -p "$LEAN/maps"
-	cp -f "$MAP_SRC"/dod_*.bsp "$LEAN/maps/"
-	{
-		for m in "$LEAN/maps"/dod_*.bsp; do
-			echo "$(basename "$m" .bsp) \"Atlas\""
-		done
-	} >"$LEAN/maps.lst"
-	echo "==> lean maps: $(find "$LEAN/maps" -name 'dod_*.bsp' | wc -l)"
-}
-
+# Per-map lean ISO: only that map's BSP + its own .wad (no foreign map WADs,
+# no all-BSP lean tree). Shared lean with every dod_*.wad reintroduced the
+# searchpaths tip regression atlas magenta'd on.
 build_one() {
 	local map="$1" side="$2" eye="$3"
 	local iso_out="$ATLAS/isos/${map}-${side}.iso"
 	local route="atlas-${map}-${side}"
 
 	if ! bash "$SCRIPT_DIR/build-lean-iso.sh" --menu-only --listen "$map" \
-		--world-render --skip-startup-vids --skip-stage --dumpeye "$eye" \
+		--world-render --skip-startup-vids --dumpeye "$eye" \
 		>/tmp/dodgc-atlas-iso-${map}-${side}.log 2>&1; then
 		echo "FAIL iso $map $side" | tee -a "$ATLAS/results.tsv"
 		tail -15 /tmp/dodgc-atlas-iso-${map}-${side}.log
@@ -102,13 +88,6 @@ build_one() {
 
 pkill -9 -f dolphin-emu 2>/dev/null || true
 sleep 1
-
-map_count=$(find "$LEAN/maps" -name 'dod_*.bsp' 2>/dev/null | wc -l || echo 0)
-if [[ "$map_count" -lt 20 ]]; then
-	stage_all_maps
-else
-	echo "==> Reusing lean tree ($map_count maps)"
-fi
 
 echo -e "map\tside\tresult" >"$ATLAS/results.tsv"
 while IFS=$'\t' read -r map side eye; do
