@@ -59,10 +59,12 @@ build_one() {
 	local iso_out="$ATLAS/isos/${map}-${side}.iso"
 	local route="atlas-${map}-${side}"
 
+	mkdir -p "$ATLAS/isos" "$ATLAS/screenshots" "$ATLAS/videos" "$ATLAS/notes"
+	echo "==> atlas job $map $side eye=($eye)"
 	if ! bash "$SCRIPT_DIR/build-lean-iso.sh" --menu-only --listen "$map" \
 		--world-render --skip-startup-vids --dumpeye "$eye" \
 		>/tmp/dodgc-atlas-iso-${map}-${side}.log 2>&1; then
-		echo "FAIL iso $map $side" | tee -a "$ATLAS/results.tsv"
+		echo -e "${map}\t${side}\tFAIL iso" | tee -a "$ATLAS/results.tsv"
 		tail -15 /tmp/dodgc-atlas-iso-${map}-${side}.log
 		return 1
 	fi

@@ -4,6 +4,10 @@ Screenshots: `playtests/screenshots/` · Videos: `playtests/videos/` · Notes: `
 
 | Date | File | Route | Duration | Size | Commit |
 |------|------|-------|----------|------|--------|
+| 2026-11-08T22:30:55 | `20261108-223055-atlas-dod_avalanche-axis-02bfbb4605.mp4` | atlas-dod_avalanche-axis | 40.5s | 0.3 MB | `02bfbb4605` |
+| 2026-11-08T22:30:12 | `20261108-223012-atlas-dod_avalanche-allies-02bfbb4605.mp4` | atlas-dod_avalanche-allies | 40.5s | 0.3 MB | `02bfbb4605` |
+| 2026-11-08T22:29:29 | `20261108-222929-atlas-dod_anzio-axis-02bfbb4605.mp4` | atlas-dod_anzio-axis | 40.0s | 0.2 MB | `02bfbb4605` |
+| 2026-11-08T22:28:46 | `20261108-222846-atlas-dod_anzio-allies-02bfbb4605.mp4` | atlas-dod_anzio-allies | 40.5s | 0.2 MB | `02bfbb4605` |
 | 2026-11-08T22:26:05 | `20261108-222605-tipfix-donner-cf-332c91d943.mp4` | tipfix-donner-cf | 54.5s | 0.4 MB | `332c91d943` |
 | 2026-11-08T22:24:53 | `20261108-222453-tipfix-avalanche-cf-332c91d943.mp4` | tipfix-avalanche-cf | 55.6s | 0.4 MB | `332c91d943` |
 | 2026-11-08T22:23:38 | `20261108-222338-tipfix-flash-nobba-332c91d943.mp4` | tipfix-flash-nobba | 49.5s | 0.3 MB | `332c91d943` |
