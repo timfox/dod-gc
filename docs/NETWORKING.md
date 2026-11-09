@@ -1,5 +1,15 @@
 # GameCube DoD networking
 
+**Development status (2026-11-08): not yet a playable multiplayer release.**
+The matched native-network builds now pass two-player signon and actual
+server-side horizontal movement from both controller inputs in Dolphin.
+A renderer restore was overwriting retained collision planes; the arena
+ownership check now protects network sessions. The 20261108-213248 probe stayed
+active through its test interval, but captured frames still show incomplete
+world geometry and several HUD message handlers are missing. Physical
+W5500/ETH2SP1 and separate-network internet play remain unverified. The commands
+below produce development images for continued testing.
+
 This port targets matching **GameCube DoD builds**, with two players per game.
 The connection handshake carries `gc_dod=1` in both directions. A missing or
 incompatible marker rejects the connection before loading the game. This marker

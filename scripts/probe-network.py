@@ -141,15 +141,17 @@ try:
         result.update(host_active=active("host"), client_active=active("client"))
         if (result["host_active"] or args.headless) and result["client_active"]:
             # Exercise both pads while gameplay and UDP traffic continue.
+            result["pad_input"] = {}
             for role in ("host", "client"):
                 try:
                     fd = os.open(Path(profiles[role]) / "Pipes/pad", os.O_WRONLY | os.O_NONBLOCK)
                     os.write(fd, b"SET MAIN 0.5 0.8\nPRESS R\n")
-                    time.sleep(1)
+                    time.sleep(3)
                     os.write(fd, b"SET MAIN 0.5 0.5\nRELEASE R\n")
                     os.close(fd)
-                except OSError:
-                    pass
+                    result["pad_input"][role] = "forward + R for 3 seconds, then neutral"
+                except OSError as error:
+                    result["pad_input"][role] = str(error)
             time.sleep(args.settle)
             for role, proc in zip(("host", "client"), processes):
                 capture_windows(role, proc.pid)
@@ -160,6 +162,8 @@ try:
             break
         time.sleep(1)
 finally:
+    result["exit_codes_before_cleanup"] = {role: proc.poll() for role, proc in zip(("host", "client"), processes)}
+    result["guest_fatal"] = {role: fatal(role) for role in profiles}
     for proc in processes:
         proc.terminate() if proc.poll() is None else None
     for proc in processes:
@@ -177,6 +181,8 @@ finally:
         (evidence / f"{role}-memory.log").write_text("\n".join(line for line in lines if re.search(r"heap|mem |kernel_|arena|alloc", line)) + "\n")
     (evidence / "command.txt").write_text(" ".join(__import__("sys").argv) + "\nDISPLAY=" + env["DISPLAY"] + "\nEGL_PLATFORM=x11\nQT_QPA_PLATFORM=xcb\n")
     result["dolphin"] = str(dolphin.resolve())
+    result["dolphin_sha256"] = hashlib.file_digest(dolphin.open("rb"), "sha256").hexdigest()
+    result["probe_sha256"] = hashlib.file_digest(Path(__file__).open("rb"), "sha256").hexdigest()
     result["timeout_seconds"] = args.timeout
     result["headless"] = args.headless
     (evidence / "result.json").write_text(json.dumps(result, indent=2) + "\n")

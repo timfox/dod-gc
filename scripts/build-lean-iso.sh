@@ -24,7 +24,9 @@ usage: scripts/build-lean-iso.sh [options]
   --net-ip IP      static IPv4 address (DHCP when omitted)
   --net-mask MASK  static subnet mask (default 255.255.255.0)
   --net-gateway IP static router address (default same subnet .1)
-  --full-map       stage mapmodels/weapons/sprites/WADs with --map/--smoke/--listen
+  --full-map       stage mapmodels/weapons/sprites/WADs + core SFX with --map/--smoke/--listen
+  --all-maps-audio stage every map's soundscape/ambient WAVs + menu music/UI
+  --core-sfx       stage weapons/player/ui/items/doors/buttons/debris/object/common
   --world-render   gamecube.cfg gcworldrender (Flipper world; smoke/listen/connect)
   --dumpframes     gamecube.cfg dumpframes (-gcdumpframes stills; with --smoke)
   --dumpeye "x y z [pitch] [yaw]"
@@ -65,6 +67,8 @@ while [[ $# -gt 0 ]]; do
 		--net-mask) NET_MASK="${2:?--net-mask needs MASK}"; shift ;;
 		--net-gateway) NET_GW="${2:?--net-gateway needs IP}"; shift ;;
 		--full-map) FULL_MAP=1; STAGE_ARGS+=(--full-map) ;;
+		--all-maps-audio) STAGE_ARGS+=(--all-maps-audio) ;;
+		--core-sfx) STAGE_ARGS+=(--core-sfx) ;;
 		--world-render) WORLD_RENDER=1 ;;
 		--dumpframes) DUMPFRAMES=1 ;;
 		--dumpeye)

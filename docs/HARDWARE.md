@@ -77,20 +77,24 @@ proof remains `20261107-120407-capfaces-aram-bounce.md`.
 
 ## Staged Swiss SD (this machine)
 
-FAT32 volume mounted at `/run/media/tim/EXTRA` (hp v220w):
+Tip CapFaces pack lives at `/run/media/tim/Expansion1/DOD-GC-HW` and is staged onto
+the current FAT mount (`/run/media/tim/135A-3274` when present) via
+`scripts/stage-swiss-sd.sh`. Prefer a dedicated GameCube SD (SD Gecko / SD2SP2);
+EFI installer sticks are only interim copy targets.
 
 | Path | Contents |
 |------|----------|
-| `apps/dod-gc/boot.dol` | Current offline solo `out/dodgc.dol` (synced with root `boot.dol`) |
+| `apps/dod-gc/boot.dol` | Tip CapFaces `out/dodgc.dol` |
 | `boot.dol` / `dodgc.dol` | Same DOL |
-| `dodgc.iso` | Offline solo listen CapFaces (`dod_flash` + `gcworldrender`, no netstatic) |
-| `xash3d/dod/gamecube.cfg` | `video prog` / `listenserver dod_flash` / `gcworldrender` |
+| `dodgc.iso` | Offline solo listen CapFaces (`dod_flash` + `gcworldrender` + `gcworlddl`) |
+| `xash3d/dod/gamecube.cfg` | `video prog` / `listenserver dod_flash` / `gcworldrender` / `gcworlddl` |
 | `xash3d/dod/logs/` | Target for `swiss-evidence.txt` after Cube run |
-| `DOD-GC-HW.txt` | On-card boot card |
+| `out/dodgc-swiss-flash-solo.img` | Full-card flash image (`scripts/build-swiss-img.sh`) |
 
 Unmount → insert in GameCube SD adapter → Swiss → `apps/dod-gc/boot.dol` or `dodgc.iso`.
 
-After a run, remount and collect `xash3d/dod/logs/swiss-evidence.txt` into `playtests/notes/`.
+After a run, remount and run `scripts/ingest-swiss-evidence.sh` (or collect
+`xash3d/dod/logs/swiss-evidence.txt` into `playtests/notes/`).
 **Cube boot evidence is the remaining playability gate** (no USB Gecko required).
 
 

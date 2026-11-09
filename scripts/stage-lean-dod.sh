@@ -9,17 +9,21 @@ source "$SCRIPT_DIR/env.sh"
 
 usage() {
 	cat <<'EOF'
-usage: scripts/stage-lean-dod.sh [--map NAME] [--full-map]
+usage: scripts/stage-lean-dod.sh [--map NAME] [--full-map] [--all-maps-audio] [--core-sfx]
 
-  --map NAME   copy one .bsp into lean maps/ (searches content/dod then valve)
-               aliases: de_avalanche → dod_avalanche
-  --full-map   with --map: also stage map cfg, mapmodels, player/weapon MDLs,
-               sprites, and common DoD WADs for full visual / multiplayer probes
+  --map NAME         copy one .bsp into lean maps/ (searches content/dod then valve)
+                     aliases: de_avalanche → dod_avalanche
+  --full-map         with --map: also stage map cfg, mapmodels, player/weapon MDLs,
+                     sprites, common DoD WADs, and core gameplay SFX packs
+  --all-maps-audio   stage soundscape/ambient WAVs for every dod_*.bsp (no BSPs copied)
+  --core-sfx         stage weapons/player/ui/items/doors/buttons/debris/object/common
 EOF
 }
 
 MAP_NAME=""
 FULL_MAP=0
+ALL_MAPS_AUDIO=0
+CORE_SFX=0
 while [[ $# -gt 0 ]]; do
 	case "$1" in
 		--map)
@@ -28,6 +32,8 @@ while [[ $# -gt 0 ]]; do
 			shift
 			;;
 		--full-map) FULL_MAP=1 ;;
+		--all-maps-audio) ALL_MAPS_AUDIO=1 ;;
+		--core-sfx) CORE_SFX=1 ;;
 		-h|--help) usage; exit 0 ;;
 		*) echo "unknown option: $1" >&2; usage >&2; exit 2 ;;
 	esac
@@ -57,17 +63,22 @@ VALVE="$DODGC_CONTENT_VALVE"
 rm -rf "$LEAN" "$VMIN"
 mkdir -p "$LEAN"/{media,resource,maps,gfx} "$VMIN"/{gfx,resource}
 
-# Retail DoD mainui starts media/gamestartup on the main menu. Convert to a
-# disc-streamable PCM asset for GameCube; the MP3 decoder is too expensive on
-# Gekko and the retail mainui requests the extensionless track name.
-if [[ -f "$SRC/media/gamestartup.mp3" ]]; then
-	command -v ffmpeg >/dev/null 2>&1 || {
-		echo "error: ffmpeg is required to stage DoD main-menu music" >&2
-		exit 1
-	}
-	ffmpeg -v error -y -i "$SRC/media/gamestartup.mp3" -ar 22050 -ac 2 \
-		-c:a pcm_s16le "$LEAN/media/gamestartup.wav"
-	echo "staged DoD main-menu music: media/gamestartup.wav (22.05 kHz stereo PCM)"
+# Main-menu music + UI clicks (and optional all-map soundscapes) via shared helper.
+# Retail mainui streams media/gamestartup and plays media/launch_*.wav; MP3 is
+# converted to disc-streamable PCM because the Gekko MP3 path is too expensive.
+# Menu + optional all-map soundscapes run here when no single --map BSP is
+# staged below (per-map path invokes stage_dod_audio.py with --map itself).
+if [[ -z "$MAP_NAME" ]]; then
+	AUDIO_ARGS=(--dod "$SRC" --valve "$VALVE" --lean "$LEAN")
+	if (( ALL_MAPS_AUDIO )); then
+		AUDIO_ARGS+=(--all-maps)
+	else
+		AUDIO_ARGS+=(--menu-only)
+	fi
+	if (( CORE_SFX )) || (( FULL_MAP )); then
+		AUDIO_ARGS+=(--core-sfx)
+	fi
+	python3 "$SCRIPT_DIR/stage_dod_audio.py" "${AUDIO_ARGS[@]}"
 fi
 
 # Identity / FS markers (HasGameAssets needs marker + maps/ for non-valve).
@@ -112,39 +123,15 @@ if [[ -n "$MAP_NAME" ]]; then
 	fi
 	cp -f "$bsp" "$LEAN/maps/${stem}.bsp"
 	echo "staged map: $bsp ($(du -h "$bsp" | awk '{print $1}'))"
-	# Stage only WAVs named by BSP message keys so map soundscapes work on
-	# lean discs without copying the full retail sound tree.
-	python3 - "$bsp" "$SRC/sound" "$LEAN/sound" <<'PY'
-import re
-import shutil
-import struct
-import sys
-from pathlib import Path
-
-bsp, source_root, target_root = map(Path, sys.argv[1:])
-data = bsp.read_bytes()
-offset, length = struct.unpack_from("<II", data, 4)
-entities = data[offset : offset + length].decode("latin1", "ignore")
-source_root = source_root.resolve()
-target_root = target_root.resolve()
-copied = []
-for raw in sorted(set(re.findall(r'"message"\s*"([^"\\]+\.wav)"', entities, re.I))):
-	name = raw.replace("\\\\", "/").lstrip("/")
-	if name.lower().startswith("sound/"):
-		name = name[6:]
-	path = Path(name)
-	if path.is_absolute() or ".." in path.parts:
-		continue
-	source = (source_root / path).resolve()
-	if not source.is_relative_to(source_root) or not source.is_file():
-		continue
-	target = target_root / path
-	target.parent.mkdir(parents=True, exist_ok=True)
-	shutil.copy2(source, target)
-	copied.append((name, source.stat().st_size))
-print(f"staged {len(copied)} map sound(s): " + ", ".join(n for n, _ in copied))
-print(f"map sound total: {sum(size for _, size in copied) / 1048576:.2f} MiB")
-PY
+	# Complete menu music/UI + this map's soundscape WAVs (case/valve/substitutes).
+	MAP_AUDIO_ARGS=(--dod "$SRC" --valve "$VALVE" --lean "$LEAN" --map "$bsp")
+	if (( ALL_MAPS_AUDIO )); then
+		MAP_AUDIO_ARGS+=(--all-maps)
+	fi
+	if (( CORE_SFX )) || (( FULL_MAP )); then
+		MAP_AUDIO_ARGS+=(--core-sfx)
+	fi
+	python3 "$SCRIPT_DIR/stage_dod_audio.py" "${MAP_AUDIO_ARGS[@]}"
 	# Map-specific + common WADs (skip decals.wad — Host_InitDecals OOM).
 	# Also pull sibling DoD map WADs named in the BSP "wad" entity key
 	# (dod_flash references dod_donner.wad; without it CapFaces stay magenta).
@@ -273,11 +260,7 @@ PY
 			shopt -u nullglob
 			echo "staged sprites: $(find "$LEAN/sprites" -type f | wc -l) files"
 		fi
-		# Sound: keep map-critical cues only (objectives / round) if tiny.
-		if [[ -d "$SRC/sound/ambience" ]]; then
-			mkdir -p "$LEAN/sound/ambience"
-			# Skip bulk ambience — too large for lean flythrough discs.
-		fi
+		# Soundscapes + core SFX already handled by stage_dod_audio.py above.
 		echo "full-map stage size: $(du -sh "$LEAN" | awk '{print $1}')"
 	fi
 fi
