@@ -20,7 +20,12 @@ cp -f "$HW/dodgc.iso" "$DEST/dodgc-flash-solo.iso"
 cp -f "$HW/xash3d/dod/gamecube.cfg" "$DEST/xash3d/dod/gamecube.cfg"
 cp -f "$HW/DOD-GC-HW.txt" "$DEST/DOD-GC-HW.txt"
 cp -f "$HW/STAGED.txt" "$DEST/STAGED.txt"
+[[ -f "$HW/README-CUBE.txt" ]] && cp -f "$HW/README-CUBE.txt" "$DEST/README-CUBE.txt"
+if [[ -f "$ROOT/out/swiss-dod-stage/apps/dod-gc/meta.xml" ]]; then
+	cp -f "$ROOT/out/swiss-dod-stage/apps/dod-gc/meta.xml" "$DEST/apps/dod-gc/meta.xml"
+fi
 sync
-echo "Staged tipfix Swiss pack -> $DEST"
+echo "Staged tip CapFaces Swiss pack -> $DEST"
 echo "Boot: Swiss -> apps/dod-gc/boot.dol (or dodgc.iso)"
 echo "Collect: $DEST/xash3d/dod/logs/swiss-evidence.txt"
+echo "Alt flash whole card: sudo dd if=$ROOT/out/dodgc-swiss-flash-solo.img of=/dev/sdX bs=4M status=progress conv=fsync"
