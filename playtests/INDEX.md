@@ -4,6 +4,13 @@ Screenshots: `playtests/screenshots/` · Videos: `playtests/videos/` · Notes: `
 
 | Date | File | Route | Duration | Size | Commit |
 |------|------|-------|----------|------|--------|
+| 2026-11-08T23:46:02 | `20261108-234602-caen-sky-first-08d7c0e701.mp4` | caen-sky-first | 8.1s | 0.1 MB | `08d7c0e701` |
+| 2026-11-08T23:41:32 | `20261108-234132-caen-lean-cf5-08d7c0e701.mp4` | caen-lean-cf5 | 45.1s | 0.5 MB | `08d7c0e701` |
+| 2026-11-08T23:38:31 | `20261108-233831-caen-lean-cf4-08d7c0e701.mp4` | caen-lean-cf4 | 55.5s | 1.0 MB | `08d7c0e701` |
+| 2026-11-08T23:36:55 | `20261108-233655-caen-lean-cf3-08d7c0e701.mp4` | caen-lean-cf3 | 55.6s | 1.0 MB | `08d7c0e701` |
+| 2026-11-08T23:26:51 | `20261108-232651-caen-lean-cf2-08d7c0e701.mp4` | caen-lean-cf2 | 54.6s | 0.7 MB | `08d7c0e701` |
+| 2026-11-08T23:24:43 | `20261108-232443-caen-lean-cf-08d7c0e701.mp4` | caen-lean-cf | 44.1s | 0.8 MB | `08d7c0e701` |
+| 2026-11-08T23:08:46 | `20261108-230846-play-5a3c6e48a9.mp4` | play | 951.2s | 5.0 MB | `5a3c6e48a9` |
 | 2026-11-08T22:59:58 | `20261108-225958-atlas-dod_zalec-axis-5a3c6e48a9.mp4` | atlas-dod_zalec-axis | 39.6s | 0.5 MB | `5a3c6e48a9` |
 | 2026-11-08T22:59:14 | `20261108-225914-atlas-dod_zalec-allies-5a3c6e48a9.mp4` | atlas-dod_zalec-allies | 40.6s | 0.5 MB | `5a3c6e48a9` |
 | 2026-11-08T22:58:30 | `20261108-225830-atlas-dod_vicenza-axis-5a3c6e48a9.mp4` | atlas-dod_vicenza-axis | 40.6s | 0.5 MB | `5a3c6e48a9` |

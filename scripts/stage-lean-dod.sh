@@ -205,6 +205,52 @@ PY
 		cp -f "$SRC/${stem}.cfg" "$LEAN/"
 		echo "staged map cfg: ${stem}.cfg"
 	fi
+	# Per-map skybox first: CapFaces Flipper draws media/sky_<name>*.cmp before
+	# world tris. Stage only this map's skyname (6×8 KiB CMPR) — not every DoD
+	# sky (searchpaths tip). Prefer prebuilt CMPs; fall back to gfx/env TGAs
+	# for the disc builder to encode.
+	mkdir -p "$LEAN/media" "$LEAN/gfx/env"
+	skyname=$(python3 - "$bsp" <<'PY'
+import re, struct, sys
+from pathlib import Path
+b = Path(sys.argv[1]).read_bytes()
+off, length = struct.unpack_from("<ii", b, 4)
+ents = b[off:off+length].decode("latin1", "replace")
+# Compact BSPs may not keep the entity lump at offset 0 — scan worldspawn.
+m = re.search(r'"skyname"\s+"([^"]+)"', ents)
+if not m:
+    m = re.search(br'"skyname"\s+"([^"]+)"', b)
+    print((m.group(1).decode("latin1") if m else "desert").lower())
+else:
+    print(m.group(1).lower())
+PY
+)
+	skyname=${skyname:-desert}
+	sky_staged=0
+	CMP_ALL="${DODGC_SKY_CMP_CACHE:-/tmp/dodgc-sky-cmp-all}"
+	for side in rt bk lf ft up dn; do
+		dst="$LEAN/media/sky_${skyname}${side}.cmp"
+		if [[ -f "$CMP_ALL/sky_${skyname}${side}.cmp" ]]; then
+			cp -f "$CMP_ALL/sky_${skyname}${side}.cmp" "$dst"
+			sky_staged=$((sky_staged + 1))
+		elif [[ -f "$SRC/gfx/env/${skyname}${side}.tga" ]]; then
+			cp -f "$SRC/gfx/env/${skyname}${side}.tga" "$LEAN/gfx/env/"
+		elif [[ -f "$SRC/gfx/env/${skyname}${side}.bmp" ]]; then
+			cp -f "$SRC/gfx/env/${skyname}${side}.bmp" "$LEAN/gfx/env/"
+		fi
+	done
+	# Drop leftover skies from a prior map stage (tip searchpaths).
+	shopt -s nullglob
+	for leftover in "$LEAN/media"/sky_*.cmp; do
+		base=$(basename "$leftover")
+		case "$base" in
+			sky_${skyname}rt.cmp|sky_${skyname}bk.cmp|sky_${skyname}lf.cmp|sky_${skyname}ft.cmp|sky_${skyname}up.cmp|sky_${skyname}dn.cmp) ;;
+			*) rm -f "$leftover" ;;
+		esac
+	done
+	shopt -u nullglob
+	echo "staged skybox: $skyname ($sky_staged CMPR sides + gfx/env for encode)"
+
 	# Create Game needs maps.lst on disc-only (refresh cannot rewrite).
 	printf '%s "Local match"\n' "$stem" > "$LEAN/maps.lst"
 	echo "staged maps.lst for $stem"
