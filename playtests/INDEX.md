@@ -4,6 +4,46 @@ Screenshots: `playtests/screenshots/` · Videos: `playtests/videos/` · Notes: `
 
 | Date | File | Route | Duration | Size | Commit |
 |------|------|-------|----------|------|--------|
+| 2026-11-08T22:59:58 | `20261108-225958-atlas-dod_zalec-axis-5a3c6e48a9.mp4` | atlas-dod_zalec-axis | 39.6s | 0.5 MB | `5a3c6e48a9` |
+| 2026-11-08T22:59:14 | `20261108-225914-atlas-dod_zalec-allies-5a3c6e48a9.mp4` | atlas-dod_zalec-allies | 40.6s | 0.5 MB | `5a3c6e48a9` |
+| 2026-11-08T22:58:30 | `20261108-225830-atlas-dod_vicenza-axis-5a3c6e48a9.mp4` | atlas-dod_vicenza-axis | 40.6s | 0.5 MB | `5a3c6e48a9` |
+| 2026-11-08T22:57:48 | `20261108-225748-atlas-dod_vicenza-allies-5a3c6e48a9.mp4` | atlas-dod_vicenza-allies | 39.6s | 0.5 MB | `5a3c6e48a9` |
+| 2026-11-08T22:57:06 | `20261108-225706-atlas-dod_switch-axis-5a3c6e48a9.mp4` | atlas-dod_switch-axis | 38.6s | 0.5 MB | `5a3c6e48a9` |
+| 2026-11-08T22:56:15 | `20261108-225615-atlas-dod_switch-allies-5a3c6e48a9.mp4` | atlas-dod_switch-allies | 40.5s | 0.6 MB | `5a3c6e48a9` |
+| 2026-11-08T22:55:34 | `20261108-225534-atlas-dod_sturm-axis-5a3c6e48a9.mp4` | atlas-dod_sturm-axis | 39.0s | 0.5 MB | `5a3c6e48a9` |
+| 2026-11-08T22:54:51 | `20261108-225451-atlas-dod_sturm-allies-5a3c6e48a9.mp4` | atlas-dod_sturm-allies | 40.1s | 0.5 MB | `5a3c6e48a9` |
+| 2026-11-08T22:54:07 | `20261108-225407-atlas-dod_saints-axis-5a3c6e48a9.mp4` | atlas-dod_saints-axis | 40.1s | 0.5 MB | `5a3c6e48a9` |
+| 2026-11-08T22:53:24 | `20261108-225324-atlas-dod_saints-allies-5a3c6e48a9.mp4` | atlas-dod_saints-allies | 40.5s | 0.6 MB | `5a3c6e48a9` |
+| 2026-11-08T22:52:42 | `20261108-225242-atlas-dod_northbound-axis-5a3c6e48a9.mp4` | atlas-dod_northbound-axis | 39.0s | 0.5 MB | `5a3c6e48a9` |
+| 2026-11-08T22:52:00 | `20261108-225200-atlas-dod_northbound-allies-5a3c6e48a9.mp4` | atlas-dod_northbound-allies | 39.5s | 0.5 MB | `5a3c6e48a9` |
+| 2026-11-08T22:51:16 | `20261108-225116-atlas-dod_merderet-axis-5a3c6e48a9.mp4` | atlas-dod_merderet-axis | 40.5s | 0.6 MB | `5a3c6e48a9` |
+| 2026-11-08T22:50:33 | `20261108-225033-atlas-dod_merderet-allies-5a3c6e48a9.mp4` | atlas-dod_merderet-allies | 40.5s | 0.6 MB | `5a3c6e48a9` |
+| 2026-11-08T22:49:50 | `20261108-224950-atlas-dod_kraftstoff-axis-5a3c6e48a9.mp4` | atlas-dod_kraftstoff-axis | 40.6s | 0.3 MB | `5a3c6e48a9` |
+| 2026-11-08T22:49:06 | `20261108-224906-atlas-dod_kraftstoff-allies-5a3c6e48a9.mp4` | atlas-dod_kraftstoff-allies | 40.6s | 0.3 MB | `5a3c6e48a9` |
+| 2026-11-08T22:48:20 | `20261108-224820-atlas-dod_kalt-axis-5a3c6e48a9.mp4` | atlas-dod_kalt-axis | 40.5s | 0.5 MB | `5a3c6e48a9` |
+| 2026-11-08T22:47:38 | `20261108-224738-atlas-dod_kalt-allies-5a3c6e48a9.mp4` | atlas-dod_kalt-allies | 39.5s | 0.5 MB | `5a3c6e48a9` |
+| 2026-11-08T22:46:53 | `20261108-224653-atlas-dod_jagd-axis-5a3c6e48a9.mp4` | atlas-dod_jagd-axis | 40.0s | 0.5 MB | `5a3c6e48a9` |
+| 2026-11-08T22:46:12 | `20261108-224612-atlas-dod_jagd-allies-5a3c6e48a9.mp4` | atlas-dod_jagd-allies | 39.0s | 0.5 MB | `5a3c6e48a9` |
+| 2026-11-08T22:45:29 | `20261108-224529-atlas-dod_glider-axis-5a3c6e48a9.mp4` | atlas-dod_glider-axis | 39.5s | 0.5 MB | `5a3c6e48a9` |
+| 2026-11-08T22:44:47 | `20261108-224447-atlas-dod_glider-allies-5a3c6e48a9.mp4` | atlas-dod_glider-allies | 39.5s | 0.5 MB | `5a3c6e48a9` |
+| 2026-11-08T22:44:04 | `20261108-224404-atlas-dod_forest-axis-5a3c6e48a9.mp4` | atlas-dod_forest-axis | 40.5s | 0.5 MB | `5a3c6e48a9` |
+| 2026-11-08T22:43:22 | `20261108-224322-atlas-dod_forest-allies-5a3c6e48a9.mp4` | atlas-dod_forest-allies | 39.5s | 0.5 MB | `5a3c6e48a9` |
+| 2026-11-08T22:42:39 | `20261108-224239-atlas-dod_flugplatz-axis-5a3c6e48a9.mp4` | atlas-dod_flugplatz-axis | 40.0s | 0.6 MB | `5a3c6e48a9` |
+| 2026-11-08T22:41:57 | `20261108-224157-atlas-dod_flugplatz-allies-5a3c6e48a9.mp4` | atlas-dod_flugplatz-allies | 39.5s | 0.5 MB | `5a3c6e48a9` |
+| 2026-11-08T22:41:14 | `20261108-224114-atlas-dod_flash-axis-5a3c6e48a9.mp4` | atlas-dod_flash-axis | 39.5s | 0.2 MB | `5a3c6e48a9` |
+| 2026-11-08T22:40:31 | `20261108-224031-atlas-dod_flash-allies-5a3c6e48a9.mp4` | atlas-dod_flash-allies | 40.5s | 0.5 MB | `5a3c6e48a9` |
+| 2026-11-08T22:39:47 | `20261108-223947-atlas-dod_falaise-axis-5a3c6e48a9.mp4` | atlas-dod_falaise-axis | 40.5s | 0.5 MB | `5a3c6e48a9` |
+| 2026-11-08T22:39:05 | `20261108-223905-atlas-dod_falaise-allies-5a3c6e48a9.mp4` | atlas-dod_falaise-allies | 39.6s | 0.5 MB | `5a3c6e48a9` |
+| 2026-11-08T22:38:21 | `20261108-223821-atlas-dod_escape-axis-5a3c6e48a9.mp4` | atlas-dod_escape-axis | 40.6s | 0.5 MB | `5a3c6e48a9` |
+| 2026-11-08T22:37:36 | `20261108-223736-atlas-dod_escape-allies-5a3c6e48a9.mp4` | atlas-dod_escape-allies | 40.6s | 0.5 MB | `5a3c6e48a9` |
+| 2026-11-08T22:36:46 | `20261108-223646-atlas-dod_donner-axis-5a3c6e48a9.mp4` | atlas-dod_donner-axis | 40.5s | 0.3 MB | `5a3c6e48a9` |
+| 2026-11-08T22:36:04 | `20261108-223604-atlas-dod_donner-allies-5a3c6e48a9.mp4` | atlas-dod_donner-allies | 39.5s | 0.3 MB | `5a3c6e48a9` |
+| 2026-11-08T22:35:21 | `20261108-223521-atlas-dod_chemille-axis-5a3c6e48a9.mp4` | atlas-dod_chemille-axis | 39.6s | 0.5 MB | `5a3c6e48a9` |
+| 2026-11-08T22:34:37 | `20261108-223437-atlas-dod_chemille-allies-5a3c6e48a9.mp4` | atlas-dod_chemille-allies | 40.5s | 0.6 MB | `5a3c6e48a9` |
+| 2026-11-08T22:33:54 | `20261108-223354-atlas-dod_charlie-axis-5a3c6e48a9.mp4` | atlas-dod_charlie-axis | 40.0s | 0.5 MB | `5a3c6e48a9` |
+| 2026-11-08T22:33:10 | `20261108-223310-atlas-dod_charlie-allies-5a3c6e48a9.mp4` | atlas-dod_charlie-allies | 40.5s | 0.6 MB | `5a3c6e48a9` |
+| 2026-11-08T22:32:27 | `20261108-223227-atlas-dod_caen-axis-5a3c6e48a9.mp4` | atlas-dod_caen-axis | 39.6s | 0.5 MB | `5a3c6e48a9` |
+| 2026-11-08T22:31:41 | `20261108-223141-atlas-dod_caen-allies-02bfbb4605.mp4` | atlas-dod_caen-allies | 40.1s | 0.5 MB | `02bfbb4605` |
 | 2026-11-08T22:30:55 | `20261108-223055-atlas-dod_avalanche-axis-02bfbb4605.mp4` | atlas-dod_avalanche-axis | 40.5s | 0.3 MB | `02bfbb4605` |
 | 2026-11-08T22:30:12 | `20261108-223012-atlas-dod_avalanche-allies-02bfbb4605.mp4` | atlas-dod_avalanche-allies | 40.5s | 0.3 MB | `02bfbb4605` |
 | 2026-11-08T22:29:29 | `20261108-222929-atlas-dod_anzio-axis-02bfbb4605.mp4` | atlas-dod_anzio-axis | 40.0s | 0.2 MB | `02bfbb4605` |

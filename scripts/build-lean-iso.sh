@@ -215,6 +215,8 @@ pack() {
 			(( WORLD_RENDER )) && echo "gcworldrender"
 			# CapFaces GX display lists — denser maps (avalanche/charlie).
 			(( WORLD_RENDER )) && echo "gcworlddl"
+			# Solo listen needs pad → engfuncs; without this CapFaces is view-only.
+			echo "gcplayerinput"
 			(( DUMPFRAMES )) && echo "dumpframes"
 			[[ -n "$DUMPEYE" ]] && echo "dumpeye $DUMPEYE"
 		} > "$LEAN/gamecube.cfg"
