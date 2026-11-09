@@ -209,6 +209,8 @@ pack() {
 			(( HEADLESS )) && echo headless
 			# Flipper world tris (otherwise R_EdgeDrawing skips as gcmap smoke).
 			(( WORLD_RENDER )) && echo "gcworldrender"
+			# CapFaces GX display lists — denser maps (avalanche/charlie).
+			(( WORLD_RENDER )) && echo "gcworlddl"
 			(( DUMPFRAMES )) && echo "dumpframes"
 			[[ -n "$DUMPEYE" ]] && echo "dumpeye $DUMPEYE"
 		} > "$LEAN/gamecube.cfg"
@@ -238,6 +240,13 @@ pack() {
 		exit 1
 	fi
 	[[ -f "$tmp" ]] || { echo "error: missing temp ISO $tmp" >&2; exit 1; }
+	# CapFaces pack: build-gamecube-disc.py fails smoke staging if cf_*.gcp is
+	# missing; hybrid GC ISOs are not reliably listed by 7z, so trust the disc build.
+	if (( WORLD_RENDER )) && [[ -n "${SMOKE:-$LISTEN}" ]]; then
+		local stem
+		stem="$(echo "${SMOKE:-$LISTEN}" | tr '[:upper:]' '[:lower:]')"
+		echo "==> CapFaces pack required for ${stem} (enforced by disc build)"
+	fi
 	local pub="$out.tmp.$$"
 	cp --reflink=auto "$tmp" "$pub"
 	mv -f "$pub" "$out"
