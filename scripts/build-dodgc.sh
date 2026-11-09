@@ -56,7 +56,8 @@ if (( ! ISO_ONLY )); then
 	echo "==> [dod-gc] building DoD HLSDK + engine DOL (profile=dod → dodgc.dol)"
 	# Modern Ethernet adapters require libogc2's native EXI drivers.
 	export XASH_GAMECUBE_OGC_STACK="${XASH_GAMECUBE_OGC_STACK:-libogc2}"
-	export XASH_GAMECUBE_LINK_BBA="${XASH_GAMECUBE_LINK_BBA:-1}"
+	# CapFaces tip: default BBA off (~200 KiB MEM1). Set LINK_BBA=1 for net probes.
+	export XASH_GAMECUBE_LINK_BBA="${XASH_GAMECUBE_LINK_BBA:-0}"
 	cd "$DODGC_ENGINE"
 
 	if (( ! SKIP_HLSDK )); then

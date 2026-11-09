@@ -7,6 +7,10 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/env.sh"
 
+# CapFaces tip: BBA BSS steals ~200 KiB MEM1 and regenerates the magenta tip
+# panel even after zip/searchpaths recovery. Networking is deferred.
+export XASH_GAMECUBE_LINK_BBA="${XASH_GAMECUBE_LINK_BBA:-0}"
+
 ATLAS="$DODGC_ROOT/playtests/map-spawn-atlas"
 SPAWNS="$ATLAS/spawns.json"
 DURATION="${ATLAS_DURATION:-40}"
