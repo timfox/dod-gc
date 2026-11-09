@@ -18,9 +18,12 @@ usage: scripts/build-lean-iso.sh [options]
   --net            stage gamecube.cfg "net" for early BBA/eth2sp1 DHCP (-net)
   --map NAME       stage one BSP into lean maps/ (DoD or valve)
   --smoke MAP      disc --smoke-map MAP (auto map load; implies staging MAP)
-  --listen MAP     solo local listen server (gamecube.cfg listenserver MAP)
+  --listen MAP     playable listen host (local player plus one peer)
+  --headless       server only; requires --listen (optional third Cube)
   --connect ADDR   peer client (gamecube.cfg connect ADDR); use with --net
-  --net-ip IP      optional static guest IP (gamecube.cfg netstatic IP)
+  --net-ip IP      static IPv4 address (DHCP when omitted)
+  --net-mask MASK  static subnet mask (default 255.255.255.0)
+  --net-gateway IP static router address (default same subnet .1)
   --full-map       stage mapmodels/weapons/sprites/WADs with --map/--smoke/--listen
   --world-render   gamecube.cfg gcworldrender (Flipper world; smoke/listen/connect)
   --dumpframes     gamecube.cfg dumpframes (-gcdumpframes stills; with --smoke)
@@ -47,6 +50,9 @@ SMOKE=""
 LISTEN=""
 CONNECT=""
 NET_IP=""
+NET_MASK="255.255.255.0"
+NET_GW=""
+HEADLESS=0
 STAGE_ARGS=()
 
 while [[ $# -gt 0 ]]; do
@@ -55,6 +61,9 @@ while [[ $# -gt 0 ]]; do
 		--intro-only) INTRO=1; MENU=0 ;;
 		--skip-startup-vids) SKIP_STARTUP_VIDS=1 ;;
 		--net) WANT_NET=1 ;;
+		--headless) HEADLESS=1 ;;
+		--net-mask) NET_MASK="${2:?--net-mask needs MASK}"; shift ;;
+		--net-gateway) NET_GW="${2:?--net-gateway needs IP}"; shift ;;
 		--full-map) FULL_MAP=1; STAGE_ARGS+=(--full-map) ;;
 		--world-render) WORLD_RENDER=1 ;;
 		--dumpframes) DUMPFRAMES=1 ;;
@@ -118,6 +127,42 @@ if [[ -n "$NET_IP" && $WANT_NET -eq 0 ]]; then
 	WANT_NET=1
 fi
 
+if (( HEADLESS )) && [[ -z "$LISTEN" ]]; then
+	echo "error: --headless requires --listen" >&2; exit 2
+fi
+# Validate before staging or invoking disc tooling. Derive a conventional router
+# only for explicit /24 addresses; other subnets must supply their gateway.
+if [[ -n "$NET_IP" ]]; then
+	if [[ -z "$NET_GW" ]]; then
+		[[ "$NET_MASK" == 255.255.255.0 ]] || { echo "error: supply --net-gateway with a non-/24 mask" >&2; exit 2; }
+		NET_GW="${NET_IP%.*}.1"
+	fi
+	python3 - "$NET_IP" "$NET_MASK" "$NET_GW" <<'PYNET'
+import ipaddress, sys
+try:
+    ip, mask, gateway = sys.argv[1:]
+    address = ipaddress.IPv4Address(ip)
+    network = ipaddress.IPv4Network(f"{ip}/{mask}", strict=False)
+    router = ipaddress.IPv4Address(gateway)
+    assert network.prefixlen in range(1, 31)
+    assert address not in (network.network_address, network.broadcast_address)
+    assert not address.is_multicast and not address.is_loopback and int(address) >> 24 != 0
+    assert int(router) != 0 and router in network and router not in (network.network_address, network.broadcast_address, address)
+except (ValueError, AssertionError):
+    sys.exit("error: invalid static IPv4 address, mask or gateway")
+PYNET
+elif [[ -n "$NET_GW" || "$NET_MASK" != 255.255.255.0 ]]; then
+	echo "error: --net-mask/--net-gateway require --net-ip" >&2; exit 2
+fi
+
+write_net_config() {
+	if [[ -n "$NET_IP" ]]; then
+		printf 'netstatic %s %s %s\n' "$NET_IP" "$NET_MASK" "$NET_GW"
+	else
+		echo net
+	fi
+}
+
 dodgc_require_content
 [[ -f "$DODGC_DOL" ]] || {
 	echo "error: missing $DODGC_DOL — build DOL first" >&2
@@ -160,28 +205,18 @@ pack() {
 		{
 			echo "video prog"
 			echo "listenserver $LISTEN"
-			# BBA/eth2sp1 / TapServer static bring-up for joinable host probes.
-			if (( WANT_NET )); then
-				if [[ -n "$NET_IP" ]]; then
-					echo "netstatic $NET_IP"
-				else
-					echo "netstatic"
-				fi
-			fi
+			(( WANT_NET )) && write_net_config
+			(( HEADLESS )) && echo headless
 			# Flipper world tris (otherwise R_EdgeDrawing skips as gcmap smoke).
 			(( WORLD_RENDER )) && echo "gcworldrender"
 			(( DUMPFRAMES )) && echo "dumpframes"
 			[[ -n "$DUMPEYE" ]] && echo "dumpeye $DUMPEYE"
 		} > "$LEAN/gamecube.cfg"
-		echo "==> listenserver cfg: $LISTEN net=$([[ $WANT_NET -eq 1 ]] && echo netstatic${NET_IP:+ $NET_IP} || echo off) world_render=$WORLD_RENDER dumpframes=$DUMPFRAMES"
+		echo "==> listenserver cfg: $LISTEN net=$([[ $WANT_NET -eq 1 ]] && echo "${NET_IP:-dhcp}" || echo off) world_render=$WORLD_RENDER dumpframes=$DUMPFRAMES"
 	elif [[ -n "$CONNECT" ]]; then
 		{
 			echo "video prog"
-			if [[ -n "$NET_IP" ]]; then
-				echo "netstatic $NET_IP"
-			else
-				echo "netstatic"
-			fi
+			write_net_config
 			echo "connect $CONNECT"
 			# Peer BSP tip path needs -gcmap (high-slot surfaces); without it
 			# Mod_LoadWorld OOMs on planes/surfaces (dual IPC 20261107-005100).
@@ -191,7 +226,7 @@ pack() {
 			(( WORLD_RENDER )) && echo "gcworldrender"
 			(( DUMPFRAMES )) && echo "dumpframes"
 		} > "$LEAN/gamecube.cfg"
-		echo "==> connect cfg: $CONNECT net=netstatic${NET_IP:+ $NET_IP} map=${MAP:-} world_render=$WORLD_RENDER dumpframes=$DUMPFRAMES"
+		echo "==> connect cfg: $CONNECT net=${NET_IP:-dhcp} map=${MAP:-} world_render=$WORLD_RENDER dumpframes=$DUMPFRAMES"
 	fi
 	echo "==> packaging $out ($mode) startup_vids=$([[ $SKIP_STARTUP_VIDS -eq 0 ]] && echo on || echo off) net=$([[ $WANT_NET -eq 1 ]] && echo on || echo off) listen=${LISTEN:-} connect=${CONNECT:-} net_ip=${NET_IP:-}"
 	if ! TMPDIR="$XASH3D_GC_ISO_CACHE" \

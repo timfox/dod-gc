@@ -1,99 +1,150 @@
-# Day of Defeat GameCube — broadband / online
+# GameCube DoD networking
 
-DoD online play rides the xash3d-gc GameCube net stack (DOL profile `dod`,
-`XASH_GAMECUBE_LINK_BBA=1` → libbba).
+This port targets matching **GameCube DoD builds**, with two players per game.
+The connection handshake carries `gc_dod=1` in both directions. A missing or
+incompatible marker rejects the connection before loading the game. This marker
+checks software compatibility; it does not authenticate physical hardware.
+Desktop Steam DoD servers use a different game DLL/client and are outside this
+network version. Dolphin remains a development test target.
 
-## Hardware / adapters
+## Native ETH2SP1 build
 
-| Path | Slot | Notes |
-|------|------|--------|
-| Official **Broadband Adapter** | Slot B | Retail BBA (EXI ch1.dev0) |
-| **ETH2SP1** (W5500/ENC28J60) | SP1 | Swiss BBA emulation (v0.6r2018+) — **this is what libbba probes** (EXI ch0.dev2) |
-| Dolphin **EthernetIPC** (EXI=14) | SP1 | **Same-machine dual-guest** L2 (proven join) |
-| Dolphin **BuiltIn** (EXI=12) | **SP1** | Single-guest hardware-equivalent for eth2sp1; Slot B alone → `if_config` fails with current libbba |
-| Dolphin **TapServer** (EXI=11) | SP1 | Needs local L2 hub; guest TX was silent in prior probes |
+ETH2SP1 uses a W5500 controller in **Serial Port 1**. The build uses libogc2's
+native W5500 driver, alongside the retail BBA and ENC28J60 drivers. Swiss's SDK
+BBA emulation does not replace native drivers for homebrew. The retail Nintendo
+BBA also occupies SP1, not Memory Card Slot B. Dolphin's EthernetIPC/BuiltIn
+adapters emulate the retail BBA and cannot validate a physical W5500.
 
-Swiss: enable BBA emulation for eth2sp1 so libogc sees the same stack as retail BBA.
-BuiltIn probe: `DODGC_BBA_PLACE=sp1 scripts/builtin-bba-netprobe.sh` → `net ready` + listen.
-
-### Why dual-guest uses EthernetIPC (not BuiltIn)
-
-Dolphin BuiltIn binds real host UDP sockets for guest ports (`BuiltIn.cpp`
-`InitUDPPort` / `HandleUDPFrame`). Two guests on one PC both need `27015` →
-second instance logs `Couldn't open UDP socket` / port-in-use and never reaches
-`net ready` (see `playtests/notes/*-dual-builtin-join.md`). EthernetIPC shares
-raw L2 frames over a named IPC channel instead, so both guests keep guest IPs
-`10.0.0.2` / `10.0.0.3` without host port collisions — that is the dual-emulator
-stand-in for two Cubes + eth2sp1/BBA on a LAN.
-
-## Guest bring-up
-
-```text
--net                 # early DHCP (soft-fail if no adapter)
--netstatic [a.b.c.d] # static IP for dual-guest / LAN peers
--nonet               # skip bring-up
-```
-
-Disc `gamecube.cfg` lines (lean ISO staging):
-
-```text
-net
-netstatic 10.0.0.2
-listenserver <map>
-# peer:
-netstatic 10.0.0.3
-connect 10.0.0.2:27015
-```
-
-OSReport markers: `net bring-up`, `net ready ip=… (eth2sp1/BBA)`, or soft-fail.
-
-## Proven dual-guest join (emulator)
+Sources: [libogc2 interface selection](https://github.com/extremscorner/libogc2/blob/30134d2f98b1c0d65023089b8cd4ac9de3cbe2c7/lwip/network.c),
+[Swiss supported devices](https://github.com/emukidid/swiss-gc),
+[Nintendo BBA manual](https://csassets.nintendo.com/noaext/image/private/t_KA_PDF/broadband_english).
 
 ```bash
-# Host listen + client connect ISOs — DoD retail map (dod_flash)
-scripts/build-lean-iso.sh --menu-only --listen dod_flash --net --net-ip 10.0.0.2 \
-  --full-map --skip-startup-vids
-cp out/dodgc-menu.iso out/dodgc-flash-host.iso
-
-scripts/build-lean-iso.sh --menu-only --connect 10.0.0.2:27015 --net --net-ip 10.0.0.3 \
-  --map dod_flash --full-map --skip-startup-vids
-cp out/dodgc-menu.iso out/dodgc-flash-client.iso
-
-scripts/dual-bba-ipc-join.sh out/dodgc-flash-host.iso out/dodgc-flash-client.iso
-
-# BuiltIn BBA (EXI=12) single-guest — put adapter on SP1 (libbba locus)
-DODGC_BBA_PLACE=sp1 scripts/builtin-bba-netprobe.sh
+# Creates a private toolchain in out/network-toolchain; leaves /opt unchanged.
+scripts/setup-network-toolchain.sh
+scripts/build-dodgc.sh --dol-only
 ```
 
-Success bar (see `playtests/notes/*-dual-ipc-join.md`, `*-builtin-bba-netprobe.md`):
+The setup pins libogc2 and libfat revisions and records compiler/archive hashes
+in `out/network-toolchain/versions.txt`. Normal DoD builds require libogc2 and
+link networking by default. Explicit `XASH_GAMECUBE_OGC_STACK=libogc` retains the
+older retail-BBA build path; it cannot drive ETH2SP1.
 
-- host: `net ready`, `Server IPv4 …:27015`, `MAP READY`, `client frames BSS slot=0`, peer `PutInServer` complete
-- client: `Connecting…`, `Serverdata`, **`CL_SignonReply: 2`** (soft Serverdata alone is not playable)
-- BuiltIn: `Created Built in network interface` + `net ready` (SP1 only; Slot B alone fails)
-- Proven playable dual IPC: `20261107-092212-dual-ipc-join` (`hard_signon=1`)
+The engine adapts libogc2's four-argument `if_config`, native socket-address
+layout, `getsockname`, and negative error codes. Receive calls stay nonblocking.
+A failed interface initialization stays failed for that boot: libogc2 retains
+internal initialization state after some failures, so retrying could otherwise
+report false success. Fix the cable/configuration and reboot to retry.
 
-Scripts only `pkill` Dolphin instances whose `-u` path is under `dodgc-ipc-` /
-`dodgc-dual-` / `dodgc-builtin-` / `dodgc-fly-` — never bare `dolphin-emu`.
+The native build budgets MEM1 for two players: 460 server/client entities,
+a 256 KiB kernel workspace, a 128 KiB filesystem arena, a 256 KiB GX command FIFO, and one 320-pixel-wide
+scanout framebuffer scaled by VI using the selected television timing. Private
+copies of the SDK archives omit unused asynchronous unwind tables; the SDK is
+built with exceptions disabled. Maps exceeding the entity or memory budget need
+separate optimization and validation. Console/kernel heap telemetry accompanies
+network readiness and gameplay activation.
 
-## Hardware play (real Cube + BBA / eth2sp1)
+## Two GameCubes on a LAN
 
-1. Build `out/dodgc.dol` with `XASH_GAMECUBE_LINK_BBA=1`.
-2. Burn / Swiss-load a lean listen ISO (`--listen <map> --net`) or full pack with
-   `gamecube.cfg` listen + netstatic on the host Cube.
-3. Peer Cube: same DOL, `--connect <host-ip>:27015 --net --net-ip <peer-ip>`,
-   and stage the same map (`--map` / `--full-map`) so `-gcmap` tip / disc world works.
-4. Both on one LAN — prefer **eth2sp1 on SP1** (matches libbba probe). Retail Slot B BBA
-   needs a libbba that also probes EXI ch1 (current cube libbba is SP1-centric).
-5. Host listens; peer connects. Expect the same SignonReply path as IPC.
+```bash
+scripts/build-network-pair.sh --map dod_flash \
+  --host-ip 10.0.0.2 --client-ip 10.0.0.3
+```
 
-## Status
+The outputs are under `out/network-lan/`:
 
-- Engine: `engine/platform/gamecube/net_gamecube.*` (via this repo’s `engine/` symlink).
-- DoD DOL builds default `XASH_GAMECUBE_LINK_BBA=1` (libbba); without it join is offline-stub only.
-- Emulator dual join: **proven playable** on EthernetIPC — **dod_flash** `hard_signon=1`
-  (`CL_SignonReply: 2`, PutInServer complete) — note `20261107-092212-dual-ipc-join`.
-- BuiltIn BBA: **proven** single-guest listen/`net ready` on SP1 (EXI=12). Dual BuiltIn on one
-  host **fails** (UDP bind) — use IPC for two Dolphins; use BuiltIn for eth2sp1-shaped bring-up.
-- Hardware BBA / eth2sp1: same guest libbba path as BuiltIn/IPC; optional on-device confirm.
-- Lean menu discs are SP bring-up friendly; online maps need `--full-map` (or fuller packs).
-- Compact BSP (strip LUMP_LIGHTING) + world-array spill required for dense DoD maps under BBA MEM1.
+- `dodgc.dol`: the same executable used in both images.
+- `host/dodgc-menu.iso`: local player plus one peer.
+- `client/dodgc-menu.iso`: connects to the host and stages the same map.
+- `SHA256SUMS`: verify with `cd out/network-lan && sha256sum -c SHA256SUMS`.
+
+Connect both ETH2SP1 adapters to the same switch/router and load the role's image
+through Swiss. Choose unused addresses on your actual LAN. The defaults are an
+isolated `10.0.0.0/24` test network, not an automatic home-router configuration.
+The host now loads a local player by default. `--headless` explicitly builds a
+server-only host for an optional third Cube.
+
+For DHCP on a normal LAN, build the roles separately:
+
+```bash
+scripts/build-lean-iso.sh --menu-only --listen dod_flash --net \
+  --full-map --world-render --skip-startup-vids
+# Preserve out/dodgc-menu.iso as the host image before packaging the peer.
+scripts/build-lean-iso.sh --menu-only --connect HOST_LAN_IPV4:27015 --net \
+  --map dod_flash --full-map --world-render --skip-startup-vids
+```
+
+Use the host's DHCP address shown in its network log, or reserve an address on
+its router. Direct connection currently accepts numeric IPv4 addresses.
+
+## Internet play between GameCubes
+
+```bash
+scripts/build-network-pair.sh --map dod_flash --online HOST_PUBLIC_IPV4:27015
+```
+
+The matched images are placed in `out/network-online/`. Both Cubes use DHCP to
+obtain their own local IP, subnet mask and gateway. Replace `HOST_PUBLIC_IPV4`
+with the host connection's actual public IPv4 address before building the peer.
+Forward **UDP 27015** on the host router to the host Cube's reserved DHCP address.
+The peer connects outbound and ordinarily needs no forwarding. Test from a
+separate internet connection; connecting through the public address from the
+same LAN depends on router hairpin support.
+
+This is direct IPv4 play. There is no relay, matchmaking service, automatic
+port forwarding or CGNAT traversal. A host behind CGNAT needs a reachable network
+or separately configured routing. The pair generator supports an explicit
+external port if the router translates it to the host's UDP 27015.
+
+## Boot configuration
+
+`gamecube.cfg` is read before networking starts, from the selected FAT game tree
+or the image. Keep host and peer game/map assets identical.
+
+```text
+# Host, DHCP:
+video prog
+net
+listenserver dod_flash
+gcworldrender
+
+# Peer, static address on a home LAN:
+video prog
+netstatic 192.168.1.43 255.255.255.0 192.168.1.1
+connect 192.168.1.42:27015
+map dod_flash
+gcworldrender
+```
+
+`netstatic IP` retains the legacy `/24` lab defaults when written manually;
+prefer the full `IP MASK GATEWAY` form. Packaging with `--net-ip` derives `.1`
+from the selected /24 address; `--net-mask` and `--net-gateway` override it.
+Addresses, contiguous masks and gateway/subnet relationships are checked.
+`-nonet` / `-noip` suppress interface initialization. `headless` in the boot
+configuration requests a server-only Cube. Player routes select real PAD input
+instead of the map probe's synthetic input.
+
+## Verification and remaining hardware gate
+
+```bash
+python3 -m unittest discover -s tests -v
+scripts/probe-network.py out/network-lan/host/dodgc-menu.iso \
+  out/network-lan/client/dodgc-menu.iso
+```
+
+The regression launches fresh Dolphin profiles on SP1 EthernetIPC (EXI 14),
+requires **both** host-local and peer `GameCube DoD: gameplay active` markers,
+exercises both controller pipes and holds the session before returning success.
+Each run preserves logs, profiles and image hashes under `out/network-probe-*`.
+It terminates only its own child processes. An interface or challenge response
+alone does not pass this test.
+
+Historical `20261107-092212-dual-ipc-join` evidence used a headless host and an
+older classic-libogc build. It is not evidence for two local players or ETH2SP1.
+
+Physical ETH2SP1 and separate-network internet play require on-device evidence.
+On each Cube, record the local address, completed signon, movement and firing
+against the other player, and sustained play without disconnects. When writable
+FAT storage is available, network/gameplay breadcrumbs are appended to
+`xash3d/dod/logs/swiss-evidence.txt`. Dolphin cannot prove W5500 detection,
+physical link behavior, Swiss storage coexistence or internet routing.

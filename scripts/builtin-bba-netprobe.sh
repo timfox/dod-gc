@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Prove Dolphin BuiltIn BBA (EXI=12) on SP1 — same EXI locus libbba probes
-# (channel 0 / device 2 = Swiss eth2sp1). Slot B alone is NOT seen by this libbba.
+# (channel 0 / device 2 = retail BBA in SP1). Slot B alone is not the retail BBA.
 # Single guest: listen + netstatic; success = net ready + Server IPv4 / MAP READY.
 set -euo pipefail
 
@@ -12,7 +12,7 @@ source "$SCRIPT_DIR/env.sh"
 EXI_BUILTIN=12
 MAP="${1:-stalkyard}"
 ISO="${2:-$DODGC_OUT/dodgc-netprobe.iso}"
-# Placement: sp1 (default, eth2sp1/libbba) | slotb (retail BBA — expected fail with current libbba)
+# Placement: sp1 (default, retail BBA) | slotb (negative placement test)
 PLACE="${DODGC_BBA_PLACE:-sp1}"
 
 [[ -f "$ISO" ]] || {
@@ -50,11 +50,11 @@ PLACE_DESC=""
 case "$PLACE" in
 	sp1|SP1|eth2sp1)
 		SERIAL_PORT1=$EXI_BUILTIN
-		PLACE_DESC="SerialPort1/SP1 (eth2sp1 / libbba EXI ch0.dev2)"
+		PLACE_DESC="SerialPort1/SP1 (retail BBA EXI ch0.dev2)"
 		;;
 	slotb|SlotB|bba)
 		SLOT_B=$EXI_BUILTIN
-		PLACE_DESC="Slot B (retail BBA EXI ch1 — libbba does not probe this)"
+		PLACE_DESC="Slot B (negative placement test; not the retail BBA location)"
 		;;
 	both)
 		# Cover both loci; SP1 is what libbba uses.

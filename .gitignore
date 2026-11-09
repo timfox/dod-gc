@@ -60,3 +60,5 @@ social-media/
 playtests/
 web/
 web-*
+# Python verification helpers
+__pycache__/

@@ -7,6 +7,12 @@ set -euo pipefail
 DODGC_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export DODGC_ROOT
 
+# Prefer the private native-Ethernet toolchain once setup has completed.
+DODGC_NETWORK_TOOLCHAIN="${DODGC_NETWORK_TOOLCHAIN:-$DODGC_ROOT/out/network-toolchain}"
+if [[ -z "${DEVKITPRO:-}" && -f "$DODGC_NETWORK_TOOLCHAIN/versions.txt" ]]; then
+	export DEVKITPRO="$DODGC_NETWORK_TOOLCHAIN/devkitpro"
+fi
+
 # Engine lives outside this repo (read/build there; do not treat as HL1 workspace).
 export DODGC_ENGINE="${DODGC_ENGINE:-$DODGC_ROOT/engine}"
 if [[ ! -d "$DODGC_ENGINE/scripts" ]]; then

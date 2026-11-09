@@ -4,6 +4,10 @@ Screenshots: `playtests/screenshots/` · Videos: `playtests/videos/` · Notes: `
 
 | Date | File | Route | Duration | Size | Commit |
 |------|------|-------|----------|------|--------|
+| 2026-11-08T15:41:28 | `20261108-154128-tip-donner-spillfirst4-451be11298.mp4` | tip-donner-spillfirst4 | 55.3s | 0.1 MB | `451be11298` |
+| 2026-11-08T15:39:50 | `20261108-153950-tip-donner-spillfirst3-451be11298.mp4` | tip-donner-spillfirst3 | 51.3s | 0.1 MB | `451be11298` |
+| 2026-11-08T15:33:06 | `20261108-153306-tip-donner-spillfirst-451be11298.mp4` | tip-donner-spillfirst | 50.5s | 0.5 MB | `451be11298` |
+| 2026-11-08T15:23:43 | `20261108-152343-tip-donner-str48b-451be11298.mp4` | tip-donner-str48b | 49.6s | 0.5 MB | `451be11298` |
 | 2026-11-08T15:21:00 | `20261108-152100-tip-donner-str48-0acb14bbf6.mp4` | tip-donner-str48 | 50.5s | 0.5 MB | `0acb14bbf6` |
 | 2026-11-08T15:19:45 | `20261108-151945-tip-donner-excl-0acb14bbf6.mp4` | tip-donner-excl | 45.0s | 0.5 MB | `0acb14bbf6` |
 | 2026-11-08T15:18:47 | `20261108-151847-tip-flash-excl-0acb14bbf6.mp4` | tip-flash-excl | 50.5s | 0.2 MB | `0acb14bbf6` |

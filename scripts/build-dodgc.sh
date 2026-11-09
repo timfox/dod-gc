@@ -54,6 +54,9 @@ ENGINE_HLSDK_DOD="$DODGC_ENGINE/OUT/hlsdk-gamecube/dod"
 
 if (( ! ISO_ONLY )); then
 	echo "==> [dod-gc] building DoD HLSDK + engine DOL (profile=dod → dodgc.dol)"
+	# Modern Ethernet adapters require libogc2's native EXI drivers.
+	export XASH_GAMECUBE_OGC_STACK="${XASH_GAMECUBE_OGC_STACK:-libogc2}"
+	export XASH_GAMECUBE_LINK_BBA="${XASH_GAMECUBE_LINK_BBA:-1}"
 	cd "$DODGC_ENGINE"
 
 	if (( ! SKIP_HLSDK )); then
@@ -67,6 +70,22 @@ if (( ! ISO_ONLY )); then
 			}
 		fi
 	fi
+
+	# This SDK is built with -fno-exceptions, but older archives retained
+	# asynchronous unwind tables (~248 KiB). Strip those tables from private
+	# copies, preserving the upstream archives and DWARF debug information.
+	SDK_SOURCE="${HLSDK_GAMECUBE_DESTDIR:-$DODGC_ENGINE/OUT/hlsdk-gamecube}"
+	SDK_PRIVATE="$DODGC_OUT/network-hlsdk"
+	if [[ "$SDK_SOURCE" != "$SDK_PRIVATE" ]]; then
+		mkdir -p "$SDK_PRIVATE/lib"
+		cp -a "$SDK_SOURCE/dod" "$SDK_PRIVATE/"
+		[[ ! -d "$SDK_SOURCE/lib" ]] || cp -a "$SDK_SOURCE/lib/." "$SDK_PRIVATE/lib/"
+	fi
+	for archive in "$SDK_PRIVATE/dod/dlls/libhl_gamecube_ppc.a" "$SDK_PRIVATE/dod/cl_dlls/libclient_gamecube_ppc.a"; do
+		"${DEVKITPRO:-/opt/devkitpro}/devkitPPC/bin/powerpc-eabi-objcopy" \
+			--remove-section=.eh_frame --remove-section='.eh_frame.*' "$archive"
+	done
+	export HLSDK_GAMECUBE_DESTDIR="$SDK_PRIVATE"
 
 	# Build DOL only inside the engine tree; disc packaging happens here with dodgc.iso.
 	XASH3D_GC_SKIP_DISC_BUILD=1 \

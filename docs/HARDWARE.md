@@ -48,7 +48,7 @@ cp -f out/dodgc-menu.iso out/dodgc.iso
 Dolphin stand-in (2026-11-07): EDGE CapFaces proven (`e=384/384`, `drawn≈365`,
 pack `77/77`). `swiss-evidence.txt` on FAT remains the Cube playability gate.
 
-## Two Cubes (optional BBA join)
+## Two Cubes (networking)
 
 1. Host: flash-host ISO (static IP e.g. `10.0.0.2`).
 2. Peer: flash-client ISO (`--connect <host>:27015`, peer IP e.g. `10.0.0.3`).
@@ -72,7 +72,8 @@ proof remains `20261107-120407-capfaces-aram-bounce.md`.
 - [ ] World CapFaces visible with real textures (not magenta/noise / status-panel)
 - [ ] `xash3d/dod/logs/swiss-evidence.txt` lists CapFaces bake + drawn + CMPR bounce
 - [ ] Pad input moves view / player
-- [ ] (If adapter) `net ready` + optional peer SignonReply 2
+- [ ] ETH2SP1: `net ready`, both players active, movement/firing replicated
+- [ ] Internet: sustained play from two separate networks with host UDP forwarding
 
 ## Staged Swiss SD (this machine)
 
@@ -92,3 +93,5 @@ Unmount → insert in GameCube SD adapter → Swiss → `apps/dod-gc/boot.dol` o
 After a run, remount and collect `xash3d/dod/logs/swiss-evidence.txt` into `playtests/notes/`.
 **Cube boot evidence is the remaining playability gate** (no USB Gecko required).
 
+
+Current native ETH2SP1 build and matching host/peer images: see [NETWORKING.md](NETWORKING.md). Earlier headless BBA probes do not validate two-player hardware play.
