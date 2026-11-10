@@ -1,0 +1,433 @@
+{
+  "v3": {
+    "path": "/home/tim/Desktop/dod-gc/promo/shorts-2026-11-09/03-dod-skyboxes.mp4",
+    "duration": 33.4,
+    "sources": [
+      {
+        "type": "still",
+        "name": "ava",
+        "path": "/home/tim/Desktop/dod-gc/playtests/screenshots/20261108-043404-skybox-ava/final.png",
+        "yavg": 133.474,
+        "out_s": 1.9
+      },
+      {
+        "type": "still",
+        "name": "dashnight256",
+        "path": "/home/tim/Desktop/dod-gc/playtests/screenshots/20261108-043443-skybox-dashnight256/final.png",
+        "yavg": 133.474,
+        "out_s": 1.9
+      },
+      {
+        "type": "still",
+        "name": "dmcw",
+        "path": "/home/tim/Desktop/dod-gc/playtests/screenshots/20261108-043521-skybox-dmcw/final.png",
+        "yavg": 133.474,
+        "out_s": 1.9
+      },
+      {
+        "type": "still",
+        "name": "grnplsnt",
+        "path": "/home/tim/Desktop/dod-gc/playtests/screenshots/20261108-043601-skybox-grnplsnt/final.png",
+        "yavg": 133.474,
+        "out_s": 1.9
+      },
+      {
+        "type": "still",
+        "name": "jagd",
+        "path": "/home/tim/Desktop/dod-gc/playtests/screenshots/20261108-044529-skybox-jagd/final.png",
+        "yavg": 152.514,
+        "out_s": 1.9
+      },
+      {
+        "type": "still",
+        "name": "killertomato",
+        "path": "/home/tim/Desktop/dod-gc/playtests/screenshots/20261108-043719-skybox-killertomato/final.png",
+        "yavg": 133.474,
+        "out_s": 1.9
+      },
+      {
+        "type": "still",
+        "name": "kraftstoff",
+        "path": "/home/tim/Desktop/dod-gc/playtests/screenshots/20261108-043757-skybox-kraftstoff/final.png",
+        "yavg": 133.474,
+        "out_s": 1.9
+      },
+      {
+        "type": "still",
+        "name": "morningdew",
+        "path": "/home/tim/Desktop/dod-gc/playtests/screenshots/20261108-044806-skybox-morningdew_/final.png",
+        "yavg": 164.721,
+        "out_s": 1.9
+      },
+      {
+        "type": "still",
+        "name": "rubble",
+        "path": "/home/tim/Desktop/dod-gc/playtests/screenshots/20261108-044845-skybox-rubble/final.png",
+        "yavg": 176.525,
+        "out_s": 1.9
+      },
+      {
+        "type": "still",
+        "name": "rubble-clean",
+        "path": "/home/tim/Desktop/dod-gc/playtests/map-spawn-atlas/skyboxes/screenshots/rubble-clean.png",
+        "yavg": 133.474,
+        "out_s": 1.9
+      },
+      {
+        "type": "still",
+        "name": "sildom2",
+        "path": "/home/tim/Desktop/dod-gc/playtests/screenshots/20261108-044923-skybox-sildom2/final.png",
+        "yavg": 143.574,
+        "out_s": 1.9
+      },
+      {
+        "type": "still",
+        "name": "snowcliff",
+        "path": "/home/tim/Desktop/dod-gc/playtests/screenshots/20261108-045003-skybox-snowcliff/final.png",
+        "yavg": 194.668,
+        "out_s": 1.9
+      },
+      {
+        "type": "still",
+        "name": "st",
+        "path": "/home/tim/Desktop/dod-gc/playtests/screenshots/20261108-044150-skybox-st/final.png",
+        "yavg": 133.474,
+        "out_s": 1.9
+      },
+      {
+        "type": "video",
+        "file": "20261109-002037-flash-solo-finish-878604c1db.mp4",
+        "range": [
+          4.0,
+          12.0
+        ],
+        "out_s": 2.2
+      },
+      {
+        "type": "video",
+        "file": "20261109-002037-flash-solo-finish-878604c1db.mp4",
+        "range": [
+          18.0,
+          28.0
+        ],
+        "out_s": 2.0
+      },
+      {
+        "type": "video",
+        "file": "20261109-002037-flash-solo-finish-878604c1db.mp4",
+        "range": [
+          35.0,
+          46.0
+        ],
+        "out_s": 2.0
+      }
+    ],
+    "music_start": 18.0,
+    "blackdetect_full": [
+      "(none)"
+    ],
+    "blackdetect_gameband": [
+      "(none)"
+    ]
+  },
+  "v1b": {
+    "path": "/home/tim/Desktop/dod-gc/promo/shorts-2026-11-09/01-dod-menu-timelapse-teaser-v2.mp4",
+    "duration": 22.5,
+    "sources": [
+      {
+        "file": "20261107-menu-music-with-picture.mp4",
+        "range": [
+          0.0,
+          18.0
+        ],
+        "out_s": 4.5,
+        "crop_top": 40
+      },
+      {
+        "file": "20261107-183941-local-create-match-0365663fc8.mp4",
+        "range": [
+          3.1,
+          40.0
+        ],
+        "out_s": 5.0,
+        "crop_top": 40
+      },
+      {
+        "file": "20261107-190308-menu-0365663fc8.mp4",
+        "range": [
+          2.9,
+          8.9
+        ],
+        "out_s": 2.5,
+        "crop_top": 40
+      },
+      {
+        "file": "20261107-190718-menu-safe-area-final-0365663fc8.mp4",
+        "range": [
+          2.9,
+          8.85
+        ],
+        "out_s": 2.5,
+        "crop_top": 40
+      },
+      {
+        "file": "20261107-191344-menu-music-check-final-0365663fc8.mp4",
+        "range": [
+          2.9,
+          8.9
+        ],
+        "out_s": 2.5,
+        "crop_top": 40
+      },
+      {
+        "file": "20261107-191729-menu-audio-final-0365663fc8.mp4",
+        "range": [
+          3.1,
+          8.85
+        ],
+        "out_s": 3.0,
+        "crop_top": 40
+      }
+    ],
+    "dropped": [
+      "HL play-main-menu",
+      "Valve intros",
+      "missing-game-data early menu"
+    ],
+    "blackdetect_full": [
+      "(none)"
+    ],
+    "blackdetect_gameband": [
+      "(none)"
+    ]
+  },
+  "v2b": {
+    "path": "/home/tim/Desktop/dod-gc/promo/shorts-2026-11-09/02-geometry-progress-timelapse-v2.mp4",
+    "duration": 26.5,
+    "sources": [
+      {
+        "file": "20261107-152530-flash-solo-loadproof-7335013c78.mp4",
+        "range": [
+          32.794,
+          35.294
+        ],
+        "out_s": 1.0,
+        "magenta": false
+      },
+      {
+        "file": "20261107-153712-flash-solo-edge-prefetch-7335013c78.mp4",
+        "range": [
+          38.460499999999996,
+          40.960499999999996
+        ],
+        "out_s": 1.0,
+        "magenta": false
+      },
+      {
+        "file": "20261107-154908-flash-solo-edge-restore-7335013c78.mp4",
+        "range": [
+          31.076999999999998,
+          33.577
+        ],
+        "out_s": 1.0,
+        "magenta": false
+      },
+      {
+        "file": "20261107-155830-flash-solo-edge-stable-7335013c78.mp4",
+        "range": [
+          26.477,
+          28.977
+        ],
+        "out_s": 1.0,
+        "magenta": false
+      },
+      {
+        "file": "20261108-013255-flash-solo-memfix3-0365663fc8.mp4",
+        "range": [
+          31.594,
+          34.094
+        ],
+        "out_s": 1.0,
+        "magenta": false
+      },
+      {
+        "file": "20261108-022950-atlas-dod_flash-allies-0365663fc8.mp4",
+        "range": [
+          26.01,
+          28.51
+        ],
+        "out_s": 1.0,
+        "magenta": true
+      },
+      {
+        "file": "20261108-030858-atlas-smoke-dod_kalt-0365663fc8.mp4",
+        "range": [
+          18.5435,
+          21.0435
+        ],
+        "out_s": 1.0,
+        "magenta": true
+      },
+      {
+        "file": "20261108-110141-tip-flash-0acb14bbf6.mp4",
+        "range": [
+          24.7105,
+          27.2105
+        ],
+        "out_s": 1.0,
+        "magenta": false
+      },
+      {
+        "file": "20261108-114051-tip-donner-0acb14bbf6.mp4",
+        "range": [
+          37.6105,
+          40.1105
+        ],
+        "out_s": 1.0,
+        "magenta": true
+      },
+      {
+        "file": "20261108-121658-tip-donner-0acb14bbf6.mp4",
+        "range": [
+          43.9435,
+          46.4435
+        ],
+        "out_s": 1.0,
+        "magenta": false
+      },
+      {
+        "file": "20261108-143846-tip-donner-eye-0acb14bbf6.mp4",
+        "range": [
+          29.2605,
+          31.7605
+        ],
+        "out_s": 1.0,
+        "magenta": false
+      },
+      {
+        "file": "20261108-193949-promo-cf-flash-a7cbdc94ca.mp4",
+        "range": [
+          27.6935,
+          30.1935
+        ],
+        "out_s": 1.0,
+        "magenta": false
+      },
+      {
+        "file": "20261108-194053-promo-cf-avalanche-a7cbdc94ca.mp4",
+        "range": [
+          34.927,
+          37.427
+        ],
+        "out_s": 1.0,
+        "magenta": false
+      },
+      {
+        "file": "20261108-223055-atlas-dod_avalanche-axis-02bfbb4605.mp4",
+        "range": [
+          20.344,
+          22.844
+        ],
+        "out_s": 1.0,
+        "magenta": false
+      },
+      {
+        "file": "20261108-224114-atlas-dod_flash-axis-5a3c6e48a9.mp4",
+        "range": [
+          19.610000000000003,
+          22.110000000000003
+        ],
+        "out_s": 1.0,
+        "magenta": false
+      },
+      {
+        "file": "20261108-224612-atlas-dod_jagd-allies-5a3c6e48a9.mp4",
+        "range": [
+          19.327,
+          21.827
+        ],
+        "out_s": 1.0,
+        "magenta": true
+      },
+      {
+        "file": "20261108-230846-play-5a3c6e48a9.mp4",
+        "range": [
+          23.588,
+          25.588
+        ],
+        "out_s": 1.0,
+        "magenta": false
+      },
+      {
+        "file": "20261108-230846-play-5a3c6e48a9.mp4",
+        "range": [
+          303.588,
+          305.588
+        ],
+        "out_s": 1.0,
+        "magenta": false
+      },
+      {
+        "file": "20261108-230846-play-5a3c6e48a9.mp4",
+        "range": [
+          476.09400000000005,
+          478.59400000000005
+        ],
+        "out_s": 1.0,
+        "magenta": false
+      },
+      {
+        "file": "20261108-230846-play-5a3c6e48a9.mp4",
+        "range": [
+          603.588,
+          605.588
+        ],
+        "out_s": 1.0,
+        "magenta": false
+      },
+      {
+        "file": "20261108-230846-play-5a3c6e48a9.mp4",
+        "range": [
+          853.588,
+          855.588
+        ],
+        "out_s": 1.0,
+        "magenta": false
+      },
+      {
+        "file": "20261108-233655-caen-lean-cf3-08d7c0e701.mp4",
+        "range": [
+          27.826999999999998,
+          30.326999999999998
+        ],
+        "out_s": 1.0,
+        "magenta": false
+      },
+      {
+        "file": "20261108-233831-caen-lean-cf4-08d7c0e701.mp4",
+        "range": [
+          27.877000000000002,
+          30.377000000000002
+        ],
+        "out_s": 1.0,
+        "magenta": false
+      },
+      {
+        "file": "20261108-234132-caen-lean-cf5-08d7c0e701.mp4",
+        "range": [
+          22.760499999999997,
+          25.260499999999997
+        ],
+        "out_s": 1.0,
+        "magenta": false
+      }
+    ],
+    "magenta_count": 4,
+    "blackdetect_full": [
+      "(none)"
+    ],
+    "blackdetect_gameband": [
+      "(none)"
+    ]
+  }
+}

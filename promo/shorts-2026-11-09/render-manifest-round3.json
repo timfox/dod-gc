@@ -1,0 +1,39 @@
+{
+  "v3c": {
+    "path": "/home/tim/Desktop/dod-gc/promo/shorts-2026-11-09/03-dod-skyboxes-v2.mp4",
+    "duration": 27.2,
+    "black_full": [
+      "(none)"
+    ],
+    "black_band": [
+      "(none)"
+    ],
+    "note": "Dropped all flash-solo-finish video slices (AMD/debug grid); stills only"
+  },
+  "v2c": {
+    "path": "/home/tim/Desktop/dod-gc/promo/shorts-2026-11-09/02-geometry-progress-timelapse-v3.mp4",
+    "duration": 22.5,
+    "black_full": [
+      "(none)"
+    ],
+    "black_band": [
+      "(none)"
+    ],
+    "dropped": [
+      "20261107-152530-flash-solo-loadproof-7335013c78.mp4",
+      "20261107-153712-flash-solo-edge-prefetch-7335013c78.mp4",
+      "20261107-154908-flash-solo-edge-restore-7335013c78.mp4",
+      "20261107-155830-flash-solo-edge-stable-7335013c78.mp4"
+    ],
+    "opener": {
+      "file": "20261108-013255-flash-solo-memfix3-0365663fc8.mp4",
+      "range": [
+        31.594,
+        34.094
+      ],
+      "out_s": 1.0,
+      "magenta": false
+    },
+    "kept_count": 20
+  }
+}

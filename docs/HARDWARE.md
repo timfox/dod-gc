@@ -45,8 +45,14 @@ cp -f out/dodgc-menu.iso out/dodgc.iso
 3. Controllers: GameCube pad on port 1.
 4. Optional BBA later: separate `--net` host ISO (peer slots; no local CapFaces).
 
-Dolphin stand-in (2026-11-07): EDGE CapFaces proven (`e=384/384`, `drawn≈365`,
-pack `77/77`). `swiss-evidence.txt` on FAT remains the Cube playability gate.
+**Prove the full solo game on Dolphin first** (MAP_READY + CapFaces fill
+`drawn≳300` with WAD/CMPR textures + pad look/move). Cube/`swiss-evidence.txt`
+is only the Swiss/FAT/libfat gate after that — not a substitute for playability.
+
+Tip finish-port (2026-11-09) reached MAP_READY + pack `lm=384` but stills were
+sky-dominated (`drawn≈104`) because lean-iso `-gcplayerinput` cleared sticky
+wall-aim under `XASH_DODGC_NETWORK`. Sky77 (`drawn=371`, SAND/WOOD) remains the
+fill benchmark until tip matches it again.
 
 ## Two Cubes (networking)
 
@@ -68,6 +74,13 @@ proof remains `20261107-120407-capfaces-aram-bounce.md`.
 
 ## Validation checklist
 
+### Dolphin-first (required before Cube)
+- [x] Boot stability: `MAP_READY dod_flash` + CapFaces pack `lm=384` + Flipper presents≥1200 (no Guru) — `20261109-002036-flash-solo-finish`
+- [x] CapFaces fill: sticky wall-aim `drawn=332` (`20261109-004603-flash-solo-fill`; sky77 stills remain texture-label benchmark)
+- [x] Pad look/move on Dolphin: `player movement` + `native axis movement ready` (`20261109-014719-flash-solo-pad`)
+- [ ] Optional: second map / avalanche flythrough without Guru
+
+### Cube / Swiss (after Dolphin-first)
 - [ ] Swiss boots `dodgc.iso` / `apps/dod-gc/boot.dol` without Guru
 - [ ] World CapFaces visible with real textures (not magenta/noise / status-panel)
 - [ ] `xash3d/dod/logs/swiss-evidence.txt` lists CapFaces bake + drawn + CMPR bounce
@@ -84,17 +97,17 @@ EFI installer sticks are only interim copy targets.
 
 | Path | Contents |
 |------|----------|
-| `apps/dod-gc/boot.dol` | Tip CapFaces `out/dodgc.dol` |
+| `apps/dod-gc/boot.dol` | Tip CapFaces `out/dodgc.dol` (6364288 B, 2026-11-09) |
 | `boot.dol` / `dodgc.dol` | Same DOL |
-| `dodgc.iso` | Offline solo listen CapFaces (`dod_flash` + `gcworldrender` + `gcworlddl`) |
+| `dodgc.iso` | Offline solo listen CapFaces (`dod_flash` + pack `cf_dod_flash.gcp`) |
 | `xash3d/dod/gamecube.cfg` | `video prog` / `listenserver dod_flash` / `gcworldrender` / `gcworlddl` |
 | `xash3d/dod/logs/` | Target for `swiss-evidence.txt` after Cube run |
 | `out/dodgc-swiss-flash-solo.img` | Full-card flash image (`scripts/build-swiss-img.sh`) |
 
 Unmount → insert in GameCube SD adapter → Swiss → `apps/dod-gc/boot.dol` or `dodgc.iso`.
 
-After a run, remount and run `scripts/ingest-swiss-evidence.sh` (or collect
-`xash3d/dod/logs/swiss-evidence.txt` into `playtests/notes/`).
+After a run, remount the card — `scripts/ingest-swiss-evidence.sh` is armed and will
+archive `xash3d/dod/logs/swiss-evidence.txt` into `playtests/notes/` on pass.
 **Cube boot evidence is the remaining playability gate** (no USB Gecko required).
 
 

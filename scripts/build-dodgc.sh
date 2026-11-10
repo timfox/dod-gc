@@ -56,37 +56,40 @@ if (( ! ISO_ONLY )); then
 	echo "==> [dod-gc] building DoD HLSDK + engine DOL (profile=dod → dodgc.dol)"
 	# Modern Ethernet adapters require libogc2's native EXI drivers.
 	export XASH_GAMECUBE_OGC_STACK="${XASH_GAMECUBE_OGC_STACK:-libogc2}"
-	# CapFaces tip: default BBA off (~200 KiB MEM1). Set LINK_BBA=1 for net probes.
+	# CapFaces tip: default BBA off (~200 KiB MEM1 → tip≈390 KiB on caen).
+	# Set XASH_GAMECUBE_LINK_BBA=1 for Ethernet/net probes only.
 	export XASH_GAMECUBE_LINK_BBA="${XASH_GAMECUBE_LINK_BBA:-0}"
 	cd "$DODGC_ENGINE"
 
+	# Keep DoD HLSDK archives under out/network-hlsdk. Never clobber a fresh
+	# private build with stale OUT/hlsdk-gamecube copies (hud19 ScreenWidth miss).
+	SDK_PRIVATE="$DODGC_OUT/network-hlsdk"
+	export HLSDK_GAMECUBE_DESTDIR="$SDK_PRIVATE"
+
 	if (( ! SKIP_HLSDK )); then
-		if [[ ! -s "$ENGINE_HLSDK_DOD/dlls/libhl_gamecube_ppc.a" ]]; then
-			echo "==> HLSDK GameCube archives for gamedir=dod"
-			echo "    note: Steam DoD client is vgui2-blocked upstream; this tree uses"
-			echo "    HL1SDK deathmatch as the code base while mirroring DoD assets."
-			HLSDK_GAMECUBE_GAMEDIR=dod bash scripts/hlsdk-gamecube-build.sh || {
-				echo "warning: hlsdk-gamecube-build for dod failed or is incomplete." >&2
-				echo "  Continuing only if archives already exist; otherwise DOL link will fail." >&2
-			}
-		fi
+		echo "==> HLSDK GameCube archives for gamedir=dod → $SDK_PRIVATE"
+		echo "    note: Steam DoD client is vgui2-blocked upstream; this tree uses"
+		echo "    HL1SDK deathmatch as the code base while mirroring DoD assets."
+		HLSDK_GAMECUBE_DESTDIR="$SDK_PRIVATE" \
+		HLSDK_GAMECUBE_GAMEDIR=dod \
+			bash scripts/hlsdk-gamecube-build.sh || {
+			echo "warning: hlsdk-gamecube-build for dod failed or is incomplete." >&2
+			echo "  Continuing only if archives already exist; otherwise DOL link will fail." >&2
+		}
 	fi
 
-	# This SDK is built with -fno-exceptions, but older archives retained
-	# asynchronous unwind tables (~248 KiB). Strip those tables from private
-	# copies, preserving the upstream archives and DWARF debug information.
-	SDK_SOURCE="${HLSDK_GAMECUBE_DESTDIR:-$DODGC_ENGINE/OUT/hlsdk-gamecube}"
-	SDK_PRIVATE="$DODGC_OUT/network-hlsdk"
-	if [[ "$SDK_SOURCE" != "$SDK_PRIVATE" ]]; then
+	SDK_SOURCE="${HLSDK_GAMECUBE_FALLBACK_SOURCE:-$DODGC_ENGINE/OUT/hlsdk-gamecube}"
+	if [[ ! -s "$SDK_PRIVATE/dod/cl_dlls/libclient_gamecube_ppc.a" ]] \
+		&& [[ -s "$SDK_SOURCE/dod/cl_dlls/libclient_gamecube_ppc.a" ]]; then
 		mkdir -p "$SDK_PRIVATE/lib"
 		cp -a "$SDK_SOURCE/dod" "$SDK_PRIVATE/"
 		[[ ! -d "$SDK_SOURCE/lib" ]] || cp -a "$SDK_SOURCE/lib/." "$SDK_PRIVATE/lib/"
 	fi
 	for archive in "$SDK_PRIVATE/dod/dlls/libhl_gamecube_ppc.a" "$SDK_PRIVATE/dod/cl_dlls/libclient_gamecube_ppc.a"; do
+		[[ -s "$archive" ]] || continue
 		"${DEVKITPRO:-/opt/devkitpro}/devkitPPC/bin/powerpc-eabi-objcopy" \
 			--remove-section=.eh_frame --remove-section='.eh_frame.*' "$archive"
 	done
-	export HLSDK_GAMECUBE_DESTDIR="$SDK_PRIVATE"
 
 	# Build DOL only inside the engine tree; disc packaging happens here with dodgc.iso.
 	XASH3D_GC_SKIP_DISC_BUILD=1 \

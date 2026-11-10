@@ -1,12 +1,15 @@
 # GameCube DoD networking
 
-**Development status (2026-11-08): not yet a playable multiplayer release.**
+**Development status (2026-11-09): not yet a playable multiplayer release.**
 The matched native-network builds now pass two-player signon and actual
-server-side horizontal movement from both controller inputs in Dolphin.
+server-side horizontal movement from both controller inputs in Dolphin. The
+lean HUD also registers the multiplayer message protocol without constructing
+the omitted VGUI/sprite presentation tree.
 A renderer restore was overwriting retained collision planes; the arena
 ownership check now protects network sessions. The 20261108-213248 probe stayed
 active through its test interval, but captured frames still show incomplete
-world geometry and several HUD message handlers are missing. Physical
+world geometry. The lean HUD accepts server text, score, death, and pickup
+messages but deliberately does not render those presentation elements. Physical
 W5500/ETH2SP1 and separate-network internet play remain unverified. The commands
 below produce development images for continued testing.
 

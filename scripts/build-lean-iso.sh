@@ -31,6 +31,7 @@ usage: scripts/build-lean-iso.sh [options]
   --dumpframes     gamecube.cfg dumpframes (-gcdumpframes stills; with --smoke)
   --dumpeye "x y z [pitch] [yaw]"
                    CapFaces camera override in gamecube.cfg (spawn atlas)
+  --tas NAME       stage dod/tas/NAME.tas + gamecube.cfg tas NAME (pad replay)
   --skip-stage     reuse existing lean cache trees
   -h, --help
 
@@ -47,6 +48,7 @@ FULL_MAP=0
 WORLD_RENDER=0
 DUMPFRAMES=0
 DUMPEYE=""
+TAS=""
 MAP=""
 SMOKE=""
 LISTEN=""
@@ -74,6 +76,15 @@ while [[ $# -gt 0 ]]; do
 		--dumpeye)
 			DUMPEYE="${2:-}"
 			[[ -n "$DUMPEYE" ]] || { echo "error: --dumpeye needs coords" >&2; exit 2; }
+			shift
+			;;
+		--tas)
+			TAS="${2:-}"
+			[[ -n "$TAS" ]] || { echo "error: --tas needs NAME" >&2; exit 2; }
+			if [[ "$TAS" == */* || "$TAS" == *\\* || "$TAS" == *.* ]]; then
+				echo "error: --tas NAME must be a simple token" >&2
+				exit 2
+			fi
 			shift
 			;;
 		--net-ip)
@@ -206,6 +217,12 @@ pack() {
 		(( DUMPFRAMES )) && args+=(--probe-dumpframes)
 	fi
 	if [[ -n "$LISTEN" ]]; then
+		if [[ -n "$TAS" ]]; then
+			tas_src="$DODGC_ENGINE/scripts/tas/${TAS}.tas"
+			[[ -f "$tas_src" ]] || { echo "error: missing TAS script $tas_src" >&2; exit 2; }
+			mkdir -p "$LEAN/tas"
+			cp -f "$tas_src" "$LEAN/tas/${TAS}.tas"
+		fi
 		{
 			echo "video prog"
 			echo "listenserver $LISTEN"
@@ -213,14 +230,16 @@ pack() {
 			(( HEADLESS )) && echo headless
 			# Flipper world tris (otherwise R_EdgeDrawing skips as gcmap smoke).
 			(( WORLD_RENDER )) && echo "gcworldrender"
-			# CapFaces GX display lists — denser maps (avalanche/charlie).
-			(( WORLD_RENDER )) && echo "gcworlddl"
+			# CapFaces GX display lists cost 128 KiB BSS tip — charlie tip-OOM'd
+			# after MAP_READY with gcworlddl (heap_free=104). Skip for lean listen;
+			# PVS/frustum CapFaces path does not need a static DL.
 			# Solo listen needs pad → engfuncs; without this CapFaces is view-only.
 			echo "gcplayerinput"
 			(( DUMPFRAMES )) && echo "dumpframes"
 			[[ -n "$DUMPEYE" ]] && echo "dumpeye $DUMPEYE"
+			[[ -n "$TAS" ]] && echo "tas $TAS"
 		} > "$LEAN/gamecube.cfg"
-		echo "==> listenserver cfg: $LISTEN net=$([[ $WANT_NET -eq 1 ]] && echo "${NET_IP:-dhcp}" || echo off) world_render=$WORLD_RENDER dumpframes=$DUMPFRAMES"
+		echo "==> listenserver cfg: $LISTEN net=$([[ $WANT_NET -eq 1 ]] && echo "${NET_IP:-dhcp}" || echo off) world_render=$WORLD_RENDER dumpframes=$DUMPFRAMES tas=${TAS:-off}"
 	elif [[ -n "$CONNECT" ]]; then
 		{
 			echo "video prog"
@@ -233,6 +252,9 @@ pack() {
 			fi
 			(( WORLD_RENDER )) && echo "gcworldrender"
 			(( DUMPFRAMES )) && echo "dumpframes"
+			# Keep the peer CapFaces capture aligned with the listen host's
+			# explicitly selected spawn/atlas eye.
+			[[ -n "$DUMPEYE" ]] && echo "dumpeye $DUMPEYE"
 		} > "$LEAN/gamecube.cfg"
 		echo "==> connect cfg: $CONNECT net=${NET_IP:-dhcp} map=${MAP:-} world_render=$WORLD_RENDER dumpframes=$DUMPFRAMES"
 	fi

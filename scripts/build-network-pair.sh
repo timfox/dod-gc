@@ -9,15 +9,17 @@ HOST_IP=10.0.0.2
 CLIENT_IP=10.0.0.3
 REMOTE=""
 HEADLESS=0
+DUMPEYE=""
 while (( $# )); do
 	case "$1" in
 		--map) MAP="${2:?--map needs NAME}"; shift ;;
 		--online) MODE=online; REMOTE="${2:?--online needs HOST_PUBLIC_IPV4[:PORT]}"; shift ;;
 		--host-ip) HOST_IP="${2:?--host-ip needs IP}"; shift ;;
 		--client-ip) CLIENT_IP="${2:?--client-ip needs IP}"; shift ;;
+		--dumpeye) DUMPEYE="${2:?--dumpeye needs 'x y z [pitch] [yaw]'}"; shift ;;
 		--headless) HEADLESS=1 ;;
 		-h|--help)
-			echo "usage: scripts/build-network-pair.sh [--map dod_flash] [--host-ip IP --client-ip IP] [--online HOST_PUBLIC_IPV4[:PORT]] [--headless]"
+			echo "usage: scripts/build-network-pair.sh [--map dod_flash] [--host-ip IP --client-ip IP] [--online HOST_PUBLIC_IPV4[:PORT]] [--dumpeye 'x y z [pitch] [yaw]'] [--headless]"
 			exit 0 ;;
 		*) echo "unknown option: $1" >&2; exit 2 ;;
 	esac
@@ -58,6 +60,7 @@ else
 	CLIENT_ARGS+=(--connect "$REMOTE")
 fi
 (( HEADLESS )) && HOST_ARGS+=(--headless)
+[[ -n "$DUMPEYE" ]] && { HOST_ARGS+=(--dumpeye "$DUMPEYE"); CLIENT_ARGS+=(--dumpeye "$DUMPEYE"); }
 DODGC_OUT="$PAIR/host" DODGC_ISO="$PAIR/host/dodgc.iso" bash "$ROOT/scripts/build-lean-iso.sh" "${COMMON[@]}" "${HOST_ARGS[@]}"
 DODGC_OUT="$PAIR/client" DODGC_ISO="$PAIR/client/dodgc.iso" bash "$ROOT/scripts/build-lean-iso.sh" "${COMMON[@]}" "${CLIENT_ARGS[@]}"
 cp "$DODGC_DOL" "$PAIR/dodgc.dol"

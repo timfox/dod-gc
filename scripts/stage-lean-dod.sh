@@ -96,6 +96,22 @@ done
 printf 'dodgc lean maps placeholder\n' > "$LEAN/maps/.dodgc_keep"
 # Do NOT stage decals.wad — Host_InitDecals enumerates every MIP into MEM1.
 
+# CapFaces lean HUD: disc inject (inject_gc_hud_into_bootstrap) downsamples these
+# valve sheets into sprites/gc_*.spr inside gamecube-bootstrap.pk3. DoD has no
+# retail 320hud*.spr — without this, SPR_Load fails after MAP_READY.
+mkdir -p "$LEAN/sprites"
+hud_staged=0
+for s in 320hud1.spr 320hud2.spr 320_pain.spr 320_train.spr crosshairs.spr; do
+	if [[ -f "$VALVE/sprites/$s" ]]; then
+		cp -f "$VALVE/sprites/$s" "$LEAN/sprites/"
+		hud_staged=$((hud_staged + 1))
+	elif [[ -f "$SRC/sprites/$s" ]]; then
+		cp -f "$SRC/sprites/$s" "$LEAN/sprites/"
+		hud_staged=$((hud_staged + 1))
+	fi
+done
+echo "staged lean HUD sources: $hud_staged sprites (for gc_* bootstrap inject)"
+
 # DoD UI / title art (no loading-screen wallpaper farms).
 mkdir -p "$LEAN/resource"
 # Skip dod_english.txt (≈90 KiB) — MEM1 tip cannot Localize_AddToDict it at
@@ -265,6 +281,20 @@ PY
 		echo "staged listenserver.cfg (DoD mp + map rules)"
 	fi
 
+	# CapFaces listen always needs team weapon viewmodels on disc.
+	# Retail names: Kar98=v_98k, Thompson=v_tommy.
+	mkdir -p "$LEAN/models"
+	cap_vm=0
+	for m in v_garand.mdl v_mp40.mdl v_98k.mdl v_tommy.mdl \
+		v_colt.mdl v_luger.mdl v_amerk.mdl v_spade.mdl \
+		p_garand.mdl p_mp40.mdl p_k98.mdl p_tommy.mdl; do
+		if [[ -f "$SRC/models/$m" ]]; then
+			cp -f "$SRC/models/$m" "$LEAN/models/"
+			cap_vm=$((cap_vm + 1))
+		fi
+	done
+	echo "staged CapFaces team weapon MDLs: $cap_vm files"
+
 	if (( FULL_MAP )); then
 		echo "==> full-map assets for $stem"
 		# Shared DoD WADs (textures beyond the per-map wad).
@@ -303,14 +333,17 @@ PY
 			allied_ammo.mdl axis_ammo.mdl brit_ammo.mdl \
 			allied_gibs.mdl axis_gibs.mdl \
 			null.mdl \
-			p_garand.mdl p_k98.mdl p_mp40.mdl p_thompson.mdl \
+			p_garand.mdl p_k98.mdl p_mp40.mdl p_tommy.mdl \
 			p_bar.mdl p_mg34.mdl p_30cal.mdl p_bazooka.mdl p_pschreck.mdl \
-			v_garand.mdl v_k98.mdl v_mp40.mdl v_thompson.mdl \
-			v_bar.mdl v_mg34.mdl v_30cal.mdl v_bazooka.mdl v_pschreck.mdl \
-			w_garand.mdl w_k98.mdl w_mp40.mdl w_thompson.mdl
+			p_colt.mdl p_luger.mdl p_amerk.mdl p_spade.mdl \
+			v_garand.mdl v_98k.mdl v_mp40.mdl v_tommy.mdl \
+			v_bar.mdl v_mg34.mdl v_30cal.mdl v_bazooka.mdl v_panzerschreck.mdl \
+			v_colt.mdl v_luger.mdl v_amerk.mdl v_spade.mdl \
+			w_garand.mdl w_k98.mdl w_mp40.mdl w_tommy.mdl
 		do
 			[[ -f "$SRC/models/$m" ]] && cp -f "$SRC/models/$m" "$LEAN/models/"
 		done
+		echo "staged CapFaces weapon VMs: $(ls "$LEAN/models"/v_*.mdl 2>/dev/null | wc -l) files"
 		# Sprites for HUD / effects (small).
 		if [[ -d "$SRC/sprites" ]]; then
 			mkdir -p "$LEAN/sprites"
