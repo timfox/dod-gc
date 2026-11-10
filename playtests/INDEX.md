@@ -4,6 +4,19 @@ Screenshots: `playtests/screenshots/` · Videos: `playtests/videos/` · Notes: `
 
 | Date | File | Route | Duration | Size | Commit |
 |------|------|-------|----------|------|--------|
+| 2026-11-09T22:15:53 | `20261109-221553-caen-part-final-878604c1db.mp4` | caen-part-final | 33.4s | 0.3 MB | `878604c1db` |
+| 2026-11-09T22:09:18 | `20261109-220918-caen-part-seed-878604c1db.mp4` | caen-part-seed | 151.8s | 1.6 MB | `878604c1db` |
+| 2026-11-09T22:05:44 | `20261109-220544-caen-part-efx-hold-878604c1db.mp4` | caen-part-efx-hold | 151.8s | 1.6 MB | `878604c1db` |
+| 2026-11-09T22:05:15 | `20261109-220515-caen-part-leanfix-878604c1db.mp4` | caen-part-leanfix | 6.5s | 0.1 MB | `878604c1db` |
+| 2026-11-09T21:59:57 | `20261109-215957-caen-part-min-878604c1db.mp4` | caen-part-min | 110.0s | 2.1 MB | `878604c1db` |
+| 2026-11-09T21:55:36 | `20261109-215536-caen-part-efx16-878604c1db.mp4` | caen-part-efx16 | 79.6s | 1.5 MB | `878604c1db` |
+| 2026-11-09T21:50:40 | `20261109-215040-caen-part-efx-878604c1db.mp4` | caen-part-efx | 110.6s | 2.1 MB | `878604c1db` |
+| 2026-11-09T21:46:21 | `20261109-214621-flash-solo-hwok-878604c1db.mp4` | flash-solo-hwok | 55.0s | 0.4 MB | `878604c1db` |
+| 2026-11-09T21:45:54 | `20261109-214554-caen-restore2-878604c1db.mp4` | caen-restore2 | 71.1s | 0.3 MB | `878604c1db` |
+| 2026-11-09T21:45:19 | `20261109-214519-caen-restore-878604c1db.mp4` | caen-restore | 71.6s | 0.1 MB | `878604c1db` |
+| 2026-11-09T21:45:10 | `20261109-214510-caen-restore-878604c1db.mp4` | caen-restore | 1794289511.8s | 0.0 MB | `878604c1db` |
+| 2026-11-09T21:42:52 | `20261109-214252-flash-solo-hwstage-878604c1db.mp4` | flash-solo-hwstage | 55.1s | 0.1 MB | `878604c1db` |
+| 2026-11-09T21:41:54 | `20261109-214154-caen-part6-878604c1db.mp4` | caen-part6 | 84.6s | 0.1 MB | `878604c1db` |
 | 2026-11-09T21:37:43 | `20261109-213743-caen-part5-878604c1db.mp4` | caen-part5 | 90.6s | 0.4 MB | `878604c1db` |
 | 2026-11-09T21:36:17 | `20261109-213617-caen-stable-recheck-878604c1db.mp4` | caen-stable-recheck | 68.5s | 0.9 MB | `878604c1db` |
 | 2026-11-09T21:34:48 | `20261109-213448-caen-part4-878604c1db.mp4` | caen-part4 | 59.6s | 0.1 MB | `878604c1db` |

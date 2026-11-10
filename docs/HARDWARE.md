@@ -97,18 +97,19 @@ EFI installer sticks are only interim copy targets.
 
 | Path | Contents |
 |------|----------|
-| `apps/dod-gc/boot.dol` | Tip CapFaces `out/dodgc.dol` (6364288 B, 2026-11-09) |
+| `apps/dod-gc/boot.dol` | Tip CapFaces DOL **6353376 B** (hwok `20261109-214621`, drawn=376) |
 | `boot.dol` / `dodgc.dol` | Same DOL |
-| `dodgc.iso` | Offline solo listen CapFaces (`dod_flash` + pack `cf_dod_flash.gcp`) |
-| `xash3d/dod/gamecube.cfg` | `video prog` / `listenserver dod_flash` / `gcworldrender` / `gcworlddl` |
+| `dodgc.iso` / `dodgc-flash-solo.iso` | Offline solo listen CapFaces (`dod_flash` + `cf_dod_flash.gcp` + `wt_dod_flash.gct` + `dod_flash.wad`) |
+| `xash3d/dod/gamecube.cfg` | FAT-preferred: listen + `gcworldrender`/`gcworlddl`/`gcplayerinput`/`dumpeye`/`swissquit` |
 | `xash3d/dod/logs/` | Target for `swiss-evidence.txt` after Cube run |
 | `out/dodgc-swiss-flash-solo.img` | Full-card flash image (`scripts/build-swiss-img.sh`) |
 
 Unmount → insert in GameCube SD adapter → Swiss → `apps/dod-gc/boot.dol` or `dodgc.iso`.
+`swissquit` auto-returns to Swiss after playable present so evidence flushes without Z+Start.
 
 After a run, remount the card — `scripts/ingest-swiss-evidence.sh` is armed and will
 archive `xash3d/dod/logs/swiss-evidence.txt` into `playtests/notes/` on pass.
-**Cube boot evidence is the remaining playability gate** (no USB Gecko required).
+**Dolphin hwok pack staged 2026-11-09: sticky CapFaces `drawn=376` (`20261109-214621-flash-solo-hwok`). Cube boot evidence is the remaining playability gate** (no USB Gecko required).
 
 
 Current native ETH2SP1 build and matching host/peer images: see [NETWORKING.md](NETWORKING.md). Earlier headless BBA probes do not validate two-player hardware play.

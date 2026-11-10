@@ -1,36 +1,354 @@
-/* Stub DoD gamerules — progress scaffolding for the GC port.
- * Not yet linked into dodgc.dol; HL1SDK deathmatch still provides runtime.
- */
+/* Server-side Day of Defeat rules state for the GameCube HL1SDK port. */
 #include "dod_game.h"
 
+#include <ctype.h>
+#include <string.h>
+
+#define DOD_CAPTURE_SECONDS_DEFAULT 10.0f
+#define DOD_INTERMISSION_SECONDS 8.0f
+
 static DodGameRulesState g_dod_state;
+static DodPlayerState g_dod_players[DOD_MAX_PLAYERS + 1];
+static DodObjectiveState g_dod_objectives[DOD_MAX_OBJECTIVES];
+static float g_score_remainder[4];
+
+static int dod_valid_player(int player_index)
+{
+	return player_index > 0 && player_index <= DOD_MAX_PLAYERS;
+}
+
+static int dod_valid_team(DodTeam team)
+{
+	return team == DOD_TEAM_ALLIES || team == DOD_TEAM_AXIS;
+}
+
+static DodObjectiveState *dod_find_objective(int id)
+{
+	int i;
+	for (i = 0; i < DOD_MAX_OBJECTIVES; ++i) {
+		if (g_dod_objectives[i].active && g_dod_objectives[i].id == id)
+			return &g_dod_objectives[i];
+	}
+	return 0;
+}
+
+static void dod_recount_players(void)
+{
+	int i;
+	g_dod_state.connected_players[DOD_TEAM_UNASSIGNED] = 0;
+	g_dod_state.connected_players[DOD_TEAM_ALLIES] = 0;
+	g_dod_state.connected_players[DOD_TEAM_AXIS] = 0;
+	g_dod_state.connected_players[DOD_TEAM_SPECTATOR] = 0;
+	for (i = 1; i <= DOD_MAX_PLAYERS; ++i) {
+		if (g_dod_players[i].connected && g_dod_players[i].team >= DOD_TEAM_UNASSIGNED &&
+			g_dod_players[i].team <= DOD_TEAM_SPECTATOR)
+			++g_dod_state.connected_players[g_dod_players[i].team];
+	}
+}
+
+static void dod_recount_objectives(void)
+{
+	int i;
+	g_dod_state.controlled_objectives[DOD_TEAM_UNASSIGNED] = 0;
+	g_dod_state.controlled_objectives[DOD_TEAM_ALLIES] = 0;
+	g_dod_state.controlled_objectives[DOD_TEAM_AXIS] = 0;
+	for (i = 0; i < DOD_MAX_OBJECTIVES; ++i) {
+		DodObjectiveState *objective = &g_dod_objectives[i];
+		if (objective->active && dod_valid_team(objective->owner))
+			++g_dod_state.controlled_objectives[objective->owner];
+	}
+}
+
+static void dod_add_team_score(DodTeam team, float amount)
+{
+	float total;
+	int whole;
+	if (!dod_valid_team(team) || amount <= 0.0f)
+		return;
+	total = g_score_remainder[team] + amount;
+	whole = (int)total;
+	g_score_remainder[team] = total - (float)whole;
+	if (team == DOD_TEAM_ALLIES)
+		g_dod_state.allies_score += whole;
+	else
+		g_dod_state.axis_score += whole;
+}
 
 void Dod_GameInit(void)
 {
-	g_dod_state.round_active = 0;
-	g_dod_state.allies_score = 0;
-	g_dod_state.axis_score = 0;
-	g_dod_state.round_time_remaining = 0.f;
+	memset(&g_dod_state, 0, sizeof(g_dod_state));
+	memset(g_dod_players, 0, sizeof(g_dod_players));
+	memset(g_dod_objectives, 0, sizeof(g_dod_objectives));
+	memset(g_score_remainder, 0, sizeof(g_score_remainder));
+	g_dod_state.phase = DOD_ROUND_WAITING;
+	g_dod_state.winner = DOD_TEAM_UNASSIGNED;
 }
 
 void Dod_GameShutdown(void)
 {
 	g_dod_state.round_active = 0;
+	g_dod_state.phase = DOD_ROUND_WAITING;
+	g_dod_state.winner = DOD_TEAM_UNASSIGNED;
+	g_dod_state.round_time_remaining = 0.0f;
+	g_dod_state.intermission_remaining = 0.0f;
+	memset(g_dod_players, 0, sizeof(g_dod_players));
+	memset(g_dod_objectives, 0, sizeof(g_dod_objectives));
+	dod_recount_players();
+	dod_recount_objectives();
+}
+
+void Dod_StartRound(float duration_seconds)
+{
+	g_dod_state.phase = DOD_ROUND_ACTIVE;
+	g_dod_state.round_active = 1;
+	g_dod_state.winner = DOD_TEAM_UNASSIGNED;
+	g_dod_state.allies_score = 0;
+	g_dod_state.axis_score = 0;
+	g_dod_state.round_time_remaining = duration_seconds > 0.0f ? duration_seconds : 0.0f;
+	g_dod_state.intermission_remaining = 0.0f;
+	memset(g_score_remainder, 0, sizeof(g_score_remainder));
+}
+
+void Dod_EndRound(DodTeam winner)
+{
+	if (g_dod_state.phase != DOD_ROUND_ACTIVE)
+		return;
+	if (!dod_valid_team(winner)) {
+		if (g_dod_state.allies_score > g_dod_state.axis_score)
+			winner = DOD_TEAM_ALLIES;
+		else if (g_dod_state.axis_score > g_dod_state.allies_score)
+			winner = DOD_TEAM_AXIS;
+		else
+			winner = DOD_TEAM_UNASSIGNED;
+	}
+	g_dod_state.winner = winner;
+	g_dod_state.phase = DOD_ROUND_INTERMISSION;
+	g_dod_state.round_active = 0;
+	g_dod_state.round_time_remaining = 0.0f;
+	g_dod_state.intermission_remaining = DOD_INTERMISSION_SECONDS;
 }
 
 void Dod_Think(float frametime)
 {
-	(void)frametime;
-	if (!g_dod_state.round_active)
+	int i;
+	if (frametime <= 0.0f)
 		return;
-	if (g_dod_state.round_time_remaining > 0.f) {
-		g_dod_state.round_time_remaining -= frametime;
-		if (g_dod_state.round_time_remaining < 0.f)
-			g_dod_state.round_time_remaining = 0.f;
+	if (g_dod_state.phase == DOD_ROUND_ACTIVE) {
+		if (g_dod_state.round_time_remaining > 0.0f) {
+			g_dod_state.round_time_remaining -= frametime;
+			if (g_dod_state.round_time_remaining <= 0.0f)
+				Dod_EndRound(DOD_TEAM_UNASSIGNED);
+		}
+		for (i = 0; i < DOD_MAX_OBJECTIVES; ++i) {
+			DodObjectiveState *objective = &g_dod_objectives[i];
+			if (objective->active && dod_valid_team(objective->owner))
+				dod_add_team_score(objective->owner,
+					objective->score_per_minute * frametime / 60.0f);
+		}
+	} else if (g_dod_state.phase == DOD_ROUND_INTERMISSION) {
+		g_dod_state.intermission_remaining -= frametime;
+		if (g_dod_state.intermission_remaining < 0.0f)
+			g_dod_state.intermission_remaining = 0.0f;
 	}
 }
 
 const DodGameRulesState *Dod_GetState(void)
 {
 	return &g_dod_state;
+}
+
+int Dod_PlayerConnect(int player_index)
+{
+	if (!dod_valid_player(player_index))
+		return 0;
+	memset(&g_dod_players[player_index], 0, sizeof(g_dod_players[player_index]));
+	g_dod_players[player_index].connected = 1;
+	g_dod_players[player_index].team = DOD_TEAM_UNASSIGNED;
+	dod_recount_players();
+	return 1;
+}
+
+void Dod_PlayerDisconnect(int player_index)
+{
+	if (!dod_valid_player(player_index))
+		return;
+	memset(&g_dod_players[player_index], 0, sizeof(g_dod_players[player_index]));
+	dod_recount_players();
+}
+
+int Dod_AssignPlayerTeam(int player_index, DodTeam team)
+{
+	DodPlayerState *player;
+	if (!dod_valid_player(player_index) || team < DOD_TEAM_UNASSIGNED || team > DOD_TEAM_SPECTATOR)
+		return 0;
+	player = &g_dod_players[player_index];
+	if (!player->connected)
+		return 0;
+	player->team = team;
+	if (!dod_valid_team(team))
+		player->player_class = DOD_CLASS_NONE;
+	dod_recount_players();
+	return 1;
+}
+
+int Dod_SelectPlayerClass(int player_index, DodClass player_class)
+{
+	DodPlayerState *player;
+	if (!dod_valid_player(player_index) || player_class <= DOD_CLASS_NONE || player_class >= DOD_CLASS_COUNT)
+		return 0;
+	player = &g_dod_players[player_index];
+	if (!player->connected || !dod_valid_team(player->team))
+		return 0;
+	player->player_class = player_class;
+	return 1;
+}
+
+void Dod_RecordKill(int attacker_index, int victim_index)
+{
+	DodPlayerState *attacker = dod_valid_player(attacker_index) ? &g_dod_players[attacker_index] : 0;
+	DodPlayerState *victim = dod_valid_player(victim_index) ? &g_dod_players[victim_index] : 0;
+	if (victim && victim->connected)
+		++victim->deaths;
+	if (attacker && attacker->connected && attacker_index != victim_index) {
+		if (victim && dod_valid_team(attacker->team) && attacker->team == victim->team)
+			return;
+		++attacker->kills;
+		++attacker->objective_score;
+		dod_add_team_score(attacker->team, 1.0f);
+	}
+}
+
+const DodPlayerState *Dod_GetPlayer(int player_index)
+{
+	return dod_valid_player(player_index) ? &g_dod_players[player_index] : 0;
+}
+
+static int dod_name_equal(const char *left, const char *right)
+{
+	if (!left || !right)
+		return 0;
+	while (*left && *right) {
+		if (tolower((unsigned char)*left) != tolower((unsigned char)*right))
+			return 0;
+		++left;
+		++right;
+	}
+	return *left == '\0' && *right == '\0';
+}
+
+int Dod_TeamFromName(const char *name)
+{
+	if (dod_name_equal(name, "allies") || dod_name_equal(name, "allied"))
+		return DOD_TEAM_ALLIES;
+	if (dod_name_equal(name, "axis") || dod_name_equal(name, "german"))
+		return DOD_TEAM_AXIS;
+	if (dod_name_equal(name, "spectator") || dod_name_equal(name, "spec"))
+		return DOD_TEAM_SPECTATOR;
+	return DOD_TEAM_UNASSIGNED;
+}
+
+const char *Dod_TeamName(DodTeam team)
+{
+	switch (team) {
+	case DOD_TEAM_ALLIES: return "Allies";
+	case DOD_TEAM_AXIS: return "Axis";
+	case DOD_TEAM_SPECTATOR: return "Spectator";
+	default: return "Unassigned";
+	}
+}
+
+const char *Dod_ClassName(DodClass player_class)
+{
+	switch (player_class) {
+	case DOD_CLASS_RIFLEMAN: return "Rifleman";
+	case DOD_CLASS_ASSAULT: return "Assault";
+	case DOD_CLASS_SUPPORT: return "Support";
+	case DOD_CLASS_SNIPER: return "Sniper";
+	case DOD_CLASS_MG: return "Machine Gunner";
+	case DOD_CLASS_ROCKET: return "Rocket";
+	default: return "None";
+	}
+}
+
+void Dod_ClearObjectives(void)
+{
+	memset(g_dod_objectives, 0, sizeof(g_dod_objectives));
+	dod_recount_objectives();
+}
+
+int Dod_RegisterObjective(int id, DodObjectiveKind kind, DodTeam initial_owner,
+	float capture_seconds, float score_per_minute)
+{
+	int i;
+	DodObjectiveState *objective = dod_find_objective(id);
+	if (id < 0 || kind <= DOD_OBJ_NONE || kind > DOD_OBJ_TICK_CONTROL)
+		return 0;
+	if (!objective) {
+		for (i = 0; i < DOD_MAX_OBJECTIVES; ++i) {
+			if (!g_dod_objectives[i].active) {
+				objective = &g_dod_objectives[i];
+				break;
+			}
+		}
+	}
+	if (!objective)
+		return 0;
+	memset(objective, 0, sizeof(*objective));
+	objective->active = 1;
+	objective->id = id;
+	objective->kind = kind;
+	objective->owner = dod_valid_team(initial_owner) ? initial_owner : DOD_TEAM_UNASSIGNED;
+	objective->capture_seconds = capture_seconds > 0.0f ? capture_seconds : DOD_CAPTURE_SECONDS_DEFAULT;
+	objective->score_per_minute = score_per_minute > 0.0f ? score_per_minute : 0.0f;
+	dod_recount_objectives();
+	return 1;
+}
+
+int Dod_TickObjective(int id, int allies_inside, int axis_inside, float frametime)
+{
+	DodObjectiveState *objective = dod_find_objective(id);
+	DodTeam team = DOD_TEAM_UNASSIGNED;
+	if (!objective || frametime <= 0.0f || g_dod_state.phase != DOD_ROUND_ACTIVE)
+		return 0;
+	if (allies_inside > 0 && axis_inside <= 0)
+		team = DOD_TEAM_ALLIES;
+	else if (axis_inside > 0 && allies_inside <= 0)
+		team = DOD_TEAM_AXIS;
+	if (!dod_valid_team(team))
+		return 0;
+	if (objective->owner == team) {
+		objective->capturing_team = DOD_TEAM_UNASSIGNED;
+		objective->capture_progress = 0.0f;
+		return 0;
+	}
+	if (objective->capturing_team != team) {
+		objective->capturing_team = team;
+		objective->capture_progress = 0.0f;
+	}
+	objective->capture_progress += frametime / objective->capture_seconds;
+	if (objective->capture_progress < 1.0f)
+		return 0;
+	objective->capture_progress = 0.0f;
+	objective->capturing_team = DOD_TEAM_UNASSIGNED;
+	objective->owner = team;
+	dod_recount_objectives();
+	dod_add_team_score(team, 5.0f);
+	return 1;
+}
+
+int Dod_SetObjectiveOwner(int id, DodTeam owner)
+{
+	DodObjectiveState *objective = dod_find_objective(id);
+	if (!objective || (owner != DOD_TEAM_UNASSIGNED && !dod_valid_team(owner)))
+		return 0;
+	objective->owner = owner;
+	objective->capturing_team = DOD_TEAM_UNASSIGNED;
+	objective->capture_progress = 0.0f;
+	dod_recount_objectives();
+	return 1;
+}
+
+const DodObjectiveState *Dod_GetObjective(int id)
+{
+	return dod_find_objective(id);
 }
