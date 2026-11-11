@@ -51,5 +51,7 @@ contested objective pauses capture progress. `Dod_TickObjective` returns 1
 when ownership changes. Round scoring covers enemy kills, completed captures,
 and held objectives when the configured scoring rate is nonzero.
 
+Run the host-side rules-core checks with `python3 tests/test_dod_game.py`.
+
 Do not patch HL1 release artifacts (`halflife1.dol`, `boot.dol`, or
 `xash3d-gc.iso`) from this repository.
