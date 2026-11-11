@@ -27,19 +27,19 @@ def integrate_static_edict_gate(sv_game: Path) -> None:
 	gate = text[start:end]
 	required = (
 		'svs.maxclients <= 1',
-		'svs.maxclients <= 4',
 		'Sys_CheckParm( "-gclistenserver" )',
 		'Sys_CheckParm( "-gcworldrender" )',
 		'GC_MapLoadMemoryOpt()',
 	)
-	if all(token in gate for token in required):
+	if all(token in gate for token in required) and 'svs.maxclients <= 4' not in gate:
 		return
 
 	canonical = (
 		'if( GI->max_edicts > 0 && GI->max_edicts <= GC_SP_EDICT_CAP\n'
 		'\t\t&& ( svs.maxclients <= 1\n'
-		'\t\t\t|| ( svs.maxclients <= 4 && ( Sys_CheckParm( "-gclistenserver" )\n'
-		'\t\t\t\t|| Sys_CheckParm( "-gcworldrender" ) || GC_MapLoadMemoryOpt() )) ) )'
+		'\t\t\t|| Sys_CheckParm( "-gclistenserver" )\n'
+		'\t\t\t|| Sys_CheckParm( "-gcworldrender" )\n'
+		'\t\t\t|| GC_MapLoadMemoryOpt() ) )'
 	)
 	sv_game.write_text(text[:start] + canonical + text[end:])
 

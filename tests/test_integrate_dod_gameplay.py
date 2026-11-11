@@ -36,8 +36,20 @@ class StaticEdictGateTest(unittest.TestCase):
 
 				self.assertIn('Sys_CheckParm( "-gcworldrender" )', result)
 				self.assertIn("GC_MapLoadMemoryOpt()", result)
-				self.assertIn("svs.maxclients <= 4", result)
+				self.assertNotIn("svs.maxclients <= 4", result)
 				self.assertTrue(result.endswith(SUFFIX))
+
+	def test_menu_mapload_gate_covers_default_sixteen_clients(self):
+		with tempfile.TemporaryDirectory() as directory:
+			path = Path(directory) / "sv_game.c"
+			path.write_text(PREFIX + GATE_VARIANTS[0] + SUFFIX)
+
+			INTEGRATOR.integrate_static_edict_gate(path)
+			gate = path.read_text().split(SUFFIX, 1)[0]
+
+			self.assertIn("svs.maxclients <= 1", gate)
+			self.assertIn("|| GC_MapLoadMemoryOpt()", gate)
+			self.assertNotIn("svs.maxclients <= 4", gate)
 
 	def test_gate_integration_is_idempotent(self):
 		with tempfile.TemporaryDirectory() as directory:
