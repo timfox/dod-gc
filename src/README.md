@@ -24,14 +24,17 @@ This is an initial rules bridge, not a complete recreation of retail DoD. The
 menus are text menus, class weapons use HL1 weapon behavior, and control points
 use a fixed spherical capture area. HUD score presentation, weapon behavior,
 and objective handling can be extended without changing the rules core's
-public C API. A complete Create Game match is not verified yet: the latest
-local route now gets past the server-edict allocation and loads the DoD map and
-CapFaces pack, but does not reach a confirmed in-game frame. The newest trace
-stalls while executing `game.cfg` after `worldspawn`
-(`playtests/notes/20261110-164947-local-create-match.md`). The ordinary surface
-path also exposed a retained-BSP overlap on the low-memory Create Game route;
-map-bearing play ISOs now enable the packed BSP renderer by default, which
-selects the CapFaces lean path when the live surface table cannot fit.
+public C API. A complete Create Game match is not verified yet. The menu and
+Create Server dialog render, and recent solo listens reach signon and draw the
+DoD HUD, but the world is fragmented and the Garand viewmodel covers most of
+the screen (`playtests/screenshots/20261110-174021-ava-vm3/final.png`). The
+matching trace reports a viewmodel NDC Y span of `[-42.21, 20.76]` despite
+emitted Garand bounds of only `9×27×9` world units. Earlier Create Game runs
+also recorded a 1.72 MiB BSP-surface allocation failure or a DSI after map
+startup. The ordinary surface path exposed a retained-BSP overlap on the
+low-memory Create Game route; map-bearing play ISOs now enable the packed BSP
+renderer by default, which selects the CapFaces lean path when the live
+surface table cannot fit.
 
 ## Build integration
 
