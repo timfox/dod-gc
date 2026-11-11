@@ -261,48 +261,9 @@ def main() -> int:
 		)
 		studio = args.engine_dir / "ref/gx/r_studio.c"
 		studio_text = studio.read_text()
-		# forward=16/up=+8 — sticky mid-idle; avoid fwd=36 pillar / f=0 freeze.
-		if "G162 viewmodel frame offset forward=16 up=+8" not in studio_text:
-			for old_up, old_msg in (
-				(
-					'\t\t\tVectorMA( view->origin, 12.0f, RI.vforward, view->origin );\n'
-					'\t\t\tVectorMA( view->origin, 10.0f, RI.vup, view->origin );\n',
-					'Xash3D GameCube: G162 viewmodel frame offset forward=12 up=+10\\n',
-				),
-				(
-					'\t\t\tVectorMA( view->origin, 36.0f, RI.vforward, view->origin );\n'
-					'\t\t\tVectorMA( view->origin, 2.0f, RI.vup, view->origin );\n',
-					'Xash3D GameCube: G162 viewmodel frame offset forward=36 up=+2\\n',
-				),
-				(
-					'\t\t\tVectorMA( view->origin, 30.0f, RI.vforward, view->origin );\n'
-					'\t\t\tVectorMA( view->origin, 2.0f, RI.vup, view->origin );\n',
-					'Xash3D GameCube: G162 viewmodel frame offset forward=30 up=+2\\n',
-				),
-				(
-					'\t\t\tVectorMA( view->origin, 32.0f, RI.vforward, view->origin );\n'
-					'\t\t\tVectorMA( view->origin, 2.0f, RI.vup, view->origin );\n',
-					'Xash3D GameCube: G162 viewmodel frame offset forward=32 up=+2\\n',
-				),
-				(
-					'\t\t\tVectorMA( view->origin, 42.0f, RI.vforward, view->origin );\n'
-					'\t\t\tVectorMA( view->origin, 1.0f, RI.vup, view->origin );\n',
-					'Xash3D GameCube: G162 viewmodel frame offset forward=42 up=+1\\n',
-				),
-			):
-				if old_up in studio_text:
-					replace_once(
-						studio,
-						old_up,
-						'\t\t\tVectorMA( view->origin, 16.0f, RI.vforward, view->origin );\n'
-						'\t\t\tVectorMA( view->origin, 8.0f, RI.vup, view->origin );\n',
-					)
-					replace_once(
-						studio,
-						old_msg,
-						'Xash3D GameCube: G162 viewmodel frame offset forward=16 up=+8\\n',
-					)
-					break
+		# Engine StudioDraw + fwd=36 framed NDC (ava-play99-69/71).
+		if "G162 viewmodel frame offset forward=36 up=+2" not in studio_text:
+			pass
 		studio_text = studio.read_text()
 		image = args.engine_dir / "ref/gx/r_image.c"
 		image_text = image.read_text()
