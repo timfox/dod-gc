@@ -259,31 +259,6 @@ def main() -> int:
 			'\t/* GC_MemHeapMark records usage without walking every pool. Mem_PrintStats\n'
 			'\t * runs Mem_Check and can stop menu handoff on unrelated tiny-pool sentinels. */\n',
 		)
-		studio = args.engine_dir / "ref/gx/r_studio.c"
-		studio_text = studio.read_text()
-		if "G162 viewmodel frame offset forward=30 up=-5" not in studio_text:
-			replace_once(
-				studio,
-				'\t/* G157: no client CalcRefdef — pin gun to the current eye every draw.\n'
-				'\t * G162: HL viewmesh extends below the frustum at raw eye pose\n'
-				'\t * (ndc mid≈-2); nudge forward+up so a useful band sits in the lower third. */\n',
-				'\t/* G157: no client CalcRefdef — pin gun to the current eye every draw.\n'
-				'\t * DoD rifle meshes are much longer than HL pistols and intersect the GX\n'
-				'\t * near plane at the old +5/+12 offset. Move them forward and lower them\n'
-				'\t * into the conventional lower-third viewmodel band. */\n',
-			)
-			replace_once(
-				studio,
-				'\t\t\tVectorMA( view->origin, 5.0f, RI.vforward, view->origin );\n'
-				'\t\t\tVectorMA( view->origin, 12.0f, RI.vup, view->origin );\n',
-				'\t\t\tVectorMA( view->origin, 30.0f, RI.vforward, view->origin );\n'
-				'\t\t\tVectorMA( view->origin, -5.0f, RI.vup, view->origin );\n',
-			)
-			replace_once(
-				studio,
-				'Xash3D GameCube: G162 viewmodel frame offset forward=5 up=12\\n',
-				'Xash3D GameCube: G162 viewmodel frame offset forward=30 up=-5\\n',
-			)
 		image = args.engine_dir / "ref/gx/r_image.c"
 		image_text = image.read_text()
 		if "selected Garand/MP40 does not collapse" not in image_text:
