@@ -174,17 +174,18 @@ done
 (( READY )) || { echo "==> menu not ready" >&2; cp -f "$LOG" "$SHOT_DIR/dolphin.log"; exit 1; }
 sleep 3
 
-python3 - "$SHOT_DIR" "$PIPE" "$LOG" <<'PY'
+python3 - "$SHOT_DIR" "$PIPE" "$LOG" "$DPID" <<'PY'
 import os, sys, time, subprocess
 from pathlib import Path
 
 shot_dir = Path(sys.argv[1])
 pipe_path = Path(sys.argv[2])
 log_path = Path(sys.argv[3])
+emulator_pid = int(sys.argv[4])
 
 def find_gc_window():
     out = subprocess.check_output(["xwininfo", "-root", "-tree"], text=True, errors="replace")
-    best = fallback = None
+    candidates = []
     for line in out.splitlines():
         if '("dolphin-emu" "GameCube")' not in line:
             continue
@@ -192,13 +193,18 @@ def find_gc_window():
         if not parts or not parts[0].startswith("0x"):
             continue
         wid = int(parts[0], 16)
-        if "640x480" in line or "854x480" in line:
-            return wid
-        if "800x600" in line:
-            fallback = wid
+        try:
+            prop = subprocess.check_output(
+                ["xprop", "-id", hex(wid), "_NET_WM_PID"],
+                text=True, stderr=subprocess.DEVNULL)
+        except subprocess.CalledProcessError:
             continue
-        best = wid
-    return best or fallback
+        if f"= {emulator_pid}" not in prop:
+            continue
+        rank = 2 if "640x480" in line or "854x480" in line else 1 if "800x600" in line else 0
+        candidates.append((rank, wid))
+    candidates = [candidate for candidate in candidates if candidate[0] > 0]
+    return max(candidates)[1] if candidates else None
 
 def grab(name):
     wid = find_gc_window()
@@ -272,7 +278,10 @@ while time.time() < deadline:
         if b"FATAL" in raw or b"fatal message" in raw or b"fatal breadcrumb" in raw or b"out of memory" in raw:
             break
         if b"Game started" in raw or b"MAP READY" in raw or b"map loaded" in raw:
-            time.sleep(2.5)
+            # Server activation precedes client sign-on and the first playable
+            # frame. Keep Dolphin alive long enough to capture the actual
+            # world/HUD transition rather than the transient loading panel.
+            time.sleep(12)
             break
     time.sleep(0.5)
 

@@ -4,6 +4,19 @@ Screenshots: `playtests/screenshots/` · Videos: `playtests/videos/` · Notes: `
 
 | Date | File | Route | Duration | Size | Commit |
 |------|------|-------|----------|------|--------|
+| 2026-11-10T17:25:58 | `20261110-172558-local-create-match-abc7e9cb49.mp4` | local-create-match | 33.1s | 0.8 MB | `abc7e9cb49` |
+| 2026-11-10T17:24:49 | `20261110-172449-ava-playable2-abc7e9cb49.mp4` | ava-playable2 | 100.1s | 2.0 MB | `abc7e9cb49` |
+| 2026-11-10T17:24:08 | `20261110-172408-local-create-match-abc7e9cb49.mp4` | local-create-match | 32.6s | 0.4 MB | `abc7e9cb49` |
+| 2026-11-10T17:20:26 | `20261110-172026-local-create-match-abc7e9cb49.mp4` | local-create-match | 33.3s | 0.5 MB | `abc7e9cb49` |
+| 2026-11-10T17:19:57 | `20261110-171957-ava-playable-abc7e9cb49.mp4` | ava-playable | 100.0s | 0.9 MB | `abc7e9cb49` |
+| 2026-11-10T17:17:33 | `20261110-171733-local-create-match-abc7e9cb49.mp4` | local-create-match | 95.0s | 1.8 MB | `abc7e9cb49` |
+| 2026-11-10T17:16:02 | `20261110-171602-local-create-match-abc7e9cb49.mp4` | local-create-match | 32.5s | 0.4 MB | `abc7e9cb49` |
+| 2026-11-10T17:14:47 | `20261110-171447-local-create-match-abc7e9cb49.mp4` | local-create-match | 32.6s | 0.4 MB | `abc7e9cb49` |
+| 2026-11-10T17:13:23 | `20261110-171323-local-create-match-abc7e9cb49.mp4` | local-create-match | 32.5s | 0.4 MB | `abc7e9cb49` |
+| 2026-11-10T17:11:02 | `20261110-171102-local-create-match-abc7e9cb49.mp4` | local-create-match | 32.5s | 0.4 MB | `abc7e9cb49` |
+| 2026-11-10T17:08:27 | `20261110-170827-local-create-match-abc7e9cb49.mp4` | local-create-match | 23.1s | 0.3 MB | `abc7e9cb49` |
+| 2026-11-10T17:06:36 | `20261110-170636-local-create-match-abc7e9cb49.mp4` | local-create-match | 23.0s | 0.4 MB | `abc7e9cb49` |
+| 2026-11-10T17:00:50 | `20261110-170050-local-create-match-abc7e9cb49.mp4` | local-create-match | 23.1s | 0.4 MB | `abc7e9cb49` |
 | 2026-11-10T16:49:48 | `20261110-164948-local-create-match-5bc094af4b.mp4` | local-create-match | 95.5s | 0.4 MB | `5bc094af4b` |
 | 2026-11-10T16:47:17 | `20261110-164717-local-create-match-5bc094af4b.mp4` | local-create-match | 2.5s | 0.0 MB | `5bc094af4b` |
 | 2026-11-10T16:45:52 | `20261110-164552-local-create-match-5bc094af4b.mp4` | local-create-match | 22.1s | 0.4 MB | `5bc094af4b` |
