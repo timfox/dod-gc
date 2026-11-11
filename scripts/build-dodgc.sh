@@ -15,7 +15,7 @@ usage: scripts/build-dodgc.sh [options]
   --dol-only     build/link dodgc.dol only (skip ISO)
   --iso-only     package out/dodgc.iso from an existing out/dodgc.dol
   --skip-hlsdk   skip HLSDK archive rebuild (use existing engine OUT/hlsdk-gamecube/dod)
-  --play         stamp play-oriented gamecube.cfg on the disc
+  --play         stamp play-oriented gamecube.cfg with BSP world rendering
   --smoke MAP    lean smoke disc for MAP (e.g. dod_avalanche)
   -h, --help     this help
 
@@ -149,7 +149,7 @@ DISC_ARGS=(
 	--gamedir dod
 )
 if (( PLAY )); then
-	DISC_ARGS+=(--play)
+	DISC_ARGS+=(--play --world-render)
 fi
 if [[ -n "$SMOKE_MAP" ]]; then
 	DISC_ARGS+=(--smoke-map "$SMOKE_MAP")

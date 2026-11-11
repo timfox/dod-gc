@@ -25,8 +25,13 @@ menus are text menus, class weapons use HL1 weapon behavior, and control points
 use a fixed spherical capture area. HUD score presentation, weapon behavior,
 and objective handling can be extended without changing the rules core's
 public C API. A complete Create Game match is not verified yet: the latest
-checked-in local-match trace stops on a 361.17 KiB server allocation in
-`engine/server/sv_game.c` (`playtests/notes/20261110-155327-local-create-match.md`).
+local route now gets past the server-edict allocation and loads the DoD map and
+CapFaces pack, but does not reach a confirmed in-game frame. The newest trace
+stalls while executing `game.cfg` after `worldspawn`
+(`playtests/notes/20261110-164947-local-create-match.md`). The ordinary surface
+path also exposed a retained-BSP overlap on the low-memory Create Game route;
+map-bearing play ISOs now enable the packed BSP renderer by default, which
+selects the CapFaces lean path when the live surface table cannot fit.
 
 ## Build integration
 

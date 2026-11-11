@@ -62,11 +62,14 @@ scripts/probe-playtest.sh --route menu --duration 30 out/dodgc-menu.iso
 
 # Interactive playtest (optional --duration auto-quit)
 scripts/playtest.sh --shot --duration 60 --note "first DoD boot smoke"
+# Familiar Dolphin launcher name; --build packages the current map/menu first
+scripts/play-dolphin.sh --build
 scripts/capture-progress.sh --screenshot "menu chrome matches retail"
 
-# Lean MEM1 discs (logo fix + optional single map)
+# Lean MEM1 discs (map-bearing play builds enable BSP world rendering by default)
 scripts/build-lean-iso.sh
 scripts/build-lean-iso.sh --smoke stalkyard   # HL DM map under dod gamedir
+scripts/build-lean-iso.sh --no-world-render   # diagnostics only
 ```
 
 - Videos → `playtests/videos/*.mp4` + `.json` sidecars  
