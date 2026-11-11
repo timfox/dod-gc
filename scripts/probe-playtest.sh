@@ -168,9 +168,9 @@ fi
 grab() {
 	local name=$1
 	local win=""
-	win="$(python3 - "$DPID" <<'PY'
+	win="$(python3 - "$USER_DIR" <<'PY'
 import subprocess, sys
-pid = int(sys.argv[1])
+user_dir = sys.argv[1]
 tree = subprocess.run(["xwininfo", "-root", "-tree"], text=True, capture_output=True).stdout
 candidates = []
 for line in tree.splitlines():
@@ -183,7 +183,13 @@ for line in tree.splitlines():
         continue
     wid = int(parts[0], 16)
     prop = subprocess.run(["xprop", "-id", hex(wid), "_NET_WM_PID"], text=True, capture_output=True).stdout
-    if f"= {pid}" in prop:
+    try:
+        owner = int(prop.split("=", 1)[1].strip())
+    except (IndexError, ValueError):
+        continue
+    args = subprocess.run(["ps", "-p", str(owner), "-o", "args="], text=True,
+                          capture_output=True).stdout
+    if user_dir in args:
         candidates.append(wid)
 if candidates:
     print(hex(candidates[-1]))

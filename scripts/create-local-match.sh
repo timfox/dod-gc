@@ -180,14 +180,14 @@ done
 (( READY )) || { echo "==> menu not ready" >&2; cp -f "$LOG" "$SHOT_DIR/dolphin.log"; exit 1; }
 sleep 3
 
-python3 - "$SHOT_DIR" "$PIPE" "$LOG" "$DPID" <<'PY'
+python3 - "$SHOT_DIR" "$PIPE" "$LOG" "$USER_DIR" <<'PY'
 import os, sys, time, subprocess
 from pathlib import Path
 
 shot_dir = Path(sys.argv[1])
 pipe_path = Path(sys.argv[2])
 log_path = Path(sys.argv[3])
-emulator_pid = int(sys.argv[4])
+user_dir = sys.argv[4]
 
 def find_gc_window():
     out = subprocess.check_output(["xwininfo", "-root", "-tree"], text=True, errors="replace")
@@ -208,7 +208,13 @@ def find_gc_window():
                 text=True, stderr=subprocess.DEVNULL)
         except subprocess.CalledProcessError:
             continue
-        if f"= {emulator_pid}" not in prop:
+        try:
+            owner = int(prop.split("=", 1)[1].strip())
+        except (IndexError, ValueError):
+            continue
+        args = subprocess.run(["ps", "-p", str(owner), "-o", "args="], text=True,
+                              capture_output=True, check=False).stdout
+        if user_dir not in args:
             continue
         # Dolphin's 800x600 window is the launcher, not the guest framebuffer.
         # Never save it as if it showed the GameCube menu/game.
