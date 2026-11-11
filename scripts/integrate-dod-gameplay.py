@@ -44,6 +44,27 @@ def integrate_static_edict_gate(sv_game: Path) -> None:
 	sv_game.write_text(text[:start] + canonical + text[end:])
 
 
+def integrate_heap_tip_gate(sv_game: Path) -> None:
+	"""Lower the entity heap-tip threshold to 2 KiB on dod_ maps.
+
+	Prefer the CapFaces worldspawn-safe gate (entity_index > 1); fall back to
+	the older tip check if a tree still has the pre-kraftstoff form.
+	"""
+	dod_threshold = (
+		'GC_MemHeapFreeBytes() <\n'
+		'\t\t\t\t( !Q_strnicmp( sv.name, "dod_", 4 ) ? 2u * 1024u : 8u * 1024u ))\n'
+	)
+	for guard in ('if( entity_index > 1 && ', 'if( '):
+		if f'\t\t\t{guard}{dod_threshold}' in sv_game.read_text():
+			return
+	for guard in ('if( entity_index > 1 && ', 'if( '):
+		old = f'\t\t\t{guard}GC_MemHeapFreeBytes() < ( 8u * 1024u ))\n'
+		if old in sv_game.read_text():
+			replace_once(sv_game, old, f'\t\t\t{guard}{dod_threshold}')
+			return
+	raise SystemExit(f"heap tip gate not found in {sv_game}")
+
+
 def integrate_weapon(path: Path, class_name: str, kind: str, deploy_anim: str,
 					 event: str, legacy_model: str, models: str) -> None:
 	text = path.read_text()
@@ -199,16 +220,7 @@ def main() -> int:
 			'\tif( cls.key_dest == key_console )\n',
 		)
 		sv_game = args.engine_dir / "engine/server/sv_game.c"
-		# Prefer the CapFaces worldspawn-safe gate (entity_index > 1); fall back
-		# to the older tip check if a tree still has the pre-kraftstoff form.
-		if '\t\t\tif( entity_index > 1 && GC_MemHeapFreeBytes() <\n' \
-			'\t\t\t\t( !Q_strnicmp( sv.name, "dod_", 4 ) ? 2u * 1024u : 8u * 1024u ))\n' not in sv_game.read_text():
-			replace_once(
-				sv_game,
-				'\t\t\tif( entity_index > 1 && GC_MemHeapFreeBytes() < ( 8u * 1024u ))\n',
-				'\t\t\tif( entity_index > 1 && GC_MemHeapFreeBytes() <\n'
-				'\t\t\t\t( !Q_strnicmp( sv.name, "dod_", 4 ) ? 2u * 1024u : 8u * 1024u ))\n',
-			)
+		integrate_heap_tip_gate(sv_game)
 		replace_once(
 			sv_game,
 			'\tif( bytes > GC_ENTITY_OVERFLOW_BYTES ) bytes = GC_ENTITY_OVERFLOW_BYTES;\n',

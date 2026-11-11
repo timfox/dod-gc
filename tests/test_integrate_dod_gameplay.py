@@ -63,5 +63,35 @@ class StaticEdictGateTest(unittest.TestCase):
 			self.assertEqual(path.read_text(), first)
 
 
+class HeapTipGateTest(unittest.TestCase):
+	DOD = ('GC_MemHeapFreeBytes() <\n'
+		'\t\t\t\t( !Q_strnicmp( sv.name, "dod_", 4 ) ? 2u * 1024u : 8u * 1024u ))\n')
+
+	def run_gate(self, body):
+		with tempfile.TemporaryDirectory() as directory:
+			path = Path(directory) / "sv_game.c"
+			path.write_text(body)
+			INTEGRATOR.integrate_heap_tip_gate(path)
+			first = path.read_text()
+			INTEGRATOR.integrate_heap_tip_gate(path)
+			self.assertEqual(path.read_text(), first)
+			return first
+
+	def test_worldspawn_safe_gate(self):
+		result = self.run_gate("\t\t\tif( entity_index > 1 && GC_MemHeapFreeBytes() < ( 8u * 1024u ))\n")
+		self.assertEqual(result, "\t\t\tif( entity_index > 1 && " + self.DOD)
+
+	def test_pre_kraftstoff_gate_falls_back(self):
+		result = self.run_gate("\t\t\tif( GC_MemHeapFreeBytes() < ( 8u * 1024u ))\n")
+		self.assertEqual(result, "\t\t\tif( " + self.DOD)
+
+	def test_missing_gate_fails_loudly(self):
+		with tempfile.TemporaryDirectory() as directory:
+			path = Path(directory) / "sv_game.c"
+			path.write_text("int unrelated;\n")
+			with self.assertRaises(SystemExit):
+				INTEGRATOR.integrate_heap_tip_gate(path)
+
+
 if __name__ == "__main__":
 	unittest.main()
