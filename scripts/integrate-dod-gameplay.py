@@ -212,6 +212,28 @@ def main() -> int:
 					'\t\t\t|| ( svs.maxclients <= 4 && ( Sys_CheckParm( "-gclistenserver" )\n'
 					'\t\t\t\t|| Sys_CheckParm( "-gcworldrender" ) )) ) )\n',
 				)
+		bmodel = args.engine_dir / "engine/common/mod_bmodel.c"
+		bmodel_text = bmodel.read_text()
+		node_spill = 'Mod_GCWorldArraySpillTryAlloc( node_bytes, "nodes" )'
+		if node_spill not in bmodel_text:
+			replace_once(
+				bmodel,
+				'\t\t\tif( !out )\n'
+				'\t\t\t{\n'
+				'\t\t\t\tout = (mnode_t *)malloc( node_bytes );\n',
+				'\t\t\tif( !out )\n'
+				'\t\t\t{\n'
+				'\t\t\t\tout = (mnode_t *)Mod_GCWorldArraySpillTryAlloc( node_bytes, "nodes" );\n'
+				'\t\t\t\tif( out )\n'
+				'\t\t\t\t{\n'
+				'\t\t\t\t\tmemset( out, 0, node_bytes );\n'
+				'\t\t\t\t\tgc_world_blocks_owner = mod;\n'
+				'\t\t\t\t}\n'
+				'\t\t\t}\n'
+				'\t\t\tif( !out )\n'
+				'\t\t\t{\n'
+				'\t\t\t\tout = (mnode_t *)malloc( node_bytes );\n',
+			)
 		model = args.engine_dir / "engine/common/model.c"
 		# Already deferred (empty promote) — nothing to patch.
 		model_text = model.read_text()

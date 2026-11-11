@@ -24,17 +24,23 @@ This is an initial rules bridge, not a complete recreation of retail DoD. The
 menus are text menus, class weapons use HL1 weapon behavior, and control points
 use a fixed spherical capture area. HUD score presentation, weapon behavior,
 and objective handling can be extended without changing the rules core's
-public C API. A complete Create Game match is not verified yet. The menu and
-Create Server dialog render, and recent solo listens reach signon and draw the
-DoD HUD, but the world is fragmented and the Garand viewmodel covers most of
-the screen (`playtests/screenshots/20261110-174021-ava-vm3/final.png`). The
-matching trace reports a viewmodel NDC Y span of `[-42.21, 20.76]` despite
-emitted Garand bounds of only `9×27×9` world units. Earlier Create Game runs
-also recorded a 1.72 MiB BSP-surface allocation failure or a DSI after map
-startup. The ordinary surface path exposed a retained-BSP overlap on the
-low-memory Create Game route; map-bearing play ISOs now enable the packed BSP
-renderer by default, which selects the CapFaces lean path when the live
-surface table cannot fit.
+public C API. A complete Create Game match is not verified yet. A two-slot
+`dod_avalanche` listen-server probe now reaches map load and local signon using
+static edicts and the reserved BSP storage path
+(`playtests/notes/20261110-185733-node-spill-ava.md`). This is the explicit
+listen-server boot route; the ordinary two-player Create Game menu route still
+needs a clean runtime capture.
+
+The Garand viewmodel is now textured and framed in the lower center of the
+screen in the latest valid in-game capture
+(`playtests/screenshots/20261110-182518-ava-vm15/final.png`). The world behind
+it remains visibly fragmented, with large missing or misplaced surfaces, so
+this is not yet a playable-world claim. The recent node-storage fallback
+clears the 412.95 KiB `dod_avalanche` allocation failure. An earlier 1.72 MiB
+BSP-surface allocation failure and a DSI after map startup have not yet been
+retested. Map-bearing play ISOs enable the packed BSP renderer by default so
+low-memory loads can select the CapFaces path when the live surface table
+cannot fit.
 
 ## Build integration
 

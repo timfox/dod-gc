@@ -210,7 +210,9 @@ def find_gc_window():
             continue
         if f"= {emulator_pid}" not in prop:
             continue
-        rank = 2 if "640x480" in line or "854x480" in line else 1 if "800x600" in line else 0
+        # Dolphin's 800x600 window is the launcher, not the guest framebuffer.
+        # Never save it as if it showed the GameCube menu/game.
+        rank = 2 if "640x480" in line or "854x480" in line else 0
         candidates.append((rank, wid))
     candidates = [candidate for candidate in candidates if candidate[0] > 0]
     return max(candidates)[1] if candidates else None

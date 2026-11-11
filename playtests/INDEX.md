@@ -4,6 +4,13 @@ Screenshots: `playtests/screenshots/` · Videos: `playtests/videos/` · Notes: `
 
 | Date | File | Route | Duration | Size | Commit |
 |------|------|-------|----------|------|--------|
+| 2026-11-10T19:00:58 | `20261110-190058-ava-fullbsp7-41fd311a21.mp4` | ava-fullbsp7 | 100.0s | 1.4 MB | `41fd311a21` |
+| 2026-11-10T18:57:57 | `20261110-185757-ava-fullbsp6-41fd311a21.mp4` | ava-fullbsp6 | 110.6s | 1.3 MB | `41fd311a21` |
+| 2026-11-10T18:53:57 | `20261110-185357-ava-fullbsp5-41fd311a21.mp4` | ava-fullbsp5 | 110.0s | 1.5 MB | `41fd311a21` |
+| 2026-11-10T18:49:12 | `20261110-184912-ava-fullbsp4-41fd311a21.mp4` | ava-fullbsp4 | 109.5s | 1.5 MB | `41fd311a21` |
+| 2026-11-10T18:46:14 | `20261110-184614-ava-fullbsp3-41fd311a21.mp4` | ava-fullbsp3 | 111.1s | 2.1 MB | `41fd311a21` |
+| 2026-11-10T18:42:06 | `20261110-184206-ava-fullbsp2-599494ad0d.mp4` | ava-fullbsp2 | 110.0s | 2.4 MB | `599494ad0d` |
+| 2026-11-10T18:41:15 | `20261110-184115-local-create-match-599494ad0d.mp4` | local-create-match | 95.6s | 0.2 MB | `599494ad0d` |
 | 2026-11-10T18:39:31 | `20261110-183931-ava-fullbsp-599494ad0d.mp4` | ava-fullbsp | 100.1s | 2.2 MB | `599494ad0d` |
 | 2026-11-10T18:37:06 | `20261110-183706-hlsdk-mp-tour-599494ad0d.mp4` | hlsdk-mp-tour | 29.0s | 0.2 MB | `599494ad0d` |
 | 2026-11-10T18:27:57 | `20261110-182757-ava-vm16-599494ad0d.mp4` | ava-vm16 | 99.6s | 2.2 MB | `599494ad0d` |
