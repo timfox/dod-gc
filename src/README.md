@@ -24,8 +24,11 @@ This is an initial rules bridge, not a complete recreation of retail DoD. The
 menus are text menus, class weapons use HL1 weapon behavior, and control points
 use a fixed spherical capture area. HUD score presentation, weapon behavior,
 and objective handling can be extended without changing the rules core's
-public C API. A complete Create Game match is not verified yet. The small-map
-listen-server probe reaches map load and local signon using static edicts.
+public C API. A complete Create Game match is not verified yet. A small-map
+listen-server probe from the linked, in-progress engine checkout reached map
+load and local signon using static edicts. The isolated engine PR build also
+selects the static pool, but its current Dolphin run stalls during early map
+setup and ends in a DSI before map-ready; that build is not gameplay-verified.
 `dod_avalanche` remains blocked: an 800 KiB spill build fails while reloading
 the 190.59 KiB BSP node lump; a 960 KiB experimental build reaches signon but
 crashes during the ordinary intro/menu boot before `gc_menu_ready`. Neither
