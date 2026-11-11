@@ -16,6 +16,34 @@ def replace_once(path: Path, old: str, new: str) -> None:
 	path.write_text(text.replace(old, new, 1))
 
 
+def integrate_static_edict_gate(sv_game: Path) -> None:
+	"""Use BSS edicts during interactive menu map loads on GameCube."""
+	text = sv_game.read_text()
+	start = text.find('if( GI->max_edicts > 0 && GI->max_edicts <= GC_SP_EDICT_CAP')
+	end = text.find('\n\t{', start)
+	if start < 0 or end < 0:
+		raise SystemExit(f"static edict gate not found in {sv_game}")
+
+	gate = text[start:end]
+	required = (
+		'svs.maxclients <= 1',
+		'svs.maxclients <= 4',
+		'Sys_CheckParm( "-gclistenserver" )',
+		'Sys_CheckParm( "-gcworldrender" )',
+		'GC_MapLoadMemoryOpt()',
+	)
+	if all(token in gate for token in required):
+		return
+
+	canonical = (
+		'if( GI->max_edicts > 0 && GI->max_edicts <= GC_SP_EDICT_CAP\n'
+		'\t\t&& ( svs.maxclients <= 1\n'
+		'\t\t\t|| ( svs.maxclients <= 4 && ( Sys_CheckParm( "-gclistenserver" )\n'
+		'\t\t\t\t|| Sys_CheckParm( "-gcworldrender" ) || GC_MapLoadMemoryOpt() )) ) )'
+	)
+	sv_game.write_text(text[:start] + canonical + text[end:])
+
+
 def integrate_weapon(path: Path, class_name: str, kind: str, deploy_anim: str,
 					 event: str, legacy_model: str, models: str) -> None:
 	text = path.read_text()
@@ -190,50 +218,7 @@ def main() -> int:
 			'\tif( !Q_strnicmp( sv.name, "dod_", 4 ) && bytes > 8u * 1024u )\n'
 			'\t\tbytes = 8u * 1024u;\n',
 		)
-		sv_game_text = sv_game.read_text()
-		gate_start = sv_game_text.find(
-			'if( GI->max_edicts > 0 && GI->max_edicts <= GC_SP_EDICT_CAP')
-		gate_end = sv_game_text.find('\n\t{', gate_start)
-		gate = sv_game_text[gate_start:gate_end] if gate_start >= 0 and gate_end >= 0 else ''
-		if gate and '"-gcworldrender"' not in gate:
-			if 'GC_MapLoadMemoryOpt()' in gate:
-				replace_once(
-					sv_game,
-					'\t\t\t|| ( svs.maxclients <= 4\n'
-					'\t\t\t\t&& ( Sys_CheckParm( "-gclistenserver" ) || GC_MapLoadMemoryOpt() )) ) )\n',
-					'\t\t\t|| ( svs.maxclients <= 4\n'
-					'\t\t\t\t&& ( Sys_CheckParm( "-gclistenserver" )\n'
-					'\t\t\t\t\t|| Sys_CheckParm( "-gcworldrender" ) || GC_MapLoadMemoryOpt() )) ) )\n',
-				)
-			else:
-				replace_once(
-					sv_game,
-					'\t\t\t|| ( svs.maxclients <= 4 && Sys_CheckParm( "-gclistenserver" )) ) )\n',
-					'\t\t\t|| ( svs.maxclients <= 4 && ( Sys_CheckParm( "-gclistenserver" )\n'
-					'\t\t\t\t|| Sys_CheckParm( "-gcworldrender" ) )) ) )\n',
-				)
-		bmodel = args.engine_dir / "engine/common/mod_bmodel.c"
-		bmodel_text = bmodel.read_text()
-		node_spill = 'Mod_GCWorldArraySpillTryAlloc( node_bytes, "nodes" )'
-		if node_spill not in bmodel_text:
-			replace_once(
-				bmodel,
-				'\t\t\tif( !out )\n'
-				'\t\t\t{\n'
-				'\t\t\t\tout = (mnode_t *)malloc( node_bytes );\n',
-				'\t\t\tif( !out )\n'
-				'\t\t\t{\n'
-				'\t\t\t\tout = (mnode_t *)Mod_GCWorldArraySpillTryAlloc( node_bytes, "nodes" );\n'
-				'\t\t\t\tif( out )\n'
-				'\t\t\t\t{\n'
-				'\t\t\t\t\tmemset( out, 0, node_bytes );\n'
-				'\t\t\t\t\tgc_world_blocks_owner = mod;\n'
-				'\t\t\t\t}\n'
-				'\t\t\t}\n'
-				'\t\t\tif( !out )\n'
-				'\t\t\t{\n'
-				'\t\t\t\tout = (mnode_t *)malloc( node_bytes );\n',
-			)
+		integrate_static_edict_gate(sv_game)
 		model = args.engine_dir / "engine/common/model.c"
 		# Already deferred (empty promote) — nothing to patch.
 		model_text = model.read_text()
