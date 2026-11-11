@@ -10,8 +10,14 @@ ISO="${1:-$DODGC_OUT/dodgc-menu.iso}"
 [[ -f "$ISO" ]] || ISO="$DODGC_ISO"
 [[ -f "$ISO" ]] || { echo "error: ISO not found" >&2; exit 1; }
 
-DOLPHIN=""
-if [[ -x "$DODGC_ENGINE/3rdparty/dolphin/build/Binaries/dolphin-emu" ]]; then
+DOLPHIN="${DODGC_DOLPHIN_BIN:-}"
+if [[ -n "$DOLPHIN" && ! -x "$DOLPHIN" ]]; then
+	echo "error: DODGC_DOLPHIN_BIN is not executable: $DOLPHIN" >&2
+	exit 2
+fi
+if [[ -n "$DOLPHIN" ]]; then
+	:
+elif [[ -x "$DODGC_ENGINE/3rdparty/dolphin/build/Binaries/dolphin-emu" ]]; then
 	DOLPHIN="$DODGC_ENGINE/3rdparty/dolphin/build/Binaries/dolphin-emu"
 elif command -v dolphin-emu >/dev/null 2>&1; then
 	DOLPHIN="$(command -v dolphin-emu)"

@@ -4,6 +4,13 @@ Screenshots: `playtests/screenshots/` · Videos: `playtests/videos/` · Notes: `
 
 | Date | File | Route | Duration | Size | Commit |
 |------|------|-------|----------|------|--------|
+| 2026-11-10T18:39:31 | `20261110-183931-ava-fullbsp-599494ad0d.mp4` | ava-fullbsp | 100.1s | 2.2 MB | `599494ad0d` |
+| 2026-11-10T18:37:06 | `20261110-183706-hlsdk-mp-tour-599494ad0d.mp4` | hlsdk-mp-tour | 29.0s | 0.2 MB | `599494ad0d` |
+| 2026-11-10T18:27:57 | `20261110-182757-ava-vm16-599494ad0d.mp4` | ava-vm16 | 99.6s | 2.2 MB | `599494ad0d` |
+| 2026-11-10T18:25:19 | `20261110-182519-ava-vm15-599494ad0d.mp4` | ava-vm15 | 100.6s | 1.2 MB | `599494ad0d` |
+| 2026-11-10T18:22:21 | `20261110-182221-ava-vm14-599494ad0d.mp4` | ava-vm14 | 96.1s | 1.1 MB | `599494ad0d` |
+| 2026-11-10T18:22:08 | `20261110-182208-local-create-match-599494ad0d.mp4` | local-create-match | 95.6s | 0.2 MB | `599494ad0d` |
+| 2026-11-10T18:20:15 | `20261110-182015-ava-vm13-a65951456f.mp4` | ava-vm13 | 94.5s | 1.1 MB | `a65951456f` |
 | 2026-11-10T18:18:02 | `20261110-181802-ava-vm12b-a65951456f.mp4` | ava-vm12b | 96.1s | 0.1 MB | `a65951456f` |
 | 2026-11-10T18:17:54 | `20261110-181754-local-create-match-a65951456f.mp4` | local-create-match | 95.5s | 0.2 MB | `a65951456f` |
 | 2026-11-10T18:17:20 | `20261110-181720-local-create-match-a65951456f.mp4` | local-create-match | 16.8s | 0.4 MB | `a65951456f` |

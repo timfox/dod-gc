@@ -190,6 +190,28 @@ def main() -> int:
 			'\tif( !Q_strnicmp( sv.name, "dod_", 4 ) && bytes > 8u * 1024u )\n'
 			'\t\tbytes = 8u * 1024u;\n',
 		)
+		sv_game_text = sv_game.read_text()
+		gate_start = sv_game_text.find(
+			'if( GI->max_edicts > 0 && GI->max_edicts <= GC_SP_EDICT_CAP')
+		gate_end = sv_game_text.find('\n\t{', gate_start)
+		gate = sv_game_text[gate_start:gate_end] if gate_start >= 0 and gate_end >= 0 else ''
+		if gate and '"-gcworldrender"' not in gate:
+			if 'GC_MapLoadMemoryOpt()' in gate:
+				replace_once(
+					sv_game,
+					'\t\t\t|| ( svs.maxclients <= 4\n'
+					'\t\t\t\t&& ( Sys_CheckParm( "-gclistenserver" ) || GC_MapLoadMemoryOpt() )) ) )\n',
+					'\t\t\t|| ( svs.maxclients <= 4\n'
+					'\t\t\t\t&& ( Sys_CheckParm( "-gclistenserver" )\n'
+					'\t\t\t\t\t|| Sys_CheckParm( "-gcworldrender" ) || GC_MapLoadMemoryOpt() )) ) )\n',
+				)
+			else:
+				replace_once(
+					sv_game,
+					'\t\t\t|| ( svs.maxclients <= 4 && Sys_CheckParm( "-gclistenserver" )) ) )\n',
+					'\t\t\t|| ( svs.maxclients <= 4 && ( Sys_CheckParm( "-gclistenserver" )\n'
+					'\t\t\t\t|| Sys_CheckParm( "-gcworldrender" ) )) ) )\n',
+				)
 		model = args.engine_dir / "engine/common/model.c"
 		# Already deferred (empty promote) — nothing to patch.
 		model_text = model.read_text()
@@ -218,6 +240,59 @@ def main() -> int:
 			'\t/* GC_MemHeapMark records usage without walking every pool. Mem_PrintStats\n'
 			'\t * runs Mem_Check and can stop menu handoff on unrelated tiny-pool sentinels. */\n',
 		)
+		studio = args.engine_dir / "ref/gx/r_studio.c"
+		studio_text = studio.read_text()
+		if "G162 viewmodel frame offset forward=30 up=-5" not in studio_text:
+			replace_once(
+				studio,
+				'\t/* G157: no client CalcRefdef — pin gun to the current eye every draw.\n'
+				'\t * G162: HL viewmesh extends below the frustum at raw eye pose\n'
+				'\t * (ndc mid≈-2); nudge forward+up so a useful band sits in the lower third. */\n',
+				'\t/* G157: no client CalcRefdef — pin gun to the current eye every draw.\n'
+				'\t * DoD rifle meshes are much longer than HL pistols and intersect the GX\n'
+				'\t * near plane at the old +5/+12 offset. Move them forward and lower them\n'
+				'\t * into the conventional lower-third viewmodel band. */\n',
+			)
+			replace_once(
+				studio,
+				'\t\t\tVectorMA( view->origin, 5.0f, RI.vforward, view->origin );\n'
+				'\t\t\tVectorMA( view->origin, 12.0f, RI.vup, view->origin );\n',
+				'\t\t\tVectorMA( view->origin, 30.0f, RI.vforward, view->origin );\n'
+				'\t\t\tVectorMA( view->origin, -5.0f, RI.vup, view->origin );\n',
+			)
+			replace_once(
+				studio,
+				'Xash3D GameCube: G162 viewmodel frame offset forward=5 up=12\\n',
+				'Xash3D GameCube: G162 viewmodel frame offset forward=30 up=-5\\n',
+			)
+		image = args.engine_dir / "ref/gx/r_image.c"
+		image_text = image.read_text()
+		if "selected Garand/MP40 does not collapse" not in image_text:
+			replace_once(
+				image,
+				'\t\ttex->width = resampleWidth;\n'
+				'\t\ttex->height = resampleHeight;\n'
+				'\t}\n'
+				'#endif\n\n'
+				'\tif((( pic->width != tex->width ) || ( pic->height != tex->height )))\n',
+				'\t\ttex->width = resampleWidth;\n'
+				'\t\ttex->height = resampleHeight;\n'
+				'\t}\n'
+				'\t/* DoD team rifles are promoted only after the player picks a team, when\n'
+				'\t * map lightmaps and the console already occupy most of MEM1. Keep their\n'
+				'\t * retail palette/skin identity, but cap each embedded skin at 64x64 so the\n'
+				'\t * selected Garand/MP40 does not collapse to the 2x2 OOM fallback. */\n'
+				'\tif( tex->name[0] && ( Q_stristr( tex->name, "models/v_garand/" )\n'
+				'\t\t|| Q_stristr( tex->name, "models/v_mp40/" )))\n'
+				'\t{\n'
+				'\t\tresampleWidth = Q_min( resampleWidth, 64 );\n'
+				'\t\tresampleHeight = Q_min( resampleHeight, 64 );\n'
+				'\t\ttex->width = resampleWidth;\n'
+				'\t\ttex->height = resampleHeight;\n'
+				'\t}\n'
+				'#endif\n\n'
+				'\tif((( pic->width != tex->width ) || ( pic->height != tex->height )))\n',
+			)
 
 	for filename, class_name, kind, animation, event, legacy_model, models in (
 		("mp5.cpp", "CMP5", "DOD_MODEL_AUTOMATIC", "MP5_DEPLOY", "mp5", "9mmAR",
