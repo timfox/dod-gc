@@ -24,23 +24,25 @@ This is an initial rules bridge, not a complete recreation of retail DoD. The
 menus are text menus, class weapons use HL1 weapon behavior, and control points
 use a fixed spherical capture area. HUD score presentation, weapon behavior,
 and objective handling can be extended without changing the rules core's
-public C API. A complete Create Game match is not verified yet. A two-slot
-`dod_avalanche` listen-server probe now reaches map load and local signon using
-static edicts and the reserved BSP storage path
-(`playtests/notes/20261110-185733-node-spill-ava.md`). This is the explicit
-listen-server boot route; the ordinary two-player Create Game menu route still
-needs a clean runtime capture.
+public C API. A complete Create Game match is not verified yet. The small-map
+listen-server probe reaches map load and local signon using static edicts.
+`dod_avalanche` remains blocked: an 800 KiB spill build fails while reloading
+the 190.59 KiB BSP node lump; a 960 KiB experimental build reaches signon but
+crashes during the ordinary intro/menu boot before `gc_menu_ready`. Neither
+large-map experiment is accepted as the normal gameplay build. The 800 KiB
+normal boot reaches the Valve intro and `gc_menu_ready`; the Create Game
+controller route has not yet produced a map-start marker or a valid guest
+frame. The regular two-player Create Game route still needs a clean runtime
+capture.
 
 The Garand viewmodel is now textured and framed in the lower center of the
 screen in the latest valid in-game capture
 (`playtests/screenshots/20261110-182518-ava-vm15/final.png`). The world behind
 it remains visibly fragmented, with large missing or misplaced surfaces, so
-this is not yet a playable-world claim. The recent node-storage fallback
-clears the 412.95 KiB `dod_avalanche` allocation failure. An earlier 1.72 MiB
-BSP-surface allocation failure and a DSI after map startup have not yet been
-retested. Map-bearing play ISOs enable the packed BSP renderer by default so
-low-memory loads can select the CapFaces path when the live surface table
-cannot fit.
+this is not yet a playable-world claim. Earlier runs also recorded a 1.72 MiB
+BSP-surface allocation failure and a DSI after map startup. Map-bearing play
+ISOs enable the packed BSP renderer by default so low-memory loads can select
+the CapFaces path when the live surface table cannot fit.
 
 ## Build integration
 
