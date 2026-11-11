@@ -20,11 +20,13 @@ state to the HL1SDK game DLL:
   within 128 GoldSrc units capture a point in ten seconds; both teams in range
   pause capture. The rules core tracks scoring and round state.
 
-The runtime is an initial playable bridge, not a complete recreation of retail
-DoD. The menus are text menus, class weapons use HL1 weapon behavior, and
-control points use a fixed spherical capture area. HUD score presentation,
-weapon behavior, and objective handling can be extended without changing the
-rules core's public C API.
+This is an initial rules bridge, not a complete recreation of retail DoD. The
+menus are text menus, class weapons use HL1 weapon behavior, and control points
+use a fixed spherical capture area. HUD score presentation, weapon behavior,
+and objective handling can be extended without changing the rules core's
+public C API. A complete Create Game match is not verified yet: the latest
+checked-in local-match trace stops on a 361.17 KiB server allocation in
+`engine/server/sv_game.c` (`playtests/notes/20261110-155327-local-create-match.md`).
 
 ## Build integration
 
