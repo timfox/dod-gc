@@ -296,6 +296,30 @@ PY
 		echo "world DL: no media/wd_${stem}.gcd (CapFaces/live BSP fallback)"
 	fi
 
+	# World CMPR texture pack (media/wt_<map>.gct) — WorldDL / CapFaces resolve
+	# materials via Mod_GCWorldPackBindByName. Missing pack ⇒ batches=0 brown void.
+	wt_src=""
+	for cand in \
+		"$SRC/media/wt_${stem}.gct" \
+		"$DODGC_ROOT/content/dod/media/wt_${stem}.gct" \
+		"$DODGC_ROOT/out/media/wt_${stem}.gct" \
+		"/tmp/dodgc-${stem#dod_}-repack/dod/media/wt_${stem}.gct" \
+		"/tmp/dodgc-wt-rebuild/media/wt_${stem}.gct" \
+		"/mnt/datasets/dodgc-iso-build/xash3d-gc-smoke-data-i_ltw5ru/dod/media/wt_${stem}.gct"
+	do
+		if [[ -f "$cand" ]]; then
+			wt_src="$cand"
+			break
+		fi
+	done
+	if [[ -n "$wt_src" ]]; then
+		cp -f "$wt_src" "$LEAN/media/wt_${stem}.gct"
+		echo "staged world tex: media/wt_${stem}.gct ($(wc -c < "$LEAN/media/wt_${stem}.gct") bytes)"
+	else
+		rm -f "$LEAN/media/wt_${stem}.gct"
+		echo "world tex: no media/wt_${stem}.gct (WorldDL binds will stub)"
+	fi
+
 	# Create Game needs maps.lst on disc-only (refresh cannot rewrite).
 	printf '%s "Local match"\n' "$stem" > "$LEAN/maps.lst"
 	echo "staged maps.lst for $stem"

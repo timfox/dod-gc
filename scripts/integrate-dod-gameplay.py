@@ -261,57 +261,69 @@ def main() -> int:
 		)
 		studio = args.engine_dir / "ref/gx/r_studio.c"
 		studio_text = studio.read_text()
-		if "G162 viewmodel frame offset forward=30 up=-5" not in studio_text:
-			replace_once(
-				studio,
-				'\t/* G157: no client CalcRefdef — pin gun to the current eye every draw.\n'
-				'\t * G162: HL viewmesh extends below the frustum at raw eye pose\n'
-				'\t * (ndc mid≈-2); nudge forward+up so a useful band sits in the lower third. */\n',
-				'\t/* G157: no client CalcRefdef — pin gun to the current eye every draw.\n'
-				'\t * DoD rifle meshes are much longer than HL pistols and intersect the GX\n'
-				'\t * near plane at the old +5/+12 offset. Move them forward and lower them\n'
-				'\t * into the conventional lower-third viewmodel band. */\n',
-			)
-			replace_once(
-				studio,
-				'\t\t\tVectorMA( view->origin, 5.0f, RI.vforward, view->origin );\n'
-				'\t\t\tVectorMA( view->origin, 12.0f, RI.vup, view->origin );\n',
-				'\t\t\tVectorMA( view->origin, 30.0f, RI.vforward, view->origin );\n'
-				'\t\t\tVectorMA( view->origin, -5.0f, RI.vup, view->origin );\n',
-			)
-			replace_once(
-				studio,
-				'Xash3D GameCube: G162 viewmodel frame offset forward=5 up=12\\n',
-				'Xash3D GameCube: G162 viewmodel frame offset forward=30 up=-5\\n',
-			)
+		# forward=16/up=+8 — sticky mid-idle; avoid fwd=36 pillar / f=0 freeze.
+		if "G162 viewmodel frame offset forward=16 up=+8" not in studio_text:
+			for old_up, old_msg in (
+				(
+					'\t\t\tVectorMA( view->origin, 12.0f, RI.vforward, view->origin );\n'
+					'\t\t\tVectorMA( view->origin, 10.0f, RI.vup, view->origin );\n',
+					'Xash3D GameCube: G162 viewmodel frame offset forward=12 up=+10\\n',
+				),
+				(
+					'\t\t\tVectorMA( view->origin, 36.0f, RI.vforward, view->origin );\n'
+					'\t\t\tVectorMA( view->origin, 2.0f, RI.vup, view->origin );\n',
+					'Xash3D GameCube: G162 viewmodel frame offset forward=36 up=+2\\n',
+				),
+				(
+					'\t\t\tVectorMA( view->origin, 30.0f, RI.vforward, view->origin );\n'
+					'\t\t\tVectorMA( view->origin, 2.0f, RI.vup, view->origin );\n',
+					'Xash3D GameCube: G162 viewmodel frame offset forward=30 up=+2\\n',
+				),
+				(
+					'\t\t\tVectorMA( view->origin, 32.0f, RI.vforward, view->origin );\n'
+					'\t\t\tVectorMA( view->origin, 2.0f, RI.vup, view->origin );\n',
+					'Xash3D GameCube: G162 viewmodel frame offset forward=32 up=+2\\n',
+				),
+				(
+					'\t\t\tVectorMA( view->origin, 42.0f, RI.vforward, view->origin );\n'
+					'\t\t\tVectorMA( view->origin, 1.0f, RI.vup, view->origin );\n',
+					'Xash3D GameCube: G162 viewmodel frame offset forward=42 up=+1\\n',
+				),
+			):
+				if old_up in studio_text:
+					replace_once(
+						studio,
+						old_up,
+						'\t\t\tVectorMA( view->origin, 16.0f, RI.vforward, view->origin );\n'
+						'\t\t\tVectorMA( view->origin, 8.0f, RI.vup, view->origin );\n',
+					)
+					replace_once(
+						studio,
+						old_msg,
+						'Xash3D GameCube: G162 viewmodel frame offset forward=16 up=+8\\n',
+					)
+					break
+		studio_text = studio.read_text()
 		image = args.engine_dir / "ref/gx/r_image.c"
 		image_text = image.read_text()
-		if "selected Garand/MP40 does not collapse" not in image_text:
-			replace_once(
-				image,
-				'\t\ttex->width = resampleWidth;\n'
-				'\t\ttex->height = resampleHeight;\n'
-				'\t}\n'
-				'#endif\n\n'
-				'\tif((( pic->width != tex->width ) || ( pic->height != tex->height )))\n',
-				'\t\ttex->width = resampleWidth;\n'
-				'\t\ttex->height = resampleHeight;\n'
-				'\t}\n'
-				'\t/* DoD team rifles are promoted only after the player picks a team, when\n'
-				'\t * map lightmaps and the console already occupy most of MEM1. Keep their\n'
-				'\t * retail palette/skin identity, but cap each embedded skin at 64x64 so the\n'
-				'\t * selected Garand/MP40 does not collapse to the 2x2 OOM fallback. */\n'
-				'\tif( tex->name[0] && ( Q_stristr( tex->name, "models/v_garand/" )\n'
-				'\t\t|| Q_stristr( tex->name, "models/v_mp40/" )))\n'
-				'\t{\n'
-				'\t\tresampleWidth = Q_min( resampleWidth, 64 );\n'
-				'\t\tresampleHeight = Q_min( resampleHeight, 64 );\n'
-				'\t\ttex->width = resampleWidth;\n'
-				'\t\ttex->height = resampleHeight;\n'
-				'\t}\n'
-				'#endif\n\n'
-				'\tif((( pic->width != tex->width ) || ( pic->height != tex->height )))\n',
-			)
+		# VM skins prefer 128² RGB565 in-tree (ava-play99-43+). Skip the
+		# legacy 64→128 Garand inject when that path is present.
+		if (
+			"Image_GCMaxLoadDimension" not in image_text
+			and "vm_skin" not in image_text
+			and "128² fits WorldDL MEM1" not in image_text
+			and "Q_min( resampleWidth, 96 )" not in image_text
+			and "Q_min( resampleWidth, 128 )" not in image_text
+		):
+			if "selected Garand/MP40 does not collapse" in image_text:
+				replace_once(
+					image,
+					'\t\tresampleWidth = Q_min( resampleWidth, 64 );\n'
+					'\t\tresampleHeight = Q_min( resampleHeight, 64 );\n',
+					'\t\tresampleWidth = Q_min( resampleWidth, 128 );\n'
+					'\t\tresampleHeight = Q_min( resampleHeight, 128 );\n',
+				)
+
 
 	for filename, class_name, kind, animation, event, legacy_model, models in (
 		("mp5.cpp", "CMP5", "DOD_MODEL_AUTOMATIC", "MP5_DEPLOY", "mp5", "9mmAR",
