@@ -253,11 +253,17 @@ def log_has(pat: str) -> bool:
 
 with open(pipe_path, "a", buffering=1) as f:
     # Pipe axes use signed -1..1 values; zero is neutral (0.5 drifts upward).
-    f.write("SET MAIN 0 0\nSET C 0 0\n")
+    # Dolphin's pipe axes are normalized to [0, 1]; 0.5 is center.
+    # A zero value holds both sticks fully up/left and rotates the camera.
+    f.write("SET MAIN 0.5 0.5\nSET C 0.5 0.5\n")
     f.flush()
 
 grab("01-main")
-# New game is top item → open Create Game
+# Normalize the main-menu cursor: the first item is New game. One down/up
+# pair returns there even if Dolphin restored a different valid selection.
+pad("PRESS D_DOWN", hold=0.12, gap=0.3)
+pad("PRESS D_UP", hold=0.12, gap=0.45)
+# Open DoD's Create Game panel.
 pad("PRESS A", hold=0.18, gap=1.8)
 grab("02-creategame")
 
@@ -277,6 +283,8 @@ markers = (
     b"Game started",
     b"direct map ready",
     b"Server spawned",
+    b"newgame world render ready",
+    b"CapFaces team select UI",
     b"fatal message",
     b"fatal breadcrumb",
     b"FATAL",
@@ -292,18 +300,24 @@ while time.time() < deadline:
         for m in markers:
             if m in raw and m not in last:
                 print(f"marker: {m.decode()}", flush=True)
-        last = raw
         if b"FATAL" in raw or b"fatal message" in raw or b"fatal breadcrumb" in raw or b"out of memory" in raw:
+            last = raw
             break
-        if b"Game started" in raw or b"MAP READY" in raw or b"map loaded" in raw:
-            # Server activation precedes client sign-on and the first playable
-            # frame. Keep Dolphin alive long enough to capture the actual
-            # world/HUD transition rather than the transient loading panel.
-            time.sleep(12)
+        if b"CapFaces team select UI" in raw and b"CapFaces team select UI" not in last:
+            # Choose the default Allies entry so the final image shows the
+            # playable DoD HUD/world instead of the team-selection overlay.
+            grab("04-team-select")
+            pad("PRESS A", hold=0.12, gap=0.25)
+        if b"newgame world render ready" in raw and b"newgame world render SCR frames=8" in raw:
+            # MAP_READY precedes sign-on, GX warm-up, and team selection. Wait
+            # for sustained world frames before capturing the actual match.
+            time.sleep(5)
+            last = raw
             break
+        last = raw
     time.sleep(0.5)
 
-grab("04-final")
+grab("05-final")
 print("tour done", flush=True)
 PY
 

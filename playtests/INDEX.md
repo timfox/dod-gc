@@ -4,6 +4,29 @@ Screenshots: `playtests/screenshots/` · Videos: `playtests/videos/` · Notes: `
 
 | Date | File | Route | Duration | Size | Commit |
 |------|------|-------|----------|------|--------|
+| 2026-11-10T23:18:50 | `20261110-231850-local-create-match-ee25314c80.mp4` | local-create-match | 6.3s | 0.0 MB | `ee25314c80` |
+| 2026-11-10T21:34:58 | `20261110-213458-local-create-match-ee25314c80.mp4` | local-create-match | 28.6s | 0.2 MB | `ee25314c80` |
+| 2026-11-10T21:33:02 | `20261110-213302-local-create-match-ee25314c80.mp4` | local-create-match | 95.5s | 0.2 MB | `ee25314c80` |
+| 2026-11-10T21:16:42 | `20261110-211642-hlsdk-mp-tour-ee25314c80.mp4` | hlsdk-mp-tour | 29.6s | 0.2 MB | `ee25314c80` |
+| 2026-11-10T21:15:17 | `20261110-211517-hlsdk-mp-tour-ee25314c80.mp4` | hlsdk-mp-tour | 29.5s | 0.2 MB | `ee25314c80` |
+| 2026-11-10T21:14:36 | `20261110-211436-hlsdk-mp-tour-ee25314c80.mp4` | hlsdk-mp-tour | 29.1s | 0.2 MB | `ee25314c80` |
+| 2026-11-10T21:13:46 | `20261110-211346-hlsdk-mp-tour-ee25314c80.mp4` | hlsdk-mp-tour | 16.0s | 0.2 MB | `ee25314c80` |
+| 2026-11-10T21:12:15 | `20261110-211215-hlsdk-mp-tour-ee25314c80.mp4` | hlsdk-mp-tour | 29.0s | 0.2 MB | `ee25314c80` |
+| 2026-11-10T21:09:54 | `20261110-210954-hlsdk-mp-tour-ee25314c80.mp4` | hlsdk-mp-tour | 29.1s | 0.2 MB | `ee25314c80` |
+| 2026-11-10T21:08:52 | `20261110-210852-hlsdk-mp-tour-ee25314c80.mp4` | hlsdk-mp-tour | 34.0s | 0.6 MB | `ee25314c80` |
+| 2026-11-10T21:08:06 | `20261110-210806-hlsdk-mp-tour-ee25314c80.mp4` | hlsdk-mp-tour | 34.6s | 0.7 MB | `ee25314c80` |
+| 2026-11-10T21:03:37 | `20261110-210337-hlsdk-mp-tour-ee25314c80.mp4` | hlsdk-mp-tour | 19.0s | 0.3 MB | `ee25314c80` |
+| 2026-11-10T21:01:15 | `20261110-210115-hlsdk-mp-tour-ee25314c80.mp4` | hlsdk-mp-tour | 15.1s | 0.3 MB | `ee25314c80` |
+| 2026-11-10T20:59:38 | `20261110-205938-hlsdk-mp-tour-ee25314c80.mp4` | hlsdk-mp-tour | 19.6s | 0.3 MB | `ee25314c80` |
+| 2026-11-10T20:57:01 | `20261110-205701-hlsdk-mp-tour-ee25314c80.mp4` | hlsdk-mp-tour | 19.1s | 0.3 MB | `ee25314c80` |
+| 2026-11-10T20:55:00 | `20261110-205500-hlsdk-mp-tour-ee25314c80.mp4` | hlsdk-mp-tour | 19.5s | 0.3 MB | `ee25314c80` |
+| 2026-11-10T20:13:47 | `20261110-201347-hlsdk-mp-tour-4c87aabfab.mp4` | hlsdk-mp-tour | 19.6s | 0.2 MB | `4c87aabfab` |
+| 2026-11-10T20:12:34 | `20261110-201234-hlsdk-mp-tour-4c87aabfab.mp4` | hlsdk-mp-tour | 91.3s | 1.1 MB | `4c87aabfab` |
+| 2026-11-10T20:12:31 | `20261110-201231-ava-playable28-4c87aabfab.mp4` | ava-playable28 | 130.0s | 1.6 MB | `4c87aabfab` |
+| 2026-11-10T20:08:47 | `20261110-200847-ava-playable27-4c87aabfab.mp4` | ava-playable27 | 140.1s | 2.5 MB | `4c87aabfab` |
+| 2026-11-10T20:03:15 | `20261110-200315-ava-fullbsp26-033d2aeeb4.mp4` | ava-fullbsp26 | 111.1s | 1.3 MB | `033d2aeeb4` |
+| 2026-11-10T20:00:50 | `20261110-200050-ava-fullbsp25-033d2aeeb4.mp4` | ava-fullbsp25 | 100.1s | 1.3 MB | `033d2aeeb4` |
+| 2026-11-10T19:57:30 | `20261110-195730-ava-fullbsp24-033d2aeeb4.mp4` | ava-fullbsp24 | 99.6s | 2.0 MB | `033d2aeeb4` |
 | 2026-11-10T19:54:03 | `20261110-195403-ava-fullbsp23-cfc01a844a.mp4` | ava-fullbsp23 | 99.0s | 1.9 MB | `cfc01a844a` |
 | 2026-11-10T19:49:45 | `20261110-194945-ava-fullbsp22-cfc01a844a.mp4` | ava-fullbsp22 | 100.0s | 1.4 MB | `cfc01a844a` |
 | 2026-11-10T19:47:24 | `20261110-194724-ava-fullbsp21-cfc01a844a.mp4` | ava-fullbsp21 | 101.0s | 1.4 MB | `cfc01a844a` |

@@ -275,6 +275,27 @@ PY
 	shopt -u nullglob
 	echo "staged skybox: $skyname ($sky_staged CMPR sides + gfx/env for encode)"
 
+	# Full BSP PVS cluster display lists (media/wd_<map>.gcd) — preferred over
+	# CapFaces lean densify when present (ref/gx/r_gx_worlddl.c).
+	wd_src=""
+	for cand in \
+		"$SRC/media/wd_${stem}.gcd" \
+		"$DODGC_ROOT/content/dod/media/wd_${stem}.gcd" \
+		"$DODGC_ROOT/out/media/wd_${stem}.gcd"
+	do
+		if [[ -f "$cand" ]]; then
+			wd_src="$cand"
+			break
+		fi
+	done
+	if [[ -n "$wd_src" ]]; then
+		cp -f "$wd_src" "$LEAN/media/wd_${stem}.gcd"
+		echo "staged world DL: media/wd_${stem}.gcd ($(wc -c < "$LEAN/media/wd_${stem}.gcd") bytes)"
+	else
+		rm -f "$LEAN/media/wd_${stem}.gcd"
+		echo "world DL: no media/wd_${stem}.gcd (CapFaces/live BSP fallback)"
+	fi
+
 	# Create Game needs maps.lst on disc-only (refresh cannot rewrite).
 	printf '%s "Local match"\n' "$stem" > "$LEAN/maps.lst"
 	echo "staged maps.lst for $stem"
