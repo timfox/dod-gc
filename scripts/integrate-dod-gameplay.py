@@ -171,12 +171,16 @@ def main() -> int:
 			'\tif( cls.key_dest == key_console )\n',
 		)
 		sv_game = args.engine_dir / "engine/server/sv_game.c"
-		replace_once(
-			sv_game,
-			'\t\t\tif( GC_MemHeapFreeBytes() < ( 8u * 1024u ))\n',
-			'\t\t\tif( GC_MemHeapFreeBytes() <\n'
-			'\t\t\t\t( !Q_strnicmp( sv.name, "dod_", 4 ) ? 2u * 1024u : 8u * 1024u ))\n',
-		)
+		# Prefer the CapFaces worldspawn-safe gate (entity_index > 1); fall back
+		# to the older tip check if a tree still has the pre-kraftstoff form.
+		if '\t\t\tif( entity_index > 1 && GC_MemHeapFreeBytes() <\n' \
+			'\t\t\t\t( !Q_strnicmp( sv.name, "dod_", 4 ) ? 2u * 1024u : 8u * 1024u ))\n' not in sv_game.read_text():
+			replace_once(
+				sv_game,
+				'\t\t\tif( entity_index > 1 && GC_MemHeapFreeBytes() < ( 8u * 1024u ))\n',
+				'\t\t\tif( entity_index > 1 && GC_MemHeapFreeBytes() <\n'
+				'\t\t\t\t( !Q_strnicmp( sv.name, "dod_", 4 ) ? 2u * 1024u : 8u * 1024u ))\n',
+			)
 		replace_once(
 			sv_game,
 			'\tif( bytes > GC_ENTITY_OVERFLOW_BYTES ) bytes = GC_ENTITY_OVERFLOW_BYTES;\n',
@@ -187,18 +191,23 @@ def main() -> int:
 			'\t\tbytes = 8u * 1024u;\n',
 		)
 		model = args.engine_dir / "engine/common/model.c"
-		replace_once(
-			model,
-			'\t/* DoD CapFaces listen: Allies pistol + weapon stub (BBA=0 tip≈400 KiB). */\n'
-			'\tstatic const char *promote[] = {\n'
-			'\t\t"models/v_colt.mdl",\n'
-			'\t\t"models/w_crowbar.mdl",\n'
-			'\t\tNULL\n'
-			'\t};\n',
-			'\t/* DoD has no HL1 NPC cast, and these generic pistol meshes are not used by\n'
-			'\t * its rifleman spawn. Defer all player weapons until the class is selected. */\n'
-			'\tstatic const char *promote[] = { NULL };\n',
-		)
+		# Already deferred (empty promote) — nothing to patch.
+		model_text = model.read_text()
+		if 'static const char *promote[] = { NULL };' not in model_text \
+			or 'Mod_GCCapFacesClaimTeamViewModel' not in model_text:
+			replace_once(
+				model,
+				'\t/* DoD CapFaces listen: lean Allies pistol + weapon stub (184 KiB BSS). */\n'
+				'\tstatic const char *promote[] = {\n'
+				'\t\t"models/v_colt.mdl",\n'
+				'\t\t"models/w_crowbar.mdl",\n'
+				'\t\tNULL\n'
+				'\t};\n',
+				'\t/* DoD CapFaces listen: keep the 184 KiB studio BSS empty until team pick\n'
+				'\t * claims one lean rifle (Mod_GCCapFacesClaimTeamViewModel). Preloading\n'
+				'\t * colt/crowbar left no room for garand/mp40. */\n'
+				'\tstatic const char *promote[] = { NULL };\n',
+			)
 		video = args.engine_dir / "engine/client/cl_video.c"
 		replace_once(
 			video,

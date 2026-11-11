@@ -187,7 +187,10 @@ def find_gc_window():
     out = subprocess.check_output(["xwininfo", "-root", "-tree"], text=True, errors="replace")
     candidates = []
     for line in out.splitlines():
-        if '("dolphin-emu" "GameCube")' not in line:
+        if not any(title in line for title in (
+            '("dolphin-emu" "GameCube")',
+            '("xash-gc-dolphin" "GameCube")',
+        )):
             continue
         parts = line.split()
         if not parts or not parts[0].startswith("0x"):

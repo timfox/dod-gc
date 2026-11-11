@@ -163,8 +163,8 @@ grab() {
 	local name=$1
 	local win=""
 	# pipefail: rg exit 1 on no match must not abort the probe
-	win="$(xwininfo -root -tree 2>/dev/null | rg '\("dolphin-emu" "GameCube"\)' | rg -v '800x600' | head -1 | awk '{print $1}' || true)"
-	[[ -z "${win:-}" ]] && win="$(xwininfo -root -tree 2>/dev/null | rg '\("dolphin-emu" "GameCube"\)' | head -1 | awk '{print $1}' || true)"
+	win="$(xwininfo -root -tree 2>/dev/null | rg '\("(dolphin-emu|xash-gc-dolphin)" "GameCube"\)' | rg -v '800x600' | head -1 | awk '{print $1}' || true)"
+	[[ -z "${win:-}" ]] && win="$(xwininfo -root -tree 2>/dev/null | rg '\("(dolphin-emu|xash-gc-dolphin)" "GameCube"\)' | head -1 | awk '{print $1}' || true)"
 	if [[ -n "${win:-}" ]] && command -v import >/dev/null 2>&1; then
 		import -window "$win" "$SHOT_DIR/${name}.png" 2>/dev/null || true
 	fi
