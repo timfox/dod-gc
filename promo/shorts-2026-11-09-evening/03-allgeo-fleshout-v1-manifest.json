@@ -1,0 +1,222 @@
+{
+  "created": "2026-11-09T23:57:38.439706-08:00",
+  "created_label": "2026-11-09 11:57 PM PT",
+  "folder": "/home/tim/Desktop/dod-gc/promo/shorts-2026-11-09-evening",
+  "spec": "1080x1920 30fps H.264+AAC; 4:3 game centered at 1080x810 (y=555) over darkened blur fill; olive end card 3.0s; static stills only (no Ken Burns/zoom/pan)",
+  "status": "local review only \u2014 not published, scheduled, or uploaded",
+  "music_rights": "Tracks are Suno instrumentals tagged artist=gopexllc, lyrics=[Instrumental], comment='made with suno; created=2026-11-07'. No license/readme beside the files. Rights were not independently verified for commercial social posting.",
+  "short": {
+    "file": "/home/tim/Desktop/dod-gc/promo/shorts-2026-11-09-evening/03-allgeo-fleshout-v1.mp4",
+    "title_overlay": "Day of Defeat on GameCube - all-geometry pass",
+    "hook_overlay": "Trying to fill the geometry",
+    "duration_s": 19.0,
+    "bytes": 990225,
+    "sha256_16": "49da0e589d8eb5b5",
+    "probe": {
+      "streams": [
+        {
+          "codec_name": "h264",
+          "codec_type": "video",
+          "width": 1080,
+          "height": 1920,
+          "r_frame_rate": "30/1",
+          "sample_rate": null,
+          "channels": null
+        },
+        {
+          "codec_name": "aac",
+          "codec_type": "audio",
+          "width": null,
+          "height": null,
+          "r_frame_rate": "0/0",
+          "sample_rate": "48000",
+          "channels": 2
+        }
+      ],
+      "format": {
+        "duration": "19.000000",
+        "size": "990225",
+        "bit_rate": "416936"
+      }
+    },
+    "music": {
+      "file": "/home/tim/Desktop/dod-gc/social-media/music/Menace of War.mp3",
+      "track": "Menace of War",
+      "in_point_s": 2.5,
+      "volume": 0.18,
+      "fade_in_s": 0.4,
+      "fade_out_s": 1.2
+    },
+    "sources": [
+      {
+        "file": "/home/tim/Desktop/dod-gc/playtests/screenshots/20261109-225552-caen-part-wep/final.png",
+        "folder": "20261109-225552-caen-part-wep",
+        "mtime_label": "2026-11-09 10:58 PM PST",
+        "edit_duration_s": 7.0,
+        "label": "2026-11-09 - dod_caen part draw still",
+        "notes": "Later same-camera Caen part draw. Right-wall brick is more filled than the unused evening Short 1 Caen sunset plate (~22% pixels differ >8). Faint leftover translucent bar in the upper sky."
+      },
+      {
+        "file": "/home/tim/Desktop/dod-gc/playtests/screenshots/20261109-232523-caen-allgeo/final.png",
+        "folder": "20261109-232523-caen-allgeo",
+        "mtime_label": "2026-11-09 11:26 PM PST",
+        "edit_duration_s": 9.0,
+        "label": "2026-11-09 - dod_caen all-geometry still",
+        "notes": "All-geometry pass from the same camera. Large missing-face white holes and a solid white leftover bar in the upper sky. Not a successful fill-in; this is the attempt. allgeo2 is a near-duplicate (0.009% pixels >8); allgeo4 is a byte-identical copy of this still."
+      }
+    ],
+    "endcard": {
+      "duration_s": 3.0,
+      "color": "0x2d3927",
+      "text": [
+        "Project updates:",
+        "gamecubehalf.life"
+      ]
+    }
+  },
+  "qa": {
+    "blackdetect": "ffmpeg blackdetect=d=0.3:pix_th=0.10 \u2014 no black_start/black_end",
+    "review_yavg": [
+      {
+        "file": "/home/tim/Desktop/dod-gc/promo/shorts-2026-11-09-evening/review/03-allgeo-fleshout-v1/01-wep-t0.40.png",
+        "t": 0.4,
+        "label": "1 wep t0.40",
+        "yavg_fullframe": 50.1084
+      },
+      {
+        "file": "/home/tim/Desktop/dod-gc/promo/shorts-2026-11-09-evening/review/03-allgeo-fleshout-v1/02-allgeo-t7.40.png",
+        "t": 7.4,
+        "label": "2 allgeo t7.40",
+        "yavg_fullframe": 65.3019
+      },
+      {
+        "file": "/home/tim/Desktop/dod-gc/promo/shorts-2026-11-09-evening/review/03-allgeo-fleshout-v1/03-allgeo-hold-t15.20.png",
+        "t": 15.2,
+        "label": "2 hold t15.20",
+        "yavg_fullframe": 65.3022
+      },
+      {
+        "file": "/home/tim/Desktop/dod-gc/promo/shorts-2026-11-09-evening/review/03-allgeo-fleshout-v1/04-endcard-t17.20.png",
+        "t": 17.2,
+        "label": "end t17.20",
+        "yavg_fullframe": 60.2759
+      }
+    ],
+    "visual": [
+      "Caen-only cut. Flash allgeo framedumps failed (crash dumps or empty black 176-byte files).",
+      "Static stills, no Ken Burns / zoom / pan / punch-in.",
+      "No AMD/Mesa Video Info OSD, no magenta debug, no fatal/error/reset screens, no Half-Life missing-data menu, no Valve intro, no non-DoD menus in the used stills.",
+      "A leftover bar remains in the upper sky: faint/translucent on the part-draw still, a solid white rectangle on the all-geometry still. Not cropped away.",
+      "The all-geometry still has large missing-face white holes. The sequence does not cleanly show geometry filling in; the all-geo pass opened holes relative to the earlier part draw.",
+      "Typography matches this morning's approved finals and the unused evening Shorts (DejaVu Sans Bold, four top lines, two footers, olive end card). End card is 3.0s as specified for this cut.",
+      "No performance or hardware claims. Overlays state Dolphin framedump, dev/unfinished build.",
+      "No source game audio (stills have none). Music is an unused original WW2-sounding track from the dod-gc social-media/music folder, not a Valve/Lost Coast soundtrack."
+    ],
+    "game_region_yavg": {
+      "crop": "1080x810 at y=555",
+      "frames": {
+        "01-wep-t0.40.png": 83.3747,
+        "02-allgeo-t7.40.png": 104.446,
+        "03-allgeo-hold-t15.20.png": 104.445,
+        "04-endcard-t17.20.png": 62.0243
+      },
+      "note": "All game-region YAVG well above the drop threshold of 16. End-card value is the olive field plus white text in the center crop."
+    },
+    "still_hold_check": "allgeo t7.40 vs t15.20: composition unchanged (no zoom/pan). Mean abs pixel diff 0.38 / max 30 is typical H.264 keyframe variance, not motion.",
+    "ffprobe": {
+      "video": "h264 High yuv420p 1080x1920 30/1 570 frames",
+      "audio": "aac LC 48000 Hz stereo",
+      "duration_s": 19.0,
+      "size_bytes": 990225,
+      "bit_rate": 416936
+    }
+  },
+  "dropped": [
+    {
+      "folder": "20261109-220513-caen-part-leanfix",
+      "reason": "No final.png (dolphin.log only)."
+    },
+    {
+      "folder": "20261109-220544-caen-part-efx-hold",
+      "reason": "Visually usable same-camera Caen still, but near-duplicate of unused evening Short 1 Caen sunset plate (mean abs 2.37, only 6.85% pixels differ >8). Not a genuinely new allgeo capture."
+    },
+    {
+      "folder": "20261109-220917-caen-part-seed",
+      "reason": "GameCube fatal/reset stack dump plus AMD Radeon Video Info overlay."
+    },
+    {
+      "folder": "20261109-221552-caen-part-final",
+      "reason": "No final.png (dolphin.log only)."
+    },
+    {
+      "folder": "20261109-221659-caen-efx-confirm",
+      "reason": "Empty folder."
+    },
+    {
+      "folder": "20261109-224556-caen-part-emit",
+      "reason": "Half-Life 'MISSING GAME DATA ST OR BOOT DISC ISO' error screen."
+    },
+    {
+      "folder": "20261109-230207-caen-part-9mm",
+      "reason": "First-person 9mm weapon / interior view. Not a geo flesh-out still; different subject and camera."
+    },
+    {
+      "folder": "20261109-232943-caen-allgeo2",
+      "reason": "Near-duplicate of caen-allgeo (0.009% pixels differ >8). Kept the earlier allgeo still."
+    },
+    {
+      "folder": "20261109-233141-flash-allgeo2",
+      "reason": "GameCube fatal/reset stack dump plus AMD Radeon Video Info overlay."
+    },
+    {
+      "folder": "20261109-233401-flash-allgeo3",
+      "reason": "Byte-identical to flash-allgeo2 (same crash dump)."
+    },
+    {
+      "folder": "20261109-233635-flash-allgeo4",
+      "reason": "176-byte 1-bit black frame, YAVG=0."
+    },
+    {
+      "folder": "20261109-233841-caen-allgeo4",
+      "reason": "Byte-identical to caen-allgeo (sha256 73b03f6ea8ee90ad)."
+    },
+    {
+      "folder": "20261109-234008-flash-allgeo5",
+      "reason": "176-byte 1-bit black frame, YAVG=0 (same hash as other empty Flash stills)."
+    },
+    {
+      "folder": "20261109-234149-flash-dense7-check",
+      "reason": "Visually usable Flash village still, but it is essentially the same plate as unused evening Short 1 flash village hold, and it is a dense7 recheck rather than an allgeo flesh-out capture. Flash allgeo attempts all failed."
+    },
+    {
+      "folder": "20261109-234320-flash-bisect-oldspat",
+      "reason": "176-byte 1-bit black frame, YAVG=0."
+    },
+    {
+      "folder": "20261109-234440-flash-allgeo6",
+      "reason": "176-byte 1-bit black frame, YAVG=0."
+    },
+    {
+      "folder": "20261109-234614-flash-bisect-olddol",
+      "reason": "176-byte 1-bit black frame, YAVG=0."
+    },
+    {
+      "folder": "20261109-234756-flash-allgeo7",
+      "reason": "176-byte 1-bit black frame, YAVG=0."
+    }
+  ],
+  "inventory_notes": {
+    "no_folders_after_234756": true,
+    "no_20261110_folders": true,
+    "no_extra_framedumps": "Every inventoried folder from 20261109-220513 onward contained at most final.png plus dolphin.log. No additional framedumps.",
+    "camera": "Both used stills share the same Caen camera as each other (and as unused evening Short 1 Caen shots). The new information is the later right-wall fill, then the all-geometry pass with missing faces.",
+    "geo_filling_in": "Only a modest right-wall brick fill from the evening sunset plate to the 22:58 part-wep still. The 23:26 allgeo still does not continue that fill \u2014 it opens large white holes. Caption should not claim the geometry was successfully fleshed out."
+  },
+  "not_touched": [
+    "Unused evening Shorts 01-caen-flash-maps-v1.mp4 and 02-capfaces-flash-avalanche-v1.mp4 were not uploaded, scheduled, replaced, or deleted.",
+    "No posts deleted, unpublished, updated, uploaded, or scheduled."
+  ],
+  "renderer": "/home/tim/Desktop/dod-gc/promo/shorts-2026-11-09-evening/render_allgeo_fleshout.py",
+  "review_frames": "/home/tim/Desktop/dod-gc/promo/shorts-2026-11-09-evening/review/03-allgeo-fleshout-v1",
+  "contact_sheet": "/home/tim/Desktop/dod-gc/promo/shorts-2026-11-09-evening/review/03-allgeo-fleshout-v1/contact-sheet.jpg"
+}

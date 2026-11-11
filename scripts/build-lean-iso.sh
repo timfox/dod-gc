@@ -27,7 +27,7 @@ usage: scripts/build-lean-iso.sh [options]
   --full-map       stage mapmodels/weapons/sprites/WADs + core SFX with --map/--smoke/--listen
   --all-maps-audio stage every map's soundscape/ambient WAVs + menu music/UI
   --core-sfx       stage weapons/player/ui/items/doors/buttons/debris/object/common
-  --world-render   gamecube.cfg gcworldrender (Flipper world; smoke/listen/connect)
+  --world-render   render the BSP world in menu or gameplay sessions
   --dumpframes     gamecube.cfg dumpframes (-gcdumpframes stills; with --smoke)
   --dumpeye "x y z [pitch] [yaw]"
                    CapFaces camera override in gamecube.cfg (spawn atlas)
@@ -122,8 +122,8 @@ if (( DUMPFRAMES )) && [[ -z "$SMOKE" && -z "$LISTEN" && -z "$CONNECT" ]]; then
 	echo "error: --dumpframes requires --smoke, --listen, or --connect" >&2
 	exit 2
 fi
-if (( WORLD_RENDER )) && [[ -z "$SMOKE" && -z "$LISTEN" && -z "$CONNECT" ]]; then
-	echo "error: --world-render needs --smoke, --listen, or --connect" >&2
+if (( WORLD_RENDER )) && [[ -z "$MAP" ]]; then
+	echo "error: --world-render needs a staged map (--map, --smoke, or --listen)" >&2
 	exit 2
 fi
 if [[ -n "$SMOKE" && -n "$LISTEN" ]]; then
@@ -213,9 +213,9 @@ pack() {
 	(( SKIP_STARTUP_VIDS )) && args+=(--skip-startup-vids)
 	if [[ -n "$SMOKE" ]]; then
 		args+=(--smoke-map "$SMOKE")
-		(( WORLD_RENDER )) && args+=(--world-render)
 		(( DUMPFRAMES )) && args+=(--probe-dumpframes)
 	fi
+	(( WORLD_RENDER )) && args+=(--world-render)
 	if [[ -n "$LISTEN" ]]; then
 		if [[ -n "$TAS" ]]; then
 			tas_src="$DODGC_ENGINE/scripts/tas/${TAS}.tas"

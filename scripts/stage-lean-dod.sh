@@ -85,6 +85,14 @@ fi
 cp -f "$SRC/liblist.gam" "$LEAN/"
 cp -f "$SRC/delta.lst" "$LEAN/" 2>/dev/null || true
 cp -f "$VALVE/gfx.wad" "$LEAN/"
+# Install team rules before InstallGameRules reads mp_teamplay. The listen
+# config runs later, from CHalfLifeMultiplay's constructor, which is too late
+# to select the teamplay gamerules class.
+cat > "$LEAN/game.cfg" <<'EOF'
+mp_teamplay 1
+mp_teamlist "Allies;Axis"
+mp_defaultteam 0
+EOF
 # Smoke / map-load probes need these on the primary gamedir (not only valve/).
 for f in default.cfg; do
 	[[ -f "$VALVE/$f" ]] && cp -f "$VALVE/$f" "$LEAN/"
@@ -273,7 +281,7 @@ PY
 	if [[ ! -f "$LEAN/listenserver.cfg" ]]; then
 		{
 			printf 'mp_timelimit 0\nmp_fraglimit 0\n'
-			printf 'mp_teamplay 1\n'
+			printf 'mp_teamplay 1\nmp_teamlist "Allies;Axis"\n'
 			# Mirror retail DoD listen defaults when present.
 			[[ -f "$SRC/listenserver.cfg" ]] && cat "$SRC/listenserver.cfg"
 			[[ -f "$SRC/${stem}.cfg" ]] && cat "$SRC/${stem}.cfg"
@@ -334,10 +342,12 @@ PY
 			allied_gibs.mdl axis_gibs.mdl \
 			null.mdl \
 			p_garand.mdl p_k98.mdl p_mp40.mdl p_tommy.mdl \
-			p_bar.mdl p_mg34.mdl p_30cal.mdl p_bazooka.mdl p_pschreck.mdl \
+			p_bar.mdl p_mg34.mdl p_30cal.mdl p_mg42pr.mdl p_bazooka.mdl p_pschreck.mdl \
+			p_bren.mdl p_stg44.mdl p_spring.mdl \
 			p_colt.mdl p_luger.mdl p_amerk.mdl p_spade.mdl \
 			v_garand.mdl v_98k.mdl v_mp40.mdl v_tommy.mdl \
-			v_bar.mdl v_mg34.mdl v_30cal.mdl v_bazooka.mdl v_panzerschreck.mdl \
+			v_bar.mdl v_mg34.mdl v_30cal.mdl v_mg42.mdl v_bazooka.mdl v_panzerschreck.mdl \
+			v_bren.mdl v_mp44.mdl v_spring.mdl v_scoped98k.mdl \
 			v_colt.mdl v_luger.mdl v_amerk.mdl v_spade.mdl \
 			w_garand.mdl w_k98.mdl w_mp40.mdl w_tommy.mdl
 		do

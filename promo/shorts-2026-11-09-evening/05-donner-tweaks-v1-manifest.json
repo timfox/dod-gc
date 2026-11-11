@@ -1,0 +1,252 @@
+{
+  "created": "2026-11-10T00:18:26.729234-08:00",
+  "created_label": "2026-11-10 12:18 AM PT",
+  "folder": "/home/tim/Desktop/dod-gc/promo/shorts-2026-11-09-evening",
+  "spec": "1080x1920 30fps H.264+AAC; 4:3 game centered at 1080x810 (y=555) over darkened blur fill; olive end card 3.0s; static stills only (no Ken Burns/zoom/pan); rapid holds 16/30s (~0.533s), last game frame 2.0s",
+  "status": "local review only \u2014 not published, scheduled, or uploaded",
+  "music_rights": "Tracks are Suno instrumentals tagged artist=gopexllc, lyrics=[Instrumental], comment='made with suno; created=2026-11-07'. No license/readme beside the files. Rights were not independently verified for commercial social posting.",
+  "short": {
+    "file": "/home/tim/Desktop/dod-gc/promo/shorts-2026-11-09-evening/05-donner-tweaks-v1.mp4",
+    "title_overlay": "Day of Defeat on GameCube - dod_donner tweaks",
+    "hook_overlay": "Tweak passes, then later spawn views",
+    "duration_s": 7.666667,
+    "bytes": 778070,
+    "sha256_16": "adf8dc31f46a4268",
+    "probe": {
+      "streams": [
+        {
+          "codec_name": "h264",
+          "codec_type": "video",
+          "width": 1080,
+          "height": 1920,
+          "r_frame_rate": "30/1",
+          "sample_rate": null,
+          "channels": null
+        },
+        {
+          "codec_name": "aac",
+          "codec_type": "audio",
+          "width": null,
+          "height": null,
+          "r_frame_rate": "0/0",
+          "sample_rate": "48000",
+          "channels": 2
+        }
+      ],
+      "format": {
+        "duration": "7.667000",
+        "size": "778070",
+        "bit_rate": "811863"
+      }
+    },
+    "music": {
+      "file": "/home/tim/Desktop/dod-gc/social-media/music/Mournful Horn Theme.mp3",
+      "track": "Mournful Horn Theme",
+      "in_point_s": 8.0,
+      "volume": 0.18,
+      "fade_in_s": 0.4,
+      "fade_out_s": 1.2
+    },
+    "sources": [
+      {
+        "file": "/home/tim/Desktop/dod-gc/playtests/screenshots/20261108-130544-atlas-dod_donner-allies/final.png",
+        "folder": "20261108-130544-atlas-dod_donner-allies",
+        "mtime_label": "2026-11-08 1:05 PM PT",
+        "edit_duration_s": 0.5333333333333333,
+        "label": "2026-11-08 - dod_donner midday allies spawn",
+        "notes": "Camera A. Clean cobblestone alley with wooden walls and a blue sky. Strongest single Donner still. Different viewpoint from the later tweak and evening plates."
+      },
+      {
+        "file": "/home/tim/Desktop/dod-gc/playtests/screenshots/20261108-135622-tip-donner-fix12/final.png",
+        "folder": "20261108-135622-tip-donner-fix12",
+        "mtime_label": "2026-11-08 1:56 PM PT",
+        "edit_duration_s": 0.5333333333333333,
+        "label": "2026-11-08 - dod_donner tweak pass",
+        "notes": "Camera B start. Wooden post, diamond grate, tiled roof on the left, ruined wall to the right, cyan void where the ground should be. Viewpoint change from the midday allies alley."
+      },
+      {
+        "file": "/home/tim/Desktop/dod-gc/playtests/screenshots/20261108-140624-tip-donner-fix15/final.png",
+        "folder": "20261108-140624-tip-donner-fix15",
+        "mtime_label": "2026-11-08 2:06 PM PT",
+        "edit_duration_s": 0.5333333333333333,
+        "label": "2026-11-08 - dod_donner tweak pass",
+        "notes": "Camera B, 10 minutes later. Same composition (mean_abs 8.11, 17.0% pixels >8 vs fix12). Stone steps appear; the tiled roof is gone. Mixed tweak, not a clean fill-in."
+      },
+      {
+        "file": "/home/tim/Desktop/dod-gc/playtests/screenshots/20261108-143659-tip-donner-strarena/final.png",
+        "folder": "20261108-143659-tip-donner-strarena",
+        "mtime_label": "2026-11-08 2:36 PM PT",
+        "edit_duration_s": 0.5333333333333333,
+        "label": "2026-11-08 - dod_donner tweak pass",
+        "notes": "Camera B, 30 minutes later. Same composition (49.0% pixels >8 vs fix15). Tiled roof returns; left wall is stone. Mixed tweak, not monotonic improvement."
+      },
+      {
+        "file": "/home/tim/Desktop/dod-gc/playtests/screenshots/20261108-223603-atlas-dod_donner-allies/final.png",
+        "folder": "20261108-223603-atlas-dod_donner-allies",
+        "mtime_label": "2026-11-08 10:36 PM PT",
+        "edit_duration_s": 0.5333333333333333,
+        "label": "2026-11-08 - dod_donner later allies spawn",
+        "notes": "Camera C. Evening atlas allies spawn: sparse tree clusters in a cyan/blue void. Not the same camera as midday allies, and much sparser \u2014 not a successful fill-in."
+      },
+      {
+        "file": "/home/tim/Desktop/dod-gc/playtests/screenshots/20261108-223646-atlas-dod_donner-axis/final.png",
+        "folder": "20261108-223646-atlas-dod_donner-axis",
+        "mtime_label": "2026-11-08 10:37 PM PT",
+        "edit_duration_s": 2.0,
+        "label": "2026-11-08 - dod_donner later axis spawn",
+        "notes": "Camera D. Evening atlas axis courtyard with gold lighting, a black missing face, and a cyan void floor. Byte-identical to tipfix-donner-cf. Last game frame, 2.0s hold."
+      }
+    ],
+    "endcard": {
+      "duration_s": 3.0,
+      "color": "0x2d3927",
+      "text": [
+        "Project updates:",
+        "gamecubehalf.life"
+      ]
+    }
+  },
+  "qa": {
+    "blackdetect": "ffmpeg blackdetect=d=0.3:pix_th=0.10 \u2014 no black_start/black_end",
+    "review_yavg": [
+      {
+        "file": "/home/tim/Desktop/dod-gc/promo/shorts-2026-11-09-evening/review/05-donner-tweaks-v1/01-20261108-130544-atlas-dod_donner-allies-t0.21.png",
+        "t": 0.21333333333333335,
+        "label": "1 20261108-130544-atlas-dod_donner-allies t0.21",
+        "yavg_fullframe": 60.549496725019296
+      },
+      {
+        "file": "/home/tim/Desktop/dod-gc/promo/shorts-2026-11-09-evening/review/05-donner-tweaks-v1/02-20261108-135622-tip-donner-fix12-t0.75.png",
+        "t": 0.7466666666666667,
+        "label": "2 20261108-135622-tip-donner-fix12 t0.75",
+        "yavg_fullframe": 60.07732110773534
+      },
+      {
+        "file": "/home/tim/Desktop/dod-gc/promo/shorts-2026-11-09-evening/review/05-donner-tweaks-v1/03-20261108-140624-tip-donner-fix15-t1.28.png",
+        "t": 1.28,
+        "label": "3 20261108-140624-tip-donner-fix15 t1.28",
+        "yavg_fullframe": 55.941752662519285
+      },
+      {
+        "file": "/home/tim/Desktop/dod-gc/promo/shorts-2026-11-09-evening/review/05-donner-tweaks-v1/04-20261108-143659-tip-donner-strarena-t1.81.png",
+        "t": 1.8133333333333335,
+        "label": "4 20261108-143659-tip-donner-strarena t1.81",
+        "yavg_fullframe": 50.68055873939042
+      },
+      {
+        "file": "/home/tim/Desktop/dod-gc/promo/shorts-2026-11-09-evening/review/05-donner-tweaks-v1/05-20261108-223603-atlas-dod_donner-allies-t2.35.png",
+        "t": 2.3466666666666667,
+        "label": "5 20261108-223603-atlas-dod_donner-allies t2.35",
+        "yavg_fullframe": 72.7741625708912
+      },
+      {
+        "file": "/home/tim/Desktop/dod-gc/promo/shorts-2026-11-09-evening/review/05-donner-tweaks-v1/06-20261108-223646-atlas-dod_donner-axis-t2.92.png",
+        "t": 2.9166666666666665,
+        "label": "6 20261108-223646-atlas-dod_donner-axis t2.92",
+        "yavg_fullframe": 67.69208707561728
+      },
+      {
+        "file": "/home/tim/Desktop/dod-gc/promo/shorts-2026-11-09-evening/review/05-donner-tweaks-v1/06-hold-late-t4.47.png",
+        "t": 4.466666666666666,
+        "label": "last hold t4.47",
+        "yavg_fullframe": 67.6954351244213
+      },
+      {
+        "file": "/home/tim/Desktop/dod-gc/promo/shorts-2026-11-09-evening/review/05-donner-tweaks-v1/endcard-t5.87.png",
+        "t": 5.866666666666666,
+        "label": "end t5.87",
+        "yavg_fullframe": 51.8405180058835
+      }
+    ],
+    "visual": [
+      "Six-still chronological Donner cut with four labeled viewpoints. Camera B (fix12 / fix15 / strarena) is the only same-camera tweak series. Midday allies alley and the two evening atlas spawns are clearly labeled as different views rather than jump-cut as if they were one camera.",
+      "The Camera B sequence is a tweak pass, not a successful geometry fill-in: fix15 adds stone steps and loses the tiled roof (17% pixels differ >8 vs fix12); strarena brings the tiled roof back and changes the left wall to stone (49% pixels differ >8 vs fix15). Cyan void remains where the ground should be in all three.",
+      "Evening allies spawn is much sparser than the midday allies alley (70% pixels differ >8, and it is a different camera). Not captioned as progress.",
+      "Static stills, no Ken Burns / zoom / pan / punch-in. Holds are 16/30s (~0.533s); last evening axis hold is 2.0s; olive end card is 3.0s.",
+      "No AMD/Mesa Video Info OSD, no magenta debug, no fatal/error/reset screens, no Valve intro, no non-DoD menus in the used stills.",
+      "Leftover artifacts left in: cyan void floors, a black missing face on the evening axis courtyard, sparse floating trees on the evening allies plate.",
+      "Typography matches this morning's approved finals and the unused evening Shorts (DejaVu Sans Bold, four top lines, two footers, olive end card).",
+      "No performance or hardware claims. Overlays state Dolphin framedump, dev/unfinished build. No 'PC screenshot'.",
+      "No source game audio. Music is the unused original WW2-sounding track Mournful Horn Theme (Allied Resolve is on Short 04; Procession of Determination, Brutal Impact, and Menace of War were already used on evening Shorts 01\u201303)."
+    ],
+    "game_region_yavg": {
+      "crop": "1080x810 at y=555",
+      "frames": {
+        "01-20261108-130544-atlas-dod_donner-allies-t0.21.png": 106.18218399634202,
+        "02-20261108-135622-tip-donner-fix12-t0.75.png": 103.63845306698674,
+        "03-20261108-140624-tip-donner-fix15-t1.28.png": 99.79429562071329,
+        "04-20261108-143659-tip-donner-strarena-t1.81.png": 87.68245747256515,
+        "05-20261108-223603-atlas-dod_donner-allies-t2.35.png": 111.06415394718792,
+        "06-20261108-223646-atlas-dod_donner-axis-t2.92.png": 109.58382514060357,
+        "06-hold-late-t4.47.png": 109.58856064814813,
+        "endcard-t5.87.png": 53.86937601394604
+      },
+      "note": "All game-region YAVG should be well above the drop threshold of 16. End-card value is the olive field plus white text in the center crop."
+    },
+    "still_hold_check": "06-20261108-223646-atlas-dod_donner-axis-t2.92.png vs 06-hold-late-t4.47.png: mean_abs=0.02 max=26 pct>8=0.004% \u2014 composition unchanged if this is typical H.264 variance",
+    "ffprobe": {
+      "video": "h264 High yuv420p 1080x1920 30/1 230 frames",
+      "audio": "aac LC 48000 Hz stereo",
+      "duration_s": 7.666667,
+      "size_bytes": 778070,
+      "bit_rate": "811863"
+    }
+  },
+  "dropped": [
+    {
+      "folder": "early tip-donner / tipfix / spill / pad2m / planes / floor-diag (most of 03:04\u201312:27)",
+      "reason": "Finals are ~9.4 KB failures, 176-byte black frames, YAVG below 16 (pad2m 800x600 YAVG 12.93 and two byte-identical copies), magenta MEM_ALLOC, Dolphin error dialogs ('Couldn't open port', 'An error occurred'), or red exception/console dumps. Not usable gameplay."
+    },
+    {
+      "folder": "20261108-111236 through 121655 and 124341-130055 tip-donner (13\u201314 KB, YAVG ~28, uniq ~140)",
+      "reason": "Red GameCube exception / stack-dump screens, not map views. Several are near-duplicates of each other (identical 16x16 aHash)."
+    },
+    {
+      "folder": "20261108-113527-tip-donner and 113550 (byte-identical 500x112)",
+      "reason": "Odd 500x112 crop with a Dolphin 'Couldn't open port' dialog. Not a map view."
+    },
+    {
+      "folder": "20261108-122708-tip-donner (500x286)",
+      "reason": "Odd-aspect Dolphin error dialog, not a map view."
+    },
+    {
+      "folder": "20261108-130250-tip-donner, 130434-atlas-dod_donner-axis, 144001-tip-donner-eye2, 162621-tip-donner-stickeye4",
+      "reason": "A stuck inside-wall camera: half the frame is a close-up wall, with a small doorway view on the right. Textures do swap (wood vs grass), but the composition is not show-ready and is a different camera from the clean tweak series. Dropped rather than jump-cut into the short."
+    },
+    {
+      "folder": "20261108-143846-tip-donner-eye",
+      "reason": "13.7 KB exception/dump class still (YAVG 28.8, uniq 140). Byte-related to failed avalanche tip stills. Not a map view."
+    },
+    {
+      "folder": "20261108-160045-tip-donner-libogc-draw and 160453-tip-donner-markskip",
+      "reason": "Hex memory-dump / GPR screens, not map views."
+    },
+    {
+      "folder": "20261108-222604-tipfix-donner-cf",
+      "reason": "Byte-identical to the evening atlas axis plate already used as the last frame. Kept the atlas path."
+    },
+    {
+      "folder": "skybox stills",
+      "reason": "Off-limits (already a posted skybox Short)."
+    }
+  ],
+  "inventory_notes": {
+    "donner_folders_named": 80,
+    "usable_gameplay_stills_after_qa": 6,
+    "cameras": {
+      "A": "20261108-130544 midday allies cobblestone alley",
+      "B": "fix12 \u2192 fix15 \u2192 strarena, same composition (tweak pass, mixed changes)",
+      "C": "evening atlas allies, sparse trees in void",
+      "D": "evening atlas axis courtyard (byte-identical to tipfix-donner-cf)"
+    },
+    "progress_claim": "Camera B is a real same-camera tweak series but changes are mixed (stone steps appear then a tiled roof returns; not a monotonic fill-in). Evening allies is a different camera and is sparser than midday allies \u2014 not captioned as improvement. Viewpoint changes are labeled in the map line."
+  },
+  "renderer": "/home/tim/Desktop/dod-gc/promo/shorts-2026-11-09-evening/render_maps_timelapse.py",
+  "review_frames": "/home/tim/Desktop/dod-gc/promo/shorts-2026-11-09-evening/review/05-donner-tweaks-v1",
+  "contact_sheet": "/home/tim/Desktop/dod-gc/promo/shorts-2026-11-09-evening/review/05-donner-tweaks-v1/contact-sheet.jpg",
+  "not_touched": [
+    "No posts deleted, unpublished, updated, uploaded, or scheduled.",
+    "Unused evening Shorts 01/02/03 were not recut or uploaded.",
+    "Already-posted menu, skybox, and geometry-progress Shorts were not touched."
+  ]
+}

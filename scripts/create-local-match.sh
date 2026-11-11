@@ -163,7 +163,7 @@ while kill -0 "$DPID" 2>/dev/null; do
 		READY=1
 		break
 	fi
-	if rg -a -q 'FATAL|MISSING GAME DATA' "$LOG" 2>/dev/null; then
+	if rg -a -q 'FATAL|fatal (message|breadcrumb)|MISSING GAME DATA' "$LOG" 2>/dev/null; then
 		echo "==> fatal before menu" >&2
 		cp -f "$LOG" "$SHOT_DIR/dolphin.log"
 		exit 1
@@ -253,6 +253,8 @@ markers = (
     b"Game started",
     b"direct map ready",
     b"Server spawned",
+    b"fatal message",
+    b"fatal breadcrumb",
     b"FATAL",
     b"out of memory",
 )
@@ -267,7 +269,7 @@ while time.time() < deadline:
             if m in raw and m not in last:
                 print(f"marker: {m.decode()}", flush=True)
         last = raw
-        if b"FATAL" in raw or b"out of memory" in raw:
+        if b"FATAL" in raw or b"fatal message" in raw or b"fatal breadcrumb" in raw or b"out of memory" in raw:
             break
         if b"Game started" in raw or b"MAP READY" in raw or b"map loaded" in raw:
             time.sleep(2.5)
@@ -290,7 +292,7 @@ NOTE="$DODGC_NOTES/${STAMP}-${SAFE_ROUTE}.md"
 	echo
 	echo "## OSReport keys"
 	echo '```'
-	tr -d '\000' < "$LOG" | rg -n 'maps\.lst|CreateGame|Spawn Server|map loaded|MAP READY|Game started|maxplayers|FATAL|out of memory|Server IPv4|listen' | head -80 || true
+	tr -d '\000' < "$LOG" | rg -n 'maps\.lst|CreateGame|Spawn Server|map loaded|MAP READY|Game started|maxplayers|FATAL|fatal message|fatal breadcrumb|out of memory|Server IPv4|listen' | head -80 || true
 	echo '```'
 } | tee "$NOTE"
 

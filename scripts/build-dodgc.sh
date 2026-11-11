@@ -60,6 +60,8 @@ if (( ! ISO_ONLY )); then
 	# Set XASH_GAMECUBE_LINK_BBA=1 for Ethernet/net probes only.
 	export XASH_GAMECUBE_LINK_BBA="${XASH_GAMECUBE_LINK_BBA:-0}"
 	cd "$DODGC_ENGINE"
+	python3 "$SCRIPT_DIR/integrate-dod-gameplay.py" \
+		--hlsdk-dir "$DODGC_HLSDK" --engine-dir "$DODGC_ENGINE"
 
 	# Keep DoD HLSDK archives under out/network-hlsdk. Never clobber a fresh
 	# private build with stale OUT/hlsdk-gamecube copies (hud19 ScreenWidth miss).
@@ -125,6 +127,11 @@ BUILD_DATA="$XASH3D_GC_ISO_CACHE/dod"
 BUILD_VALVE="$XASH3D_GC_ISO_CACHE/valve"
 mkdir -p "$BUILD_DATA"
 rsync -a --delete "$DODGC_CONTENT_DOD/" "$BUILD_DATA/"
+cat > "$BUILD_DATA/game.cfg" <<'EOF'
+mp_teamplay 1
+mp_teamlist "Allies;Axis"
+mp_defaultteam 0
+EOF
 if [[ -d "$DODGC_CONTENT_VALVE" ]]; then
 	mkdir -p "$BUILD_VALVE"
 	rsync -a --delete \

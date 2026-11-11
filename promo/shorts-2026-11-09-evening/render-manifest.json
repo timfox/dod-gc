@@ -1,0 +1,235 @@
+{
+  "created": "2026-11-09T22:44:16-08:00",
+  "created_label": "2026-11-09 10:44 PM PST",
+  "folder": "/home/tim/Desktop/dod-gc/promo/shorts-2026-11-09-evening",
+  "spec": "1080x1920 30fps H.264+AAC; 4:3 game centered at 1080x810 (y=555) over darkened blur fill; olive end card 2.5s",
+  "status": "local review only \u2014 not published, scheduled, or uploaded",
+  "music_rights": "Tracks are Suno instrumentals tagged artist=gopexllc, lyrics=[Instrumental], comment='made with suno; created=2026-11-07'. No license/readme beside the files. Rights were not independently verified for commercial social posting.",
+  "shorts": [
+    {
+      "file": "/home/tim/Desktop/dod-gc/promo/shorts-2026-11-09-evening/01-caen-flash-maps-v1.mp4",
+      "title_overlay": "Day of Defeat on GameCube - evening maps",
+      "duration_s": 21.9,
+      "bytes": 2098093,
+      "sha256_16": "f412541de279b536",
+      "probe": {
+        "programs": [],
+        "stream_groups": [],
+        "streams": [
+          {
+            "codec_name": "h264",
+            "codec_type": "video",
+            "width": 1080,
+            "height": 1920,
+            "r_frame_rate": "30/1"
+          },
+          {
+            "codec_name": "aac",
+            "codec_type": "audio",
+            "sample_rate": "48000",
+            "channels": 2,
+            "r_frame_rate": "0/0"
+          }
+        ],
+        "format": {
+          "duration": "21.900000",
+          "size": "2098093",
+          "bit_rate": "766426"
+        }
+      },
+      "music": {
+        "file": "/home/tim/Desktop/dod-gc/social-media/music/Procession of Determination.mp3",
+        "in_point_s": 0.0,
+        "volume": 0.18,
+        "fade_in_s": 0.4,
+        "fade_out_s": 1.2
+      },
+      "sources": [
+        {
+          "file": "/home/tim/Desktop/dod-gc/playtests/videos/20261109-193958-caen-ldense-878604c1db.mp4",
+          "in": 9.0,
+          "out": 13.5,
+          "edit_duration_s": 4.47,
+          "label": "2026-11-09 - dod_caen ldense - 878604c1",
+          "notes": "Used after green/yellow capture-debug overlay left (~t9). Camera motion until ~11.05, then a short settle on the same angle. Faint leftover translucent bar remains in the upper sky."
+        },
+        {
+          "file": "/home/tim/Desktop/dod-gc/playtests/videos/20261109-193958-caen-ldense-878604c1db.mp4",
+          "in": 74.22,
+          "out": 74.5,
+          "edit_duration_s": 4.0,
+          "label": "2026-11-09 - dod_caen later lighting - 878604c1",
+          "notes": "Video stream ends at 74.5s (container 76.08s). Only ~0.3s of later golden lighting was decodable; last frames were clone-padded to a 4.0s hold."
+        },
+        {
+          "file": "/home/tim/Desktop/dod-gc/playtests/videos/20261109-192714-flash-novm-878604c1db.mp4",
+          "in": 7.5,
+          "out": 13.0,
+          "edit_duration_s": 5.47,
+          "label": "2026-11-09 - dod_flash courtyard - 878604c1",
+          "notes": "Green debug overlay gone by t7.5. Motion ends ~7.72; remainder is a hold on the courtyard/alley view."
+        },
+        {
+          "file": "/home/tim/Desktop/dod-gc/playtests/videos/20261109-205739-flash-dense8-878604c1db.mp4",
+          "in": 36.09,
+          "out": 41.59,
+          "edit_duration_s": 5.47,
+          "label": "2026-11-09 - dod_flash village - 878604c1",
+          "notes": "Avoided the earlier approach (t~7-11) because of a large missing-texture white hole and green debug bars. This later hold is the filled village skyline; a faint white bar remains in the upper sky."
+        }
+      ],
+      "endcard": {
+        "duration_s": 2.5,
+        "color": "0x2d3927",
+        "text": [
+          "Project updates:",
+          "gamecubehalf.life"
+        ]
+      }
+    },
+    {
+      "file": "/home/tim/Desktop/dod-gc/promo/shorts-2026-11-09-evening/02-capfaces-flash-avalanche-v1.mp4",
+      "title_overlay": "Day of Defeat on GameCube - map geometry",
+      "duration_s": 24.066016,
+      "bytes": 11360914,
+      "sha256_16": "5432c53340c65ccf",
+      "probe": {
+        "programs": [],
+        "stream_groups": [],
+        "streams": [
+          {
+            "codec_name": "h264",
+            "codec_type": "video",
+            "width": 1080,
+            "height": 1920,
+            "r_frame_rate": "30/1"
+          },
+          {
+            "codec_name": "aac",
+            "codec_type": "audio",
+            "sample_rate": "48000",
+            "channels": 2,
+            "r_frame_rate": "0/0"
+          }
+        ],
+        "format": {
+          "duration": "24.066016",
+          "size": "11360914",
+          "bit_rate": "3776583"
+        }
+      },
+      "music": {
+        "file": "/home/tim/Desktop/dod-gc/social-media/music/Brutal Impact.mp3",
+        "in_point_s": 0.0,
+        "volume": 0.18,
+        "fade_in_s": 0.4,
+        "fade_out_s": 1.2
+      },
+      "sources": [
+        {
+          "file": "/home/tim/Desktop/dod-gc/playtests/promo/01-capfaces-flash.mp4",
+          "mtime": "2026-11-08 19:40:52 PST",
+          "in": 7.4,
+          "out": 15.82,
+          "edit_duration_s": 8.4,
+          "label": "2026-11-08 - dod_flash capfaces",
+          "notes": "Trimmed opening black, Mesa Video Info overlay, and 4-pane debug consoles (through ~t6). Started at 7.40 for a readable grass/sky opener rather than the t6.5 close-up wall."
+        },
+        {
+          "file": "/home/tim/Desktop/dod-gc/playtests/promo/02-capfaces-avalanche.mp4",
+          "mtime": "2026-11-08 19:42:12 PST",
+          "in": 5.5,
+          "out": 15.25,
+          "edit_duration_s": 9.73,
+          "label": "2026-11-08 - dod_avalanche capfaces",
+          "notes": "Trimmed opening black / Mesa / debug consoles (through ~t5). Motion window."
+        },
+        {
+          "file": "/home/tim/Desktop/dod-gc/playtests/promo/02-capfaces-avalanche.mp4",
+          "in": 17.52,
+          "out": 20.95,
+          "edit_duration_s": 3.43,
+          "label": "2026-11-08 - dod_avalanche capfaces",
+          "notes": "Second motion window after a mid-clip freeze (15.25-17.52 skipped). Did not use 29.72-32.95 (enough duration already)."
+        }
+      ],
+      "endcard": {
+        "duration_s": 2.5,
+        "color": "0x2d3927",
+        "text": [
+          "Project updates:",
+          "gamecubehalf.life"
+        ]
+      }
+    }
+  ],
+  "qa": {
+    "blackdetect": "ffmpeg blackdetect=d=0.3:pix_th=0.10 \u2014 no black_start/black_end on either final",
+    "stills_yavg": "All extracted review stills: game-region YAVG 66-129 (end cards ~54). None below 16.",
+    "visual": [
+      "No AMD/Mesa Video Info OSD in the used slices (those lived only in opening boot screens, which were dropped).",
+      "No magenta debug, no error/fatal/reset screens, no Valve intro logo, no non-DoD menus.",
+      "Dropped the large green+yellow capture-debug overlay slices (typical on Caen/Flash dense takes until ~t9-11).",
+      "A faint leftover translucent bar remains in the upper sky of the clean Caen shots and the Flash village hold \u2014 noted, not the dropped green debug overlay.",
+      "Typography matches this morning's approved finals (DejaVu Sans Bold, four top lines, two footers, olive end card).",
+      "No performance or hardware claims. Overlays state Dolphin emulator, dev/unfinished build.",
+      "Source game audio was discarded to avoid Valve/DoD/HL Content ID risk."
+    ]
+  },
+  "dropped": [
+    {
+      "clip": "20261109-215040-caen-part-efx-878604c1db.mp4",
+      "reason": "Preferred tonight clip; frozen after ~2.7s opening black; ~0.6s motion."
+    },
+    {
+      "clip": "20261109-213617-caen-stable-recheck-878604c1db.mp4",
+      "reason": "Preferred; only ~2.3s motion with many short freezes."
+    },
+    {
+      "clip": "20261109-214621-flash-solo-hwok-878604c1db.mp4",
+      "reason": "Preferred; ~1.3s motion."
+    },
+    {
+      "clip": "20261109-210619-caen-dense11-878604c1db.mp4",
+      "reason": "Preferred; freeze from 2.054 to EOF."
+    },
+    {
+      "clip": "20261109-214154-caen-part6-878604c1db.mp4",
+      "reason": "Audio only, no video stream."
+    },
+    {
+      "clip": "20261109-211012-flash-dense12-878604c1db.mp4",
+      "reason": "Almost no video frames in a long container."
+    },
+    {
+      "clip": "Opening ~0-9s of tonight's Caen/Flash dense/ldense/novm takes",
+      "reason": "Black + AMD Radeon Video Info OSD + 4-pane debug consoles, then green/yellow debug bars."
+    },
+    {
+      "clip": "flash-dense7/8/9/11 approaches (~t6-11)",
+      "reason": "Green debug and/or huge missing-texture white hole. flash-dense9 later also had a GameCube fatal/reset dump \u2014 dropped."
+    },
+    {
+      "clip": "20261109-211450-caen-props1 and flash-dense9 early",
+      "reason": "Valve intro logo (not gameplay)."
+    },
+    {
+      "clip": "20261109-215957-caen-part-min, 220544-caen-part-efx-hold, 220918-caen-part-seed, and other late part-* / play-7e44ea2556",
+      "reason": "Frozen, near-duplicate of earlier Caen angle with debug bars, or incomplete blue-void view with little useful motion."
+    },
+    {
+      "clip": "20261108-230846-play-5a3c6e48a9.mp4",
+      "reason": "Not needed; capfaces had enough distinct motion. Avoided re-using geometry Short windows."
+    },
+    {
+      "clip": "Avalanche capfaces 29.72-32.95",
+      "reason": "Unused leftover motion; short 2 already ~24s."
+    }
+  ],
+  "not_touched": [
+    "BulkPublish post 37524 (DoD skybox) left in the midnight YouTube retry queue.",
+    "No posts deleted, unpublished, updated, uploaded, or scheduled."
+  ],
+  "renderer": "/home/tim/Desktop/dod-gc/promo/shorts-2026-11-09-evening/render_evening_shorts.py",
+  "review_frames": "/home/tim/Desktop/dod-gc/promo/shorts-2026-11-09-evening/review"
+}

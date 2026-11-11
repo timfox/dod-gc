@@ -1,0 +1,378 @@
+{
+  "created": "2026-11-10T00:19:37.478628-08:00",
+  "created_label": "2026-11-10 12:19 AM PT",
+  "folder": "/home/tim/Desktop/dod-gc/promo/shorts-2026-11-09-evening",
+  "spec": "1080x1920 30fps H.264+AAC; 4:3 game centered at 1080x810 (y=555) over darkened blur fill; olive end card 3.0s; static stills only (no Ken Burns/zoom/pan); rapid holds 16/30s (~0.533s), last game frame 2.0s",
+  "status": "local review only \u2014 not published, scheduled, or uploaded",
+  "music_rights": "Tracks are Suno instrumentals tagged artist=gopexllc, lyrics=[Instrumental], comment='made with suno; created=2026-11-07'. No license/readme beside the files. Rights were not independently verified for commercial social posting.",
+  "short": {
+    "file": "/home/tim/Desktop/dod-gc/promo/shorts-2026-11-09-evening/04-maps-atlas-tour-v1.mp4",
+    "title_overlay": "Day of Defeat on GameCube - spawn atlas",
+    "hook_overlay": "Five maps that loaded in the spawn pass",
+    "duration_s": 9.8,
+    "bytes": 1116536,
+    "sha256_16": "5bb8aadb4be859bd",
+    "probe": {
+      "streams": [
+        {
+          "codec_name": "h264",
+          "codec_type": "video",
+          "width": 1080,
+          "height": 1920,
+          "r_frame_rate": "30/1",
+          "sample_rate": null,
+          "channels": null
+        },
+        {
+          "codec_name": "aac",
+          "codec_type": "audio",
+          "width": null,
+          "height": null,
+          "r_frame_rate": "0/0",
+          "sample_rate": "48000",
+          "channels": 2
+        }
+      ],
+      "format": {
+        "duration": "9.800000",
+        "size": "1116536",
+        "bit_rate": "911457"
+      }
+    },
+    "music": {
+      "file": "/home/tim/Desktop/dod-gc/social-media/music/Allied Resolve.mp3",
+      "track": "Allied Resolve",
+      "in_point_s": 3.0,
+      "volume": 0.18,
+      "fade_in_s": 0.4,
+      "fade_out_s": 1.2
+    },
+    "sources": [
+      {
+        "file": "/home/tim/Desktop/dod-gc/playtests/map-spawn-atlas/screenshots/dod_avalanche/allies.png",
+        "folder": "atlas-dod_avalanche-allies",
+        "mtime_label": "2026-11-08 10:28-11:00 PM PT",
+        "edit_duration_s": 0.5333333333333333,
+        "label": "2026-11-08 - dod_avalanche allies spawn",
+        "notes": "Most complete plate in this atlas pass: stone/wood town textures, some flat tan faces and a dark doorway. Opened here so the first frame is not the dark Anzio plate."
+      },
+      {
+        "file": "/home/tim/Desktop/dod-gc/playtests/map-spawn-atlas/screenshots/dod_avalanche/axis.png",
+        "folder": "atlas-dod_avalanche-axis",
+        "mtime_label": "2026-11-08 10:28-11:00 PM PT",
+        "edit_duration_s": 0.5333333333333333,
+        "label": "2026-11-08 - dod_avalanche axis spawn",
+        "notes": "Textured town from the axis spawn, missing faces. Distinct from allies (85.4% pixels differ >8)."
+      },
+      {
+        "file": "/home/tim/Desktop/dod-gc/playtests/map-spawn-atlas/screenshots/dod_flash/allies.png",
+        "folder": "atlas-dod_flash-allies",
+        "mtime_label": "2026-11-08 10:28-11:00 PM PT",
+        "edit_duration_s": 0.5333333333333333,
+        "label": "2026-11-08 - dod_flash allies spawn",
+        "notes": "Autumn foliage and gold light, plus large olive-brown missing-texture rectangles. Included as part of the multi-map tour, not a Flash-only recut."
+      },
+      {
+        "file": "/home/tim/Desktop/dod-gc/playtests/map-spawn-atlas/screenshots/dod_flash/axis.png",
+        "folder": "atlas-dod_flash-axis",
+        "mtime_label": "2026-11-08 10:28-11:00 PM PT",
+        "edit_duration_s": 0.5333333333333333,
+        "label": "2026-11-08 - dod_flash axis spawn",
+        "notes": "Darker axis courtyard/alley. Distinct from allies (85.0% pixels differ >8)."
+      },
+      {
+        "file": "/home/tim/Desktop/dod-gc/playtests/map-spawn-atlas/screenshots/dod_donner/allies.png",
+        "folder": "atlas-dod_donner-allies",
+        "mtime_label": "2026-11-08 10:28-11:00 PM PT",
+        "edit_duration_s": 0.5333333333333333,
+        "label": "2026-11-08 - dod_donner allies spawn",
+        "notes": "Evening allies spawn: sparse tree clusters and fragments floating in a cyan/blue void. Later and much sparser than the midday allies alley used in Short 05."
+      },
+      {
+        "file": "/home/tim/Desktop/dod-gc/playtests/map-spawn-atlas/screenshots/dod_donner/axis.png",
+        "folder": "atlas-dod_donner-axis",
+        "mtime_label": "2026-11-08 10:28-11:00 PM PT",
+        "edit_duration_s": 0.5333333333333333,
+        "label": "2026-11-08 - dod_donner axis spawn",
+        "notes": "Evening axis courtyard with gold lighting, a black missing face, and a cyan void floor. Byte-identical to 20261108-222604-tipfix-donner-cf."
+      },
+      {
+        "file": "/home/tim/Desktop/dod-gc/playtests/map-spawn-atlas/screenshots/dod_anzio/allies.png",
+        "folder": "atlas-dod_anzio-allies",
+        "mtime_label": "2026-11-08 10:28-11:00 PM PT",
+        "edit_duration_s": 0.5333333333333333,
+        "label": "2026-11-08 - dod_anzio allies spawn",
+        "notes": "Untextured / under-lit brick and large planes. Darker plate (YAVG 30.9) but readable geometry. No OSD. Placed mid-pack so it is not the opening or closing frame."
+      },
+      {
+        "file": "/home/tim/Desktop/dod-gc/playtests/map-spawn-atlas/screenshots/dod_anzio/axis.png",
+        "folder": "atlas-dod_anzio-axis",
+        "mtime_label": "2026-11-08 10:28-11:00 PM PT",
+        "edit_duration_s": 0.5333333333333333,
+        "label": "2026-11-08 - dod_anzio axis spawn",
+        "notes": "Sparser untextured spawn. Large unlit/black plane on the left and a cyan void. Distinct from allies (74.8% pixels differ >8)."
+      },
+      {
+        "file": "/home/tim/Desktop/dod-gc/playtests/map-spawn-atlas/screenshots/dod_kraftstoff/allies.png",
+        "folder": "atlas-dod_kraftstoff-allies",
+        "mtime_label": "2026-11-08 10:28-11:00 PM PT",
+        "edit_duration_s": 0.5333333333333333,
+        "label": "2026-11-08 - dod_kraftstoff allies spawn",
+        "notes": "Scattered industrial buildings with missing faces and a cyan void. A dark ground bar sits along the bottom edge."
+      },
+      {
+        "file": "/home/tim/Desktop/dod-gc/playtests/map-spawn-atlas/screenshots/dod_kraftstoff/axis.png",
+        "folder": "atlas-dod_kraftstoff-axis",
+        "mtime_label": "2026-11-08 10:28-11:00 PM PT",
+        "edit_duration_s": 2.0,
+        "label": "2026-11-08 - dod_kraftstoff axis spawn",
+        "notes": "Axis spawn of the same unfinished industrial scatter. Distinct from allies (60.1% pixels differ >8). Last game frame, 2.0s hold."
+      }
+    ],
+    "endcard": {
+      "duration_s": 3.0,
+      "color": "0x2d3927",
+      "text": [
+        "Project updates:",
+        "gamecubehalf.life"
+      ]
+    }
+  },
+  "qa": {
+    "blackdetect": "ffmpeg blackdetect=d=0.3:pix_th=0.10 \u2014 no black_start/black_end",
+    "review_yavg": [
+      {
+        "file": "/home/tim/Desktop/dod-gc/promo/shorts-2026-11-09-evening/review/04-maps-atlas-tour-v1/01-atlas-dod_avalanche-allies-t0.21.png",
+        "t": 0.21333333333333335,
+        "label": "1 atlas-dod_avalanche-allies t0.21",
+        "yavg_fullframe": 57.719675973668984
+      },
+      {
+        "file": "/home/tim/Desktop/dod-gc/promo/shorts-2026-11-09-evening/review/04-maps-atlas-tour-v1/02-atlas-dod_avalanche-axis-t0.75.png",
+        "t": 0.7466666666666667,
+        "label": "2 atlas-dod_avalanche-axis t0.75",
+        "yavg_fullframe": 41.79922378665124
+      },
+      {
+        "file": "/home/tim/Desktop/dod-gc/promo/shorts-2026-11-09-evening/review/04-maps-atlas-tour-v1/03-atlas-dod_flash-allies-t1.28.png",
+        "t": 1.28,
+        "label": "3 atlas-dod_flash-allies t1.28",
+        "yavg_fullframe": 63.398300713252304
+      },
+      {
+        "file": "/home/tim/Desktop/dod-gc/promo/shorts-2026-11-09-evening/review/04-maps-atlas-tour-v1/04-atlas-dod_flash-axis-t1.81.png",
+        "t": 1.8133333333333335,
+        "label": "4 atlas-dod_flash-axis t1.81",
+        "yavg_fullframe": 31.62000458140432
+      },
+      {
+        "file": "/home/tim/Desktop/dod-gc/promo/shorts-2026-11-09-evening/review/04-maps-atlas-tour-v1/05-atlas-dod_donner-allies-t2.35.png",
+        "t": 2.3466666666666667,
+        "label": "5 atlas-dod_donner-allies t2.35",
+        "yavg_fullframe": 72.57209382523148
+      },
+      {
+        "file": "/home/tim/Desktop/dod-gc/promo/shorts-2026-11-09-evening/review/04-maps-atlas-tour-v1/06-atlas-dod_donner-axis-t2.88.png",
+        "t": 2.88,
+        "label": "6 atlas-dod_donner-axis t2.88",
+        "yavg_fullframe": 67.49807076967593
+      },
+      {
+        "file": "/home/tim/Desktop/dod-gc/promo/shorts-2026-11-09-evening/review/04-maps-atlas-tour-v1/07-atlas-dod_anzio-allies-t3.41.png",
+        "t": 3.413333333333333,
+        "label": "7 atlas-dod_anzio-allies t3.41",
+        "yavg_fullframe": 19.085728817997683
+      },
+      {
+        "file": "/home/tim/Desktop/dod-gc/promo/shorts-2026-11-09-evening/review/04-maps-atlas-tour-v1/08-atlas-dod_anzio-axis-t3.95.png",
+        "t": 3.9466666666666663,
+        "label": "8 atlas-dod_anzio-axis t3.95",
+        "yavg_fullframe": 45.0315060619213
+      },
+      {
+        "file": "/home/tim/Desktop/dod-gc/promo/shorts-2026-11-09-evening/review/04-maps-atlas-tour-v1/09-atlas-dod_kraftstoff-allies-t4.48.png",
+        "t": 4.4799999999999995,
+        "label": "9 atlas-dod_kraftstoff-allies t4.48",
+        "yavg_fullframe": 50.995330802469134
+      },
+      {
+        "file": "/home/tim/Desktop/dod-gc/promo/shorts-2026-11-09-evening/review/04-maps-atlas-tour-v1/10-atlas-dod_kraftstoff-axis-t5.05.png",
+        "t": 5.05,
+        "label": "10 atlas-dod_kraftstoff-axis t5.05",
+        "yavg_fullframe": 54.97848642119984
+      },
+      {
+        "file": "/home/tim/Desktop/dod-gc/promo/shorts-2026-11-09-evening/review/04-maps-atlas-tour-v1/10-hold-late-t6.60.png",
+        "t": 6.6,
+        "label": "last hold t6.60",
+        "yavg_fullframe": 54.98050957658179
+      },
+      {
+        "file": "/home/tim/Desktop/dod-gc/promo/shorts-2026-11-09-evening/review/04-maps-atlas-tour-v1/endcard-t8.00.png",
+        "t": 8.0,
+        "label": "end t8.00",
+        "yavg_fullframe": 51.84051752363041
+      }
+    ],
+    "visual": [
+      "Rapid 10-still tour of the only 5 maps whose evening spawn-atlas plates actually loaded. The other 17 maps halted on a magenta _MEM_ALLOC OUT OF MEMORY dump with an AMD Radeon Video Info overlay and were skipped. Editorial order is Avalanche, Flash, Donner, Anzio, Kraftstoff (not capture order) so the first frame and last hold are not the dark Anzio plates.",
+      "Consistent plate type: evening Nov 8 allies then axis spawn per map. Show order is Avalanche, Flash, Donner, Anzio, Kraftstoff. Hook states 'five maps that loaded' \u2014 does not claim all 22.",
+      "Static stills, no Ken Burns / zoom / pan / punch-in. Holds are 16/30s (~0.533s); last Kraftstoff axis hold is 2.0s; olive end card is 3.0s.",
+      "No AMD/Mesa Video Info OSD, no magenta debug, no fatal/error/reset screens, no Half-Life missing-data menu, no Valve intro, no non-DoD menus in the used stills.",
+      "Leftover / unfinished artifacts left in: Anzio is mostly untextured and dark, with a large black plane on the axis plate. Avalanche has some flat tan faces and a dark doorway. Donner evening allies is sparse floating trees in a cyan void; Donner axis has a black missing face and a cyan void floor. Flash allies has large olive-brown missing-texture rectangles. Kraftstoff has scattered floating buildings, missing faces, a cyan void, and a dark ground bar along the bottom edge.",
+      "This sequence does not show geometry filling in over time. It is a current-state spawn tour of the maps that came up.",
+      "Typography matches this morning's approved finals and the unused evening Shorts (DejaVu Sans Bold, four top lines, two footers, olive end card).",
+      "No performance or hardware claims. Overlays state Dolphin framedump, dev/unfinished build. No 'PC screenshot'.",
+      "No source game audio (stills have none). Music is the unused original WW2-sounding track Allied Resolve, not a Valve/Lost Coast soundtrack."
+    ],
+    "game_region_yavg": {
+      "crop": "1080x810 at y=555",
+      "frames": {
+        "01-atlas-dod_avalanche-allies-t0.21.png": 93.30927225308643,
+        "02-atlas-dod_avalanche-axis-t0.75.png": 64.10909587448559,
+        "03-atlas-dod_flash-allies-t1.28.png": 107.16121281778693,
+        "04-atlas-dod_flash-axis-t1.81.png": 57.312920613854594,
+        "05-atlas-dod_donner-allies-t2.35.png": 111.06143662665752,
+        "06-atlas-dod_donner-axis-t2.88.png": 109.59501256515775,
+        "07-atlas-dod_anzio-allies-t3.41.png": 29.867891673525378,
+        "08-atlas-dod_anzio-axis-t3.95.png": 58.0715730521262,
+        "09-atlas-dod_kraftstoff-allies-t4.48.png": 74.48299167009601,
+        "10-atlas-dod_kraftstoff-axis-t5.05.png": 89.00714528692272,
+        "10-hold-late-t6.60.png": 89.00847600594422,
+        "endcard-t8.00.png": 53.86937487082761
+      },
+      "note": "All game-region YAVG should be well above the drop threshold of 16. End-card value is the olive field plus white text in the center crop."
+    },
+    "still_hold_check": "10-atlas-dod_kraftstoff-axis-t5.05.png vs 10-hold-late-t6.60.png: mean_abs=0.02 max=43 pct>8=0.007% \u2014 composition unchanged if this is typical H.264 variance",
+    "ffprobe": {
+      "video": "h264 High yuv420p 1080x1920 30/1 294 frames",
+      "audio": "aac LC 48000 Hz stereo",
+      "duration_s": 9.8,
+      "size_bytes": 1116536,
+      "bit_rate": "911457"
+    }
+  },
+  "dropped": [
+    {
+      "map": "dod_caen",
+      "plate": "allies+axis (byte-identical)",
+      "reason": "Magenta GameCube _MEM_ALLOC OUT OF MEMORY / HALTED crash dump plus AMD Radeon Video Info overlay. Allies and axis are the same file. ~14\u201316 KB, ~68% magenta pixels."
+    },
+    {
+      "map": "dod_charlie",
+      "plate": "allies+axis (byte-identical)",
+      "reason": "Magenta GameCube _MEM_ALLOC OUT OF MEMORY / HALTED crash dump plus AMD Radeon Video Info overlay. Allies and axis are the same file. ~14\u201316 KB, ~68% magenta pixels."
+    },
+    {
+      "map": "dod_chemille",
+      "plate": "allies+axis (byte-identical)",
+      "reason": "Magenta GameCube _MEM_ALLOC OUT OF MEMORY / HALTED crash dump plus AMD Radeon Video Info overlay. Allies and axis are the same file. ~14\u201316 KB, ~68% magenta pixels."
+    },
+    {
+      "map": "dod_escape",
+      "plate": "allies+axis (byte-identical)",
+      "reason": "Magenta GameCube _MEM_ALLOC OUT OF MEMORY / HALTED crash dump plus AMD Radeon Video Info overlay. Allies and axis are the same file. ~14\u201316 KB, ~68% magenta pixels."
+    },
+    {
+      "map": "dod_falaise",
+      "plate": "allies+axis (byte-identical)",
+      "reason": "Magenta GameCube _MEM_ALLOC OUT OF MEMORY / HALTED crash dump plus AMD Radeon Video Info overlay. Allies and axis are the same file. ~14\u201316 KB, ~68% magenta pixels."
+    },
+    {
+      "map": "dod_flugplatz",
+      "plate": "allies+axis (byte-identical)",
+      "reason": "Magenta GameCube _MEM_ALLOC OUT OF MEMORY / HALTED crash dump plus AMD Radeon Video Info overlay. Allies and axis are the same file. ~14\u201316 KB, ~68% magenta pixels."
+    },
+    {
+      "map": "dod_forest",
+      "plate": "allies+axis (byte-identical)",
+      "reason": "Magenta GameCube _MEM_ALLOC OUT OF MEMORY / HALTED crash dump plus AMD Radeon Video Info overlay. Allies and axis are the same file. ~14\u201316 KB, ~68% magenta pixels."
+    },
+    {
+      "map": "dod_glider",
+      "plate": "allies+axis (byte-identical)",
+      "reason": "Magenta GameCube _MEM_ALLOC OUT OF MEMORY / HALTED crash dump plus AMD Radeon Video Info overlay. Allies and axis are the same file. ~14\u201316 KB, ~68% magenta pixels."
+    },
+    {
+      "map": "dod_jagd",
+      "plate": "allies+axis (byte-identical)",
+      "reason": "Magenta GameCube _MEM_ALLOC OUT OF MEMORY / HALTED crash dump plus AMD Radeon Video Info overlay. Allies and axis are the same file. ~14\u201316 KB, ~68% magenta pixels."
+    },
+    {
+      "map": "dod_kalt",
+      "plate": "allies+axis (byte-identical)",
+      "reason": "Magenta GameCube _MEM_ALLOC OUT OF MEMORY / HALTED crash dump plus AMD Radeon Video Info overlay. Allies and axis are the same file. ~14\u201316 KB, ~68% magenta pixels."
+    },
+    {
+      "map": "dod_merderet",
+      "plate": "allies+axis (byte-identical)",
+      "reason": "Magenta GameCube _MEM_ALLOC OUT OF MEMORY / HALTED crash dump plus AMD Radeon Video Info overlay. Allies and axis are the same file. ~14\u201316 KB, ~68% magenta pixels."
+    },
+    {
+      "map": "dod_northbound",
+      "plate": "allies+axis (byte-identical)",
+      "reason": "Magenta GameCube _MEM_ALLOC OUT OF MEMORY / HALTED crash dump plus AMD Radeon Video Info overlay. Allies and axis are the same file. ~14\u201316 KB, ~68% magenta pixels."
+    },
+    {
+      "map": "dod_saints",
+      "plate": "allies+axis (byte-identical)",
+      "reason": "Magenta GameCube _MEM_ALLOC OUT OF MEMORY / HALTED crash dump plus AMD Radeon Video Info overlay. Allies and axis are the same file. ~14\u201316 KB, ~68% magenta pixels."
+    },
+    {
+      "map": "dod_sturm",
+      "plate": "allies+axis (byte-identical)",
+      "reason": "Magenta GameCube _MEM_ALLOC OUT OF MEMORY / HALTED crash dump plus AMD Radeon Video Info overlay. Allies and axis are the same file. ~14\u201316 KB, ~68% magenta pixels."
+    },
+    {
+      "map": "dod_switch",
+      "plate": "allies+axis (byte-identical)",
+      "reason": "Magenta GameCube _MEM_ALLOC OUT OF MEMORY / HALTED crash dump plus AMD Radeon Video Info overlay. Allies and axis are the same file. ~14\u201316 KB, ~68% magenta pixels."
+    },
+    {
+      "map": "dod_vicenza",
+      "plate": "allies+axis (byte-identical)",
+      "reason": "Magenta GameCube _MEM_ALLOC OUT OF MEMORY / HALTED crash dump plus AMD Radeon Video Info overlay. Allies and axis are the same file. ~14\u201316 KB, ~68% magenta pixels."
+    },
+    {
+      "map": "dod_zalec",
+      "plate": "allies+axis (byte-identical)",
+      "reason": "Magenta GameCube _MEM_ALLOC OUT OF MEMORY / HALTED crash dump plus AMD Radeon Video Info overlay. Allies and axis are the same file. ~14\u201316 KB, ~68% magenta pixels."
+    },
+    {
+      "map": "all 22 maps",
+      "plate": "early-morning capfaces.png (~9.3\u20139.5 KB) except Flash and Donner",
+      "reason": "~9.4 KB failures (same class as the early tipfix/smoke stills). Only Flash (462 KB) and Donner (312 KB) capfaces are real gameplay; Flash/Avalanche capfaces already appeared in unused evening Short 02, so no capfaces tour was cut."
+    },
+    {
+      "map": "dod_charlie",
+      "plate": "20261109-011715-charlie-lean3 and later 0122* stills",
+      "reason": "Not part of the evening spawn atlas. lean3/diag/bootcf/nodl are GameCube fatal / stack-dump screens (YAVG ~28.7, 83% black), not playable map views. No standalone Charlie short."
+    },
+    {
+      "map": "skybox stills (jagd 044529, kraftstoff 044648, etc.)",
+      "reason": "Skybox stills are off-limits \u2014 already a posted skybox Short."
+    }
+  ],
+  "inventory_notes": {
+    "atlas_maps_total": 22,
+    "maps_used": [
+      "dod_anzio",
+      "dod_avalanche",
+      "dod_donner",
+      "dod_flash",
+      "dod_kraftstoff"
+    ],
+    "maps_dropped_magenta_oom": 17,
+    "plate_type": "Evening Nov 8 10:28\u201311:00 PM PT spawn atlas, both allies and axis. Editorial show order (Avalanche, Flash, Donner, Anzio, Kraftstoff) rather than capture order, so the dark Anzio plates are not the open or the last hold.",
+    "allies_axis_identical_on_used_maps": false,
+    "progress_claim": "This is a spawn-state tour, not a geometry-fill-in sequence. Several plates are sparse, untextured, or have missing faces and cyan void."
+  },
+  "renderer": "/home/tim/Desktop/dod-gc/promo/shorts-2026-11-09-evening/render_maps_timelapse.py",
+  "review_frames": "/home/tim/Desktop/dod-gc/promo/shorts-2026-11-09-evening/review/04-maps-atlas-tour-v1",
+  "contact_sheet": "/home/tim/Desktop/dod-gc/promo/shorts-2026-11-09-evening/review/04-maps-atlas-tour-v1/contact-sheet.jpg",
+  "not_touched": [
+    "No posts deleted, unpublished, updated, uploaded, or scheduled.",
+    "Unused evening Shorts 01/02/03 were not recut or uploaded.",
+    "Already-posted menu, skybox, and geometry-progress Shorts were not touched."
+  ]
+}

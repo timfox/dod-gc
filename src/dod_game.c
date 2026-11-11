@@ -11,6 +11,7 @@ static DodGameRulesState g_dod_state;
 static DodPlayerState g_dod_players[DOD_MAX_PLAYERS + 1];
 static DodObjectiveState g_dod_objectives[DOD_MAX_OBJECTIVES];
 static float g_score_remainder[4];
+static int g_dod_active;
 
 static int dod_valid_player(int player_index)
 {
@@ -52,10 +53,14 @@ static void dod_recount_objectives(void)
 	g_dod_state.controlled_objectives[DOD_TEAM_UNASSIGNED] = 0;
 	g_dod_state.controlled_objectives[DOD_TEAM_ALLIES] = 0;
 	g_dod_state.controlled_objectives[DOD_TEAM_AXIS] = 0;
+	g_dod_state.objective_count = 0;
 	for (i = 0; i < DOD_MAX_OBJECTIVES; ++i) {
 		DodObjectiveState *objective = &g_dod_objectives[i];
-		if (objective->active && dod_valid_team(objective->owner))
-			++g_dod_state.controlled_objectives[objective->owner];
+		if (objective->active) {
+			++g_dod_state.objective_count;
+			if (dod_valid_team(objective->owner))
+				++g_dod_state.controlled_objectives[objective->owner];
+		}
 	}
 }
 
@@ -82,6 +87,7 @@ void Dod_GameInit(void)
 	memset(g_score_remainder, 0, sizeof(g_score_remainder));
 	g_dod_state.phase = DOD_ROUND_WAITING;
 	g_dod_state.winner = DOD_TEAM_UNASSIGNED;
+	g_dod_active = 1;
 }
 
 void Dod_GameShutdown(void)
@@ -91,10 +97,16 @@ void Dod_GameShutdown(void)
 	g_dod_state.winner = DOD_TEAM_UNASSIGNED;
 	g_dod_state.round_time_remaining = 0.0f;
 	g_dod_state.intermission_remaining = 0.0f;
+	g_dod_active = 0;
 	memset(g_dod_players, 0, sizeof(g_dod_players));
 	memset(g_dod_objectives, 0, sizeof(g_dod_objectives));
 	dod_recount_players();
 	dod_recount_objectives();
+}
+
+int Dod_GameIsActive(void)
+{
+	return g_dod_active;
 }
 
 void Dod_StartRound(float duration_seconds)
@@ -270,6 +282,54 @@ const char *Dod_ClassName(DodClass player_class)
 	}
 }
 
+int Dod_GetWeaponModels(int player_index, DodWeaponModelKind kind,
+	const char **view_model, const char **player_model)
+{
+	const DodPlayerState *player = Dod_GetPlayer(player_index);
+	if (!g_dod_active || !player || !player->connected || !dod_valid_team(player->team))
+		return 0;
+	if (view_model) *view_model = 0;
+	if (player_model) *player_model = 0;
+	if (kind == DOD_MODEL_MELEE) {
+		if (view_model) *view_model = "models/v_spade.mdl";
+		if (player_model) *player_model = "models/p_spade.mdl";
+		return 1;
+	}
+	if (kind == DOD_MODEL_AUTOMATIC) {
+		if (player->player_class == DOD_CLASS_ASSAULT) {
+			if (view_model) *view_model = player->team == DOD_TEAM_ALLIES ? "models/v_tommy.mdl" : "models/v_mp40.mdl";
+			if (player_model) *player_model = player->team == DOD_TEAM_ALLIES ? "models/p_tommy.mdl" : "models/p_mp40.mdl";
+			return 1;
+		}
+		if (player->player_class == DOD_CLASS_MG) {
+			if (view_model) *view_model = player->team == DOD_TEAM_ALLIES ? "models/v_30cal.mdl" : "models/v_mg42.mdl";
+			if (player_model) *player_model = player->team == DOD_TEAM_ALLIES ? "models/p_30cal.mdl" : "models/p_mg42pr.mdl";
+			return 1;
+		}
+		if (player->player_class == DOD_CLASS_RIFLEMAN) {
+			if (view_model) *view_model = player->team == DOD_TEAM_ALLIES ? "models/v_garand.mdl" : "models/v_98k.mdl";
+			if (player_model) *player_model = player->team == DOD_TEAM_ALLIES ? "models/p_garand.mdl" : "models/p_k98.mdl";
+			return 1;
+		}
+	}
+	if (kind == DOD_MODEL_SUPPORT && player->player_class == DOD_CLASS_SUPPORT) {
+		if (view_model) *view_model = player->team == DOD_TEAM_ALLIES ? "models/v_bren.mdl" : "models/v_mp44.mdl";
+		if (player_model) *player_model = player->team == DOD_TEAM_ALLIES ? "models/p_bren.mdl" : "models/p_stg44.mdl";
+		return 1;
+	}
+	if (kind == DOD_MODEL_SNIPER && player->player_class == DOD_CLASS_SNIPER) {
+		if (view_model) *view_model = player->team == DOD_TEAM_ALLIES ? "models/v_spring.mdl" : "models/v_scoped98k.mdl";
+		if (player_model) *player_model = player->team == DOD_TEAM_ALLIES ? "models/p_spring.mdl" : "models/p_k98.mdl";
+		return 1;
+	}
+	if (kind == DOD_MODEL_ROCKET && player->player_class == DOD_CLASS_ROCKET) {
+		if (view_model) *view_model = player->team == DOD_TEAM_ALLIES ? "models/v_bazooka.mdl" : "models/v_panzerschreck.mdl";
+		if (player_model) *player_model = player->team == DOD_TEAM_ALLIES ? "models/p_bazooka.mdl" : "models/p_pschreck.mdl";
+		return 1;
+	}
+	return 0;
+}
+
 void Dod_ClearObjectives(void)
 {
 	memset(g_dod_objectives, 0, sizeof(g_dod_objectives));
@@ -333,6 +393,9 @@ int Dod_TickObjective(int id, int allies_inside, int axis_inside, float frametim
 	objective->owner = team;
 	dod_recount_objectives();
 	dod_add_team_score(team, 5.0f);
+	if (g_dod_state.objective_count > 0 &&
+		g_dod_state.controlled_objectives[team] == g_dod_state.objective_count)
+		Dod_EndRound(team);
 	return 1;
 }
 

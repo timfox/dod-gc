@@ -10,7 +10,7 @@ usage() {
 	cat <<'EOF'
 usage: scripts/playtest.sh [options] [ISO]
 
-  --build          rebuild out/dodgc.iso first
+  --build          rebuild the interactive DoD disc first
   --record         record window+audio to playtests/videos/ (default)
   --no-record      skip video recording
   --duration SEC   auto-quit Dolphin after SEC (default: wait forever)
@@ -18,7 +18,9 @@ usage: scripts/playtest.sh [options] [ISO]
   --shot           grab a window screenshot after Dolphin starts
   -h, --help
 
-ISO defaults to out/dodgc.iso. Evidence never lands in the HL1 .ai/ tree.
+ISO defaults to out/dodgc-interactive.iso: Valve intro, DoD menu, then Create
+Game on dod_flash with BSP world rendering enabled. Evidence never lands in the
+HL1 .ai/ tree.
 For timed milestone probes prefer: scripts/probe-playtest.sh
 EOF
 }
@@ -28,7 +30,7 @@ RECORD=1
 NOTE=""
 SHOT=0
 DURATION=0
-ISO="$DODGC_ISO"
+ISO="$DODGC_OUT/dodgc-interactive.iso"
 
 while [[ $# -gt 0 ]]; do
 	case "$1" in
@@ -54,8 +56,8 @@ done
 dodgc_require_content
 
 if (( BUILD )) || [[ ! -f "$ISO" ]]; then
-	bash "$SCRIPT_DIR/build-dodgc.sh" --play
-	ISO="$DODGC_ISO"
+	[[ -f "$DODGC_DOL" ]] || bash "$SCRIPT_DIR/build-dodgc.sh" --dol-only
+	DODGC_ISO="$ISO" bash "$SCRIPT_DIR/build-lean-iso.sh" --intro-only --map dod_flash --world-render
 fi
 
 if [[ ! -f "$ISO" ]]; then
@@ -157,7 +159,8 @@ fi
 
 if (( SHOT )) && command -v import >/dev/null 2>&1; then
 	(
-		sleep 12
+		# The interactive disc plays the 10-second Valve intro before the menu.
+		sleep 16
 		SHOT_PATH="$DODGC_SHOTS/${STAMP}-dolphin.png"
 		# Prefer GameCube render window over full desktop.
 		WIN=$(xwininfo -root -tree 2>/dev/null | rg '\("dolphin-emu" "GameCube"\)' | rg -v '800x600' | head -1 | awk '{print $1}')

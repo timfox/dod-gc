@@ -35,6 +35,14 @@ typedef enum {
 } DodObjectiveKind;
 
 typedef enum {
+	DOD_MODEL_MELEE = 0,
+	DOD_MODEL_AUTOMATIC,
+	DOD_MODEL_SUPPORT,
+	DOD_MODEL_SNIPER,
+	DOD_MODEL_ROCKET
+} DodWeaponModelKind;
+
+typedef enum {
 	DOD_ROUND_WAITING = 0,
 	DOD_ROUND_ACTIVE,
 	DOD_ROUND_INTERMISSION
@@ -70,11 +78,13 @@ typedef struct DodGameRulesState {
 	float intermission_remaining;
 	int connected_players[4];
 	int controlled_objectives[4];
+	int objective_count;
 } DodGameRulesState;
 
 /* Game lifecycle and round clock. A zero duration disables the time limit. */
 void Dod_GameInit(void);
 void Dod_GameShutdown(void);
+int Dod_GameIsActive(void);
 void Dod_StartRound(float duration_seconds);
 void Dod_EndRound(DodTeam winner);
 void Dod_Think(float frametime);
@@ -90,6 +100,8 @@ const DodPlayerState *Dod_GetPlayer(int player_index);
 int Dod_TeamFromName(const char *name);
 const char *Dod_TeamName(DodTeam team);
 const char *Dod_ClassName(DodClass player_class);
+int Dod_GetWeaponModels(int player_index, DodWeaponModelKind kind,
+	const char **view_model, const char **player_model);
 
 /* Objective registration and capture. Counts may be zero; contested zones
  * pause. Capture is normalized from 0 (uncaptured) to 1 (complete). */
