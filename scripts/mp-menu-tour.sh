@@ -246,7 +246,8 @@ def pad(*lines, hold=0.12, gap=0.55):
 
 # Neutral stick
 with open(pipe_path, "a", buffering=1) as f:
-    f.write("SET MAIN 0.5 0.5\nSET C 0.5 0.5\n")
+    # Pipe axes use signed -1..1 values; zero is neutral (0.5 drifts upward).
+    f.write("SET MAIN 0 0\nSET C 0 0\n")
     f.flush()
 
 # Day of Defeat main menu: New / Find servers / Options (Quit hidden).

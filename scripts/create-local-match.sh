@@ -252,7 +252,8 @@ def log_has(pat: str) -> bool:
     return pat.encode() in data.replace(b"\x00", b"")
 
 with open(pipe_path, "a", buffering=1) as f:
-    f.write("SET MAIN 0.5 0.5\nSET C 0.5 0.5\n")
+    # Pipe axes use signed -1..1 values; zero is neutral (0.5 drifts upward).
+    f.write("SET MAIN 0 0\nSET C 0 0\n")
     f.flush()
 
 grab("01-main")
