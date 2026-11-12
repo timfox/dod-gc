@@ -45,6 +45,17 @@ static void test_retail_class_names(void)
 	assert(strcmp(Dod_TeamClassName(DOD_TEAM_AXIS, DOD_CLASS_COUNT), "None") == 0);
 }
 
+static void test_loadouts(void)
+{
+	DodLoadout l;
+	assert(Dod_GetLoadout(DOD_TEAM_ALLIES, DOD_CLASS_RIFLEMAN, &l));
+	assert(strcmp(l.weapon, "M1 Garand") == 0 && l.clip_size == 8);
+	assert(Dod_GetLoadout(DOD_TEAM_AXIS, DOD_CLASS_MG, &l));
+	assert(strcmp(l.weapon, "MG42") == 0 && l.clip_size == 250);
+	assert(!Dod_GetLoadout(DOD_TEAM_SPECTATOR, DOD_CLASS_MG, &l));
+	assert(!Dod_GetLoadout(DOD_TEAM_AXIS, DOD_CLASS_NONE, &l));
+}
+
 static void test_status_line(void)
 {
 	char line[96];
@@ -153,6 +164,7 @@ int main(void)
 	test_players_and_weapon_models();
 	test_retail_class_names();
 	test_status_line();
+	test_loadouts();
 	test_contested_capture_flip_and_round_win();
 	test_kill_scoring_and_timed_tie();
 	return 0;

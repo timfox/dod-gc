@@ -107,32 +107,23 @@ static void DodGC_ApplyClass( CBasePlayer *pPlayer, DodClass player_class )
 	 * the client from the same class state. */
 	pPlayer->RemoveAllItems( FALSE );
 	pPlayer->GiveNamedItem( "weapon_crowbar" );
-	switch( player_class ) {
-	case DOD_CLASS_ASSAULT:
-		pPlayer->GiveNamedItem( "weapon_9mmAR" );
-		pPlayer->GiveAmmo( 45, "9mm", 250 );
-		break;
-	case DOD_CLASS_SUPPORT:
-		pPlayer->GiveNamedItem( "weapon_shotgun" );
-		pPlayer->GiveAmmo( 24, "buckshot", 125 );
-		break;
-	case DOD_CLASS_SNIPER:
-		pPlayer->GiveNamedItem( "weapon_crossbow" );
-		pPlayer->GiveAmmo( 10, "bolts", 50 );
-		break;
-	case DOD_CLASS_MG:
-		pPlayer->GiveNamedItem( "weapon_9mmAR" );
-		pPlayer->GiveAmmo( 120, "9mm", 250 );
-		break;
-	case DOD_CLASS_ROCKET:
-		pPlayer->GiveNamedItem( "weapon_rpg" );
-		pPlayer->GiveAmmo( 2, "rockets", 5 );
-		break;
-	case DOD_CLASS_RIFLEMAN:
-	default:
-		pPlayer->GiveNamedItem( "weapon_9mmAR" );
-		pPlayer->GiveAmmo( 30, "9mm", 250 );
-		break;
+	/* Stand-in HL1 weapons carry the retail loadout's ammo counts. */
+	{
+		DodLoadout load;
+		const char *stand_in = "weapon_9mmAR";
+		const char *ammo = "9mm";
+		int ammo_max = 250;
+		switch( player_class ) {
+		case DOD_CLASS_SUPPORT: stand_in = "weapon_shotgun"; ammo = "buckshot"; ammo_max = 125; break;
+		case DOD_CLASS_SNIPER: stand_in = "weapon_crossbow"; ammo = "bolts"; ammo_max = 50; break;
+		case DOD_CLASS_ROCKET: stand_in = "weapon_rpg"; ammo = "rockets"; ammo_max = 5; break;
+		default: break;
+		}
+		pPlayer->GiveNamedItem( stand_in );
+		if( Dod_GetLoadout( DodGC_TeamForPlayer( pPlayer ), player_class, &load ) ) {
+			int rounds = load.clip_size + load.reserve_rounds;
+			pPlayer->GiveAmmo( rounds > ammo_max ? ammo_max : rounds, ammo, ammo_max );
+		}
 	}
 	DodGC_ClearMenu( pPlayer );
 }
