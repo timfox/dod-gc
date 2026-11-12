@@ -42,7 +42,7 @@ static void DodGC_ShowTeamMenu( CBasePlayer *pPlayer )
 	if( index > 0 && index <= DOD_MAX_PLAYERS )
 		g_dod_menu_state[index] = 1;
 	DodGC_SendMenu( pPlayer, 0x0003,
-		"\yDAY OF DEFEAT - CHOOSE A SIDE\n\w\n"
+		"\\yDAY OF DEFEAT - CHOOSE A SIDE\n\\w\n"
 		"1. Allies\n2. Axis\n\n"
 		"Choose a side to continue.\n" );
 }
