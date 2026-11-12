@@ -282,6 +282,39 @@ const char *Dod_ClassName(DodClass player_class)
 	}
 }
 
+static const char *const g_allies_class[DOD_CLASS_COUNT] = {
+	"None", "Rifleman", "Staff Sergeant", "Master Sergeant",
+	"Sniper", "Support Infantry", "Bazooka"
+};
+static const char *const g_axis_class[DOD_CLASS_COUNT] = {
+	"None", "Grenadier", "Stosstruppe", "Unteroffizier",
+	"Scharfschuetze", "MG42 Gunner", "Panzerjaeger"
+};
+static const char *const g_allies_weapon[DOD_CLASS_COUNT] = {
+	"None", "M1 Garand", "Thompson", "BAR", "Springfield", "30cal", "Bazooka"
+};
+static const char *const g_axis_weapon[DOD_CLASS_COUNT] = {
+	"None", "Kar98k", "MP40", "StG44", "Scoped Kar98k", "MG42", "Panzerschreck"
+};
+
+const char *Dod_TeamClassName(DodTeam team, DodClass player_class)
+{
+	if (player_class <= DOD_CLASS_NONE || player_class >= DOD_CLASS_COUNT)
+		return "None";
+	if (team == DOD_TEAM_ALLIES) return g_allies_class[player_class];
+	if (team == DOD_TEAM_AXIS) return g_axis_class[player_class];
+	return Dod_ClassName(player_class);
+}
+
+const char *Dod_TeamClassWeapon(DodTeam team, DodClass player_class)
+{
+	if (player_class <= DOD_CLASS_NONE || player_class >= DOD_CLASS_COUNT)
+		return "None";
+	if (team == DOD_TEAM_ALLIES) return g_allies_weapon[player_class];
+	if (team == DOD_TEAM_AXIS) return g_axis_weapon[player_class];
+	return "None";
+}
+
 int Dod_GetWeaponModels(int player_index, DodWeaponModelKind kind,
 	const char **view_model, const char **player_model)
 {

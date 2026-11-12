@@ -47,16 +47,22 @@ static void DodGC_ShowTeamMenu( CBasePlayer *pPlayer )
 		"Choose a side to continue.\n" );
 }
 
+static DodTeam DodGC_TeamForPlayer( CBasePlayer *pPlayer );
+
 static void DodGC_ShowClassMenu( CBasePlayer *pPlayer )
 {
 	const int index = DodGC_PlayerIndex( pPlayer );
+	const DodTeam team = DodGC_TeamForPlayer( pPlayer );
+	char text[256];
+	int len;
 	if( index > 0 && index <= DOD_MAX_PLAYERS )
 		g_dod_menu_state[index] = 2;
-	DodGC_SendMenu( pPlayer, 0x003f,
-		"\yDAY OF DEFEAT - CHOOSE A CLASS\n\w\n"
-		"1. Rifleman\n2. Assault\n3. Support\n"
-		"4. Sniper\n5. Machine Gunner\n6. Rocket\n\n"
-		"Your class kit is issued on selection.\n" );
+	len = snprintf( text, sizeof( text ), "\\y%s - CHOOSE A CLASS\n\\w\n",
+		team == DOD_TEAM_AXIS ? "AXIS" : "ALLIES" );
+	for( int c = DOD_CLASS_RIFLEMAN; c < DOD_CLASS_COUNT && len < (int)sizeof( text ); c++ )
+		len += snprintf( text + len, sizeof( text ) - len, "%d. %s (%s)\n", c,
+			Dod_TeamClassName( team, (DodClass)c ), Dod_TeamClassWeapon( team, (DodClass)c ) );
+	DodGC_SendMenu( pPlayer, 0x003f, text );
 }
 
 static void DodGC_ClearMenu( CBasePlayer *pPlayer )

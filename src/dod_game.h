@@ -100,6 +100,10 @@ const DodPlayerState *Dod_GetPlayer(int player_index);
 int Dod_TeamFromName(const char *name);
 const char *Dod_TeamName(DodTeam team);
 const char *Dod_ClassName(DodClass player_class);
+/* Retail DoD class title for a team ("Staff Sergeant", "Stosstruppe", ...). */
+const char *Dod_TeamClassName(DodTeam team, DodClass player_class);
+/* Retail primary weapon title for the class on that team ("Thompson", ...). */
+const char *Dod_TeamClassWeapon(DodTeam team, DodClass player_class);
 int Dod_GetWeaponModels(int player_index, DodWeaponModelKind kind,
 	const char **view_model, const char **player_model);
 

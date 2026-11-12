@@ -36,6 +36,15 @@ static void test_players_and_weapon_models(void)
 	assert(!Dod_GameIsActive());
 }
 
+static void test_retail_class_names(void)
+{
+	assert(strcmp(Dod_TeamClassName(DOD_TEAM_ALLIES, DOD_CLASS_ASSAULT), "Staff Sergeant") == 0);
+	assert(strcmp(Dod_TeamClassWeapon(DOD_TEAM_ALLIES, DOD_CLASS_ASSAULT), "Thompson") == 0);
+	assert(strcmp(Dod_TeamClassName(DOD_TEAM_AXIS, DOD_CLASS_ASSAULT), "Stosstruppe") == 0);
+	assert(strcmp(Dod_TeamClassWeapon(DOD_TEAM_AXIS, DOD_CLASS_ROCKET), "Panzerschreck") == 0);
+	assert(strcmp(Dod_TeamClassName(DOD_TEAM_AXIS, DOD_CLASS_COUNT), "None") == 0);
+}
+
 static void test_contested_capture_flip_and_round_win(void)
 {
 	const DodObjectiveState *objective;
@@ -126,6 +135,7 @@ static void test_kill_scoring_and_timed_tie(void)
 int main(void)
 {
 	test_players_and_weapon_models();
+	test_retail_class_names();
 	test_contested_capture_flip_and_round_win();
 	test_kill_scoring_and_timed_tie();
 	return 0;
