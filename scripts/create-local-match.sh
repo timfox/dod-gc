@@ -10,8 +10,14 @@ ISO="${1:-$DODGC_OUT/dodgc-menu.iso}"
 [[ -f "$ISO" ]] || ISO="$DODGC_ISO"
 [[ -f "$ISO" ]] || { echo "error: ISO not found" >&2; exit 1; }
 
-DOLPHIN=""
-if [[ -x "$DODGC_ENGINE/3rdparty/dolphin/build/Binaries/dolphin-emu" ]]; then
+DOLPHIN="${DODGC_DOLPHIN_BIN:-}"
+if [[ -n "$DOLPHIN" && ! -x "$DOLPHIN" ]]; then
+	echo "error: DODGC_DOLPHIN_BIN is not executable: $DOLPHIN" >&2
+	exit 2
+fi
+if [[ -n "$DOLPHIN" ]]; then
+	:
+elif [[ -x "$DODGC_ENGINE/3rdparty/dolphin/build/Binaries/dolphin-emu" ]]; then
 	DOLPHIN="$DODGC_ENGINE/3rdparty/dolphin/build/Binaries/dolphin-emu"
 elif command -v dolphin-emu >/dev/null 2>&1; then
 	DOLPHIN="$(command -v dolphin-emu)"
@@ -174,31 +180,48 @@ done
 (( READY )) || { echo "==> menu not ready" >&2; cp -f "$LOG" "$SHOT_DIR/dolphin.log"; exit 1; }
 sleep 3
 
-python3 - "$SHOT_DIR" "$PIPE" "$LOG" <<'PY'
+python3 - "$SHOT_DIR" "$PIPE" "$LOG" "$USER_DIR" <<'PY'
 import os, sys, time, subprocess
 from pathlib import Path
 
 shot_dir = Path(sys.argv[1])
 pipe_path = Path(sys.argv[2])
 log_path = Path(sys.argv[3])
+user_dir = sys.argv[4]
 
 def find_gc_window():
     out = subprocess.check_output(["xwininfo", "-root", "-tree"], text=True, errors="replace")
-    best = fallback = None
+    candidates = []
     for line in out.splitlines():
-        if '("dolphin-emu" "GameCube")' not in line:
+        if not any(title in line for title in (
+            '("dolphin-emu" "GameCube")',
+            '("xash-gc-dolphin" "GameCube")',
+        )):
             continue
         parts = line.split()
         if not parts or not parts[0].startswith("0x"):
             continue
         wid = int(parts[0], 16)
-        if "640x480" in line or "854x480" in line:
-            return wid
-        if "800x600" in line:
-            fallback = wid
+        try:
+            prop = subprocess.check_output(
+                ["xprop", "-id", hex(wid), "_NET_WM_PID"],
+                text=True, stderr=subprocess.DEVNULL)
+        except subprocess.CalledProcessError:
             continue
-        best = wid
-    return best or fallback
+        try:
+            owner = int(prop.split("=", 1)[1].strip())
+        except (IndexError, ValueError):
+            continue
+        args = subprocess.run(["ps", "-p", str(owner), "-o", "args="], text=True,
+                              capture_output=True, check=False).stdout
+        if user_dir not in args:
+            continue
+        # Dolphin's 800x600 window is the launcher, not the guest framebuffer.
+        # Never save it as if it showed the GameCube menu/game.
+        rank = 2 if "640x480" in line or "854x480" in line else 0
+        candidates.append((rank, wid))
+    candidates = [candidate for candidate in candidates if candidate[0] > 0]
+    return max(candidates)[1] if candidates else None
 
 def grab(name):
     wid = find_gc_window()
@@ -229,11 +252,18 @@ def log_has(pat: str) -> bool:
     return pat.encode() in data.replace(b"\x00", b"")
 
 with open(pipe_path, "a", buffering=1) as f:
+    # Pipe axes use signed -1..1 values; zero is neutral (0.5 drifts upward).
+    # Dolphin's pipe axes are normalized to [0, 1]; 0.5 is center.
+    # A zero value holds both sticks fully up/left and rotates the camera.
     f.write("SET MAIN 0.5 0.5\nSET C 0.5 0.5\n")
     f.flush()
 
 grab("01-main")
-# New game is top item → open Create Game
+# Normalize the main-menu cursor: the first item is New game. One down/up
+# pair returns there even if Dolphin restored a different valid selection.
+pad("PRESS D_DOWN", hold=0.12, gap=0.3)
+pad("PRESS D_UP", hold=0.12, gap=0.45)
+# Open DoD's Create Game panel.
 pad("PRESS A", hold=0.18, gap=1.8)
 grab("02-creategame")
 
@@ -253,6 +283,8 @@ markers = (
     b"Game started",
     b"direct map ready",
     b"Server spawned",
+    b"newgame world render ready",
+    b"CapFaces team select UI",
     b"fatal message",
     b"fatal breadcrumb",
     b"FATAL",
@@ -268,15 +300,24 @@ while time.time() < deadline:
         for m in markers:
             if m in raw and m not in last:
                 print(f"marker: {m.decode()}", flush=True)
-        last = raw
         if b"FATAL" in raw or b"fatal message" in raw or b"fatal breadcrumb" in raw or b"out of memory" in raw:
+            last = raw
             break
-        if b"Game started" in raw or b"MAP READY" in raw or b"map loaded" in raw:
-            time.sleep(2.5)
+        if b"CapFaces team select UI" in raw and b"CapFaces team select UI" not in last:
+            # Choose the default Allies entry so the final image shows the
+            # playable DoD HUD/world instead of the team-selection overlay.
+            grab("04-team-select")
+            pad("PRESS A", hold=0.12, gap=0.25)
+        if b"newgame world render ready" in raw and b"newgame world render SCR frames=8" in raw:
+            # MAP_READY precedes sign-on, GX warm-up, and team selection. Wait
+            # for sustained world frames before capturing the actual match.
+            time.sleep(5)
+            last = raw
             break
+        last = raw
     time.sleep(0.5)
 
-grab("04-final")
+grab("05-final")
 print("tour done", flush=True)
 PY
 

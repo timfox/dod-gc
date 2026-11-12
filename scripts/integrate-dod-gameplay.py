@@ -16,6 +16,55 @@ def replace_once(path: Path, old: str, new: str) -> None:
 	path.write_text(text.replace(old, new, 1))
 
 
+def integrate_static_edict_gate(sv_game: Path) -> None:
+	"""Use BSS edicts during interactive menu map loads on GameCube."""
+	text = sv_game.read_text()
+	start = text.find('if( GI->max_edicts > 0 && GI->max_edicts <= GC_SP_EDICT_CAP')
+	end = text.find('\n\t{', start)
+	if start < 0 or end < 0:
+		raise SystemExit(f"static edict gate not found in {sv_game}")
+
+	gate = text[start:end]
+	required = (
+		'svs.maxclients <= 1',
+		'Sys_CheckParm( "-gclistenserver" )',
+		'Sys_CheckParm( "-gcworldrender" )',
+		'GC_MapLoadMemoryOpt()',
+	)
+	if all(token in gate for token in required) and 'svs.maxclients <= 4' not in gate:
+		return
+
+	canonical = (
+		'if( GI->max_edicts > 0 && GI->max_edicts <= GC_SP_EDICT_CAP\n'
+		'\t\t&& ( svs.maxclients <= 1\n'
+		'\t\t\t|| Sys_CheckParm( "-gclistenserver" )\n'
+		'\t\t\t|| Sys_CheckParm( "-gcworldrender" )\n'
+		'\t\t\t|| GC_MapLoadMemoryOpt() ) )'
+	)
+	sv_game.write_text(text[:start] + canonical + text[end:])
+
+
+def integrate_heap_tip_gate(sv_game: Path) -> None:
+	"""Lower the entity heap-tip threshold to 2 KiB on dod_ maps.
+
+	Prefer the CapFaces worldspawn-safe gate (entity_index > 1); fall back to
+	the older tip check if a tree still has the pre-kraftstoff form.
+	"""
+	dod_threshold = (
+		'GC_MemHeapFreeBytes() <\n'
+		'\t\t\t\t( !Q_strnicmp( sv.name, "dod_", 4 ) ? 2u * 1024u : 8u * 1024u ))\n'
+	)
+	for guard in ('if( entity_index > 1 && ', 'if( '):
+		if f'\t\t\t{guard}{dod_threshold}' in sv_game.read_text():
+			return
+	for guard in ('if( entity_index > 1 && ', 'if( '):
+		old = f'\t\t\t{guard}GC_MemHeapFreeBytes() < ( 8u * 1024u ))\n'
+		if old in sv_game.read_text():
+			replace_once(sv_game, old, f'\t\t\t{guard}{dod_threshold}')
+			return
+	raise SystemExit(f"heap tip gate not found in {sv_game}")
+
+
 def integrate_weapon(path: Path, class_name: str, kind: str, deploy_anim: str,
 					 event: str, legacy_model: str, models: str) -> None:
 	text = path.read_text()
@@ -171,12 +220,7 @@ def main() -> int:
 			'\tif( cls.key_dest == key_console )\n',
 		)
 		sv_game = args.engine_dir / "engine/server/sv_game.c"
-		replace_once(
-			sv_game,
-			'\t\t\tif( GC_MemHeapFreeBytes() < ( 8u * 1024u ))\n',
-			'\t\t\tif( GC_MemHeapFreeBytes() <\n'
-			'\t\t\t\t( !Q_strnicmp( sv.name, "dod_", 4 ) ? 2u * 1024u : 8u * 1024u ))\n',
-		)
+		integrate_heap_tip_gate(sv_game)
 		replace_once(
 			sv_game,
 			'\tif( bytes > GC_ENTITY_OVERFLOW_BYTES ) bytes = GC_ENTITY_OVERFLOW_BYTES;\n',
@@ -186,19 +230,25 @@ def main() -> int:
 			'\tif( !Q_strnicmp( sv.name, "dod_", 4 ) && bytes > 8u * 1024u )\n'
 			'\t\tbytes = 8u * 1024u;\n',
 		)
+		integrate_static_edict_gate(sv_game)
 		model = args.engine_dir / "engine/common/model.c"
-		replace_once(
-			model,
-			'\t/* DoD CapFaces listen: Allies pistol + weapon stub (BBA=0 tip≈400 KiB). */\n'
-			'\tstatic const char *promote[] = {\n'
-			'\t\t"models/v_colt.mdl",\n'
-			'\t\t"models/w_crowbar.mdl",\n'
-			'\t\tNULL\n'
-			'\t};\n',
-			'\t/* DoD has no HL1 NPC cast, and these generic pistol meshes are not used by\n'
-			'\t * its rifleman spawn. Defer all player weapons until the class is selected. */\n'
-			'\tstatic const char *promote[] = { NULL };\n',
-		)
+		# Already deferred (empty promote) — nothing to patch.
+		model_text = model.read_text()
+		if 'static const char *promote[] = { NULL };' not in model_text \
+			or 'Mod_GCCapFacesClaimTeamViewModel' not in model_text:
+			replace_once(
+				model,
+				'\t/* DoD CapFaces listen: lean Allies pistol + weapon stub (184 KiB BSS). */\n'
+				'\tstatic const char *promote[] = {\n'
+				'\t\t"models/v_colt.mdl",\n'
+				'\t\t"models/w_crowbar.mdl",\n'
+				'\t\tNULL\n'
+				'\t};\n',
+				'\t/* DoD CapFaces listen: keep the 184 KiB studio BSS empty until team pick\n'
+				'\t * claims one lean rifle (Mod_GCCapFacesClaimTeamViewModel). Preloading\n'
+				'\t * colt/crowbar left no room for garand/mp40. */\n'
+				'\tstatic const char *promote[] = { NULL };\n',
+			)
 		video = args.engine_dir / "engine/client/cl_video.c"
 		replace_once(
 			video,
@@ -209,6 +259,32 @@ def main() -> int:
 			'\t/* GC_MemHeapMark records usage without walking every pool. Mem_PrintStats\n'
 			'\t * runs Mem_Check and can stop menu handoff on unrelated tiny-pool sentinels. */\n',
 		)
+		studio = args.engine_dir / "ref/gx/r_studio.c"
+		studio_text = studio.read_text()
+		# Engine StudioDraw + fwd=36 framed NDC (ava-play99-69/71).
+		if "G162 viewmodel frame offset forward=36 up=+2" not in studio_text:
+			pass
+		studio_text = studio.read_text()
+		image = args.engine_dir / "ref/gx/r_image.c"
+		image_text = image.read_text()
+		# VM skins prefer 128² RGB565 in-tree (ava-play99-43+). Skip the
+		# legacy 64→128 Garand inject when that path is present.
+		if (
+			"Image_GCMaxLoadDimension" not in image_text
+			and "vm_skin" not in image_text
+			and "128² fits WorldDL MEM1" not in image_text
+			and "Q_min( resampleWidth, 96 )" not in image_text
+			and "Q_min( resampleWidth, 128 )" not in image_text
+		):
+			if "selected Garand/MP40 does not collapse" in image_text:
+				replace_once(
+					image,
+					'\t\tresampleWidth = Q_min( resampleWidth, 64 );\n'
+					'\t\tresampleHeight = Q_min( resampleHeight, 64 );\n',
+					'\t\tresampleWidth = Q_min( resampleWidth, 128 );\n'
+					'\t\tresampleHeight = Q_min( resampleHeight, 128 );\n',
+				)
+
 
 	for filename, class_name, kind, animation, event, legacy_model, models in (
 		("mp5.cpp", "CMP5", "DOD_MODEL_AUTOMATIC", "MP5_DEPLOY", "mp5", "9mmAR",

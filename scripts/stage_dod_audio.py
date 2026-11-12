@@ -60,6 +60,28 @@ CORE_SFX_DIRS = [
     "object",
 ]
 
+# CapFaces listen: a full weapons/ tree (500+ WAVs) hung ISO9660 boot scans.
+# Keep the combat set tip-safe and small enough for WorldDL listen.
+CORE_SFX_COMBAT = [
+    "weapons/garand_shoot.wav",
+    "weapons/kar_shoot.wav",
+    "weapons/mp40_shoot.wav",
+    "weapons/thompson_shoot.wav",
+    "weapons/colt_shoot.wav",
+    "weapons/luger_shoot.wav",
+    "weapons/pl_gun1.wav",
+    "weapons/pl_gun2.wav",
+    "weapons/pl_gun3.wav",
+    "player/pl_step1.wav",
+    "player/pl_step2.wav",
+    "player/pl_step3.wav",
+    "player/pl_step4.wav",
+    "player/pl_shell1.wav",
+    "buttons/button10.wav",
+    "common/wpn_select.wav",
+    "common/wpn_hudoff.wav",
+]
+
 
 def normalize_sound_path(raw: str) -> str:
     name = raw.replace("\\", "/").lstrip("/")
@@ -249,21 +271,72 @@ def stage_map_sounds(
     }
 
 
-def stage_core_sfx(dod_sound: Path, lean_sound: Path) -> dict:
+def lean_tipsafe_wav(src: Path, dest: Path, max_seconds: float) -> int:
+    """CapFaces listen keeps a 16 KiB memopt WAV ceiling — retail DoD shoots
+    are 60–120 KiB @ 22 kHz. Emit 11.025 kHz mono s16 clips that fit."""
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    if shutil.which("ffmpeg") is None:
+        return copy_file(src, dest)
+    cmd = [
+        "ffmpeg",
+        "-v",
+        "error",
+        "-y",
+        "-i",
+        str(src),
+        "-t",
+        f"{max_seconds:.3f}",
+        "-ar",
+        "11025",
+        "-ac",
+        "1",
+        "-c:a",
+        "pcm_s16le",
+        str(dest),
+    ]
+    try:
+        subprocess.run(cmd, check=True)
+    except (OSError, subprocess.CalledProcessError):
+        return copy_file(src, dest)
+    return dest.stat().st_size if dest.is_file() else 0
+
+
+def stage_core_sfx(
+    dod_sound: Path,
+    lean_sound: Path,
+    valve_sound: Path | None = None,
+    lean_media: Path | None = None,
+) -> dict:
     copied = []
     total = 0
-    for dirname in CORE_SFX_DIRS:
-        src_dir = dod_sound / dirname
-        if not src_dir.is_dir():
+    roots = [dod_sound]
+    if valve_sound and valve_sound.is_dir():
+        roots.append(valve_sound)
+    index = build_index(roots)
+    media_root = lean_media if lean_media is not None else lean_sound.parent / "media"
+
+    for rel in CORE_SFX_COMBAT:
+        src, how = resolve_source(rel, index, roots)
+        if src is None:
             continue
-        for f in src_dir.rglob("*"):
-            if not f.is_file():
-                continue
-            rel = f.relative_to(dod_sound).as_posix()
-            size = copy_file(f, lean_sound / rel)
-            copied.append(rel)
-            total += size
-    return {"files": len(copied), "bytes": total, "dirs": CORE_SFX_DIRS}
+        dest = lean_sound / rel
+        max_s = 0.45 if rel.startswith("weapons/") else 0.30
+        size = lean_tipsafe_wav(src, dest, max_s)
+        # G278: deep sound/* often misses on libogc ISO9660 — also stage a
+        # shallow media/sfx_<basename>.wav the engine can open during CapFaces.
+        base = Path(rel).name
+        media_dest = media_root / f"sfx_{base}"
+        if dest.is_file():
+            media_root.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(dest, media_dest)
+        copied.append(f"{rel} ({how})")
+        total += size
+    return {
+        "files": len(copied),
+        "bytes": total,
+        "dirs": ["combat-minimal", "media/sfx_*"],
+        "list": copied,
+    }
 
 
 def write_manifest(path: Path, payload: dict) -> None:
@@ -364,7 +437,7 @@ def main() -> int:
                 )
 
         if args.core_sfx:
-            core = stage_core_sfx(dod / "sound", lean / "sound")
+            core = stage_core_sfx(dod / "sound", lean / "sound", valve / "sound")
             payload["core_sfx"] = core
             print(
                 f"core SFX: files={core['files']} ({core['bytes'] / 1048576:.2f} MiB) "

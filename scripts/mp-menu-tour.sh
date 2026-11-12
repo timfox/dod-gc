@@ -10,8 +10,13 @@ ISO="${1:-$DODGC_OUT/dodgc-menu.iso}"
 [[ -f "$ISO" ]] || ISO="$DODGC_ISO"
 [[ -f "$ISO" ]] || { echo "error: ISO not found" >&2; exit 1; }
 
-DOLPHIN=""
-if [[ -x "$DODGC_ENGINE/3rdparty/dolphin/build/Binaries/dolphin-emu" ]]; then
+DOLPHIN="${DODGC_DOLPHIN_BIN:-}"
+if [[ -n "$DOLPHIN" && ! -x "$DOLPHIN" ]]; then
+	echo "error: DODGC_DOLPHIN_BIN is not executable: $DOLPHIN" >&2
+	exit 2
+elif [[ -n "$DOLPHIN" ]]; then
+	:
+elif [[ -x "$DODGC_ENGINE/3rdparty/dolphin/build/Binaries/dolphin-emu" ]]; then
 	DOLPHIN="$DODGC_ENGINE/3rdparty/dolphin/build/Binaries/dolphin-emu"
 elif command -v dolphin-emu >/dev/null 2>&1; then
 	DOLPHIN="$(command -v dolphin-emu)"
@@ -181,17 +186,17 @@ done
 # Let CopyDisp / chrome settle.
 sleep 3
 
-python3 - "$SHOT_DIR" "$PIPE" <<'PY'
+python3 - "$SHOT_DIR" "$PIPE" "$USER_DIR" <<'PY'
 import os, sys, time, subprocess
 from pathlib import Path
 
 shot_dir = Path(sys.argv[1])
 pipe_path = Path(sys.argv[2])
+user_dir = sys.argv[3]
 
 def find_gc_window():
     out = subprocess.check_output(["xwininfo", "-root", "-tree"], text=True, errors="replace")
-    best = None
-    fallback = None
+    candidates = []
     for line in out.splitlines():
         if '("dolphin-emu" "GameCube")' not in line:
             continue
@@ -199,14 +204,23 @@ def find_gc_window():
         if not parts or not parts[0].startswith("0x"):
             continue
         wid = int(parts[0], 16)
-        # Prefer native FB sizes; accept scaled 800x600 render as fallback.
-        if "640x480" in line or "854x480" in line:
-            return wid
-        if "800x600" in line:
-            fallback = wid
+        # Only accept Dolphin's native guest render window. The 800x600
+        # launcher can exist before the GameCube video output is available.
+        if "640x480" not in line and "854x480" not in line:
             continue
-        best = wid
-    return best or fallback
+        prop = subprocess.run(
+            ["xprop", "-id", hex(wid), "_NET_WM_PID"],
+            text=True, capture_output=True, check=False).stdout
+        try:
+            owner = int(prop.split("=", 1)[1].strip())
+        except (IndexError, ValueError):
+            continue
+        args = subprocess.run(
+            ["ps", "-p", str(owner), "-o", "args="],
+            text=True, capture_output=True, check=False).stdout
+        if user_dir in args:
+            candidates.append(wid)
+    return candidates[-1] if candidates else None
 
 def grab(name):
     wid = find_gc_window()
@@ -232,7 +246,8 @@ def pad(*lines, hold=0.12, gap=0.55):
 
 # Neutral stick
 with open(pipe_path, "a", buffering=1) as f:
-    f.write("SET MAIN 0.5 0.5\nSET C 0.5 0.5\n")
+    # Pipe axes use signed -1..1 values; zero is neutral (0.5 drifts upward).
+    f.write("SET MAIN 0 0\nSET C 0 0\n")
     f.flush()
 
 # Day of Defeat main menu: New / Find servers / Options (Quit hidden).
@@ -275,6 +290,12 @@ grab("09-findservers")
 
 print("tour done", flush=True)
 PY
+
+if [[ ! -f "$SHOT_DIR/05-creategame.png" ]]; then
+	cp -f "$LOG" "$SHOT_DIR/dolphin.log"
+	echo "==> native guest frame unavailable; Create Game tour is unverified" >&2
+	exit 3
+fi
 
 cp -f "$LOG" "$SHOT_DIR/dolphin.log"
 kill "$DPID" 2>/dev/null || true

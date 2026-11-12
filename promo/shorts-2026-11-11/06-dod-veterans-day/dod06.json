@@ -1,0 +1,141 @@
+{
+ "name": "dod06",
+ "music": "/home/tim/Desktop/dod-gc/social-media/music/Mournful Horn Theme.mp3",
+ "music_ss": 0.5,
+ "out": "/home/tim/Desktop/dod-gc/promo/shorts-2026-11-11/06-dod-veterans-day/06-dod-veterans-day.mp4",
+ "segments": [
+  {
+   "kind": "img",
+   "src": "/home/tim/Desktop/dod-gc/playtests/screenshots/20261111-142344-ava-play99-130/final.png",
+   "dur": 3.6,
+   "size": [
+    640,
+    480
+   ],
+   "chip": "Dolphin emulator capture \u00b7 Nov 11, 2026",
+   "kicker": "VETERANS DAY \u00b7 NOV 11",
+   "head": "Thank you to every veteran who served",
+   "pill": "in development \u00b7 Dolphin emulator \u00b7 not hardware",
+   "zoom": 0.05
+  },
+  {
+   "kind": "img",
+   "src": "/home/tim/Desktop/dod-gc/playtests/screenshots/20261111-123408-ava-play99-105/final.png",
+   "dur": 2.6,
+   "size": [
+    640,
+    480
+   ],
+   "chip": "Dolphin emulator capture \u00b7 Nov 11, 2026",
+   "kicker": "VETERANS DAY \u00b7 NOV 11",
+   "head": "Day of Defeat is set in WWII. Today we remember those who really served.",
+   "label": "12:34",
+   "pill": "this afternoon's dod_avalanche stills \u00b7 not live video"
+  },
+  {
+   "kind": "img",
+   "src": "/home/tim/Desktop/dod-gc/playtests/screenshots/20261111-134544-ava-play99-111a/final.png",
+   "dur": 2.4,
+   "size": [
+    640,
+    480
+   ],
+   "chip": "Dolphin emulator capture \u00b7 Nov 11, 2026",
+   "kicker": "DAY OF DEFEAT \u00b7 GAMECUBE PORT",
+   "head": "13:45: stone walls of the town",
+   "label": "13:45"
+  },
+  {
+   "kind": "img",
+   "src": "/home/tim/Desktop/dod-gc/playtests/screenshots/20261111-135535-ava-play99-115/final.png",
+   "dur": 2.4,
+   "size": [
+    640,
+    480
+   ],
+   "chip": "Dolphin emulator capture \u00b7 Nov 11, 2026",
+   "kicker": "DAY OF DEFEAT \u00b7 GAMECUBE PORT",
+   "head": "13:55: an archway between buildings",
+   "label": "13:55"
+  },
+  {
+   "kind": "img",
+   "src": "/home/tim/Desktop/dod-gc/playtests/screenshots/20261111-140734-ava-play99-122/final.png",
+   "dur": 2.4,
+   "size": [
+    640,
+    480
+   ],
+   "chip": "Dolphin emulator capture \u00b7 Nov 11, 2026",
+   "kicker": "DAY OF DEFEAT \u00b7 GAMECUBE PORT",
+   "head": "14:07: a room lined with bookshelves",
+   "label": "14:07"
+  },
+  {
+   "kind": "img",
+   "src": "/home/tim/Desktop/dod-gc/playtests/screenshots/20261111-142137-ava-play99-129/final.png",
+   "dur": 2.4,
+   "size": [
+    640,
+    480
+   ],
+   "chip": "Dolphin emulator capture \u00b7 Nov 11, 2026",
+   "kicker": "DAY OF DEFEAT \u00b7 GAMECUBE PORT",
+   "head": "14:22: a narrow stone alley",
+   "label": "14:22"
+  },
+  {
+   "kind": "img",
+   "src": "/home/tim/Desktop/dod-gc/playtests/screenshots/20261111-143011-ava-play99-132/final.png",
+   "dur": 2.4,
+   "size": [
+    640,
+    480
+   ],
+   "chip": "Dolphin emulator capture \u00b7 Nov 11, 2026",
+   "kicker": "DAY OF DEFEAT \u00b7 GAMECUBE PORT",
+   "head": "14:31: cobblestones down the alley",
+   "label": "14:31"
+  },
+  {
+   "kind": "img",
+   "src": "/home/tim/Desktop/dod-gc/playtests/screenshots/20261111-150737-ava-play99-145t1/final.png",
+   "dur": 2.4,
+   "size": [
+    640,
+    480
+   ],
+   "chip": "Dolphin emulator capture \u00b7 Nov 11, 2026",
+   "kicker": "DAY OF DEFEAT \u00b7 GAMECUBE PORT",
+   "head": "15:08: a dark interior hallway",
+   "label": "15:08"
+  },
+  {
+   "kind": "img",
+   "src": "/home/tim/Desktop/dod-gc/playtests/screenshots/20261111-142344-ava-play99-130/final.png",
+   "dur": 3.0,
+   "size": [
+    640,
+    480
+   ],
+   "chip": "Dolphin emulator capture \u00b7 Nov 11, 2026",
+   "kicker": "DAY OF DEFEAT \u00b7 GAMECUBE PORT",
+   "head": "14:24: out on the street under blue sky",
+   "label": "14:24",
+   "pill": "Allied team \u00b7 Garand \u00b7 HP 100 \u00b7 AMMO 7"
+  },
+  {
+   "kind": "img",
+   "src": "/home/tim/Desktop/dod-gc/playtests/screenshots/20261111-142344-ava-play99-130/final.png",
+   "dur": 3.6,
+   "size": [
+    640,
+    480
+   ],
+   "chip": "Dolphin emulator capture \u00b7 Nov 11, 2026",
+   "kicker": "VETERANS DAY \u00b7 NOV 11",
+   "head": "Honoring all who served. Port still in development, not on hardware yet.",
+   "endcard": true
+  }
+ ]
+}

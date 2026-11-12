@@ -1,0 +1,165 @@
+{
+ "name": "dod01",
+ "music": "/home/tim/Desktop/dod-gc/social-media/music/Mournful March.mp3",
+ "music_ss": 0,
+ "out": "/home/tim/Desktop/dod-gc/promo/shorts-2026-11-10/01-dod-garand-viewmodel-bringup.mp4",
+ "segments": [
+  {
+   "kind": "img",
+   "src": "/home/tim/sv-work-2026-11-10/vmfull/182519-vm15.png",
+   "dur": 3.2,
+   "chip": "Dolphin emulator capture \u00b7 Nov 10, 2026",
+   "kicker": "DAY OF DEFEAT \u00b7 GAMECUBE PORT",
+   "head": "Getting the rifle right, one run at a time",
+   "pill": "dod_avalanche \u00b7 solo listen server",
+   "zoom": 0.06
+  },
+  {
+   "kind": "img",
+   "src": "/home/tim/sv-work-2026-11-10/vmfull/171957-playable.png",
+   "dur": 2.2,
+   "chip": "Dolphin emulator capture \u00b7 Nov 10, 2026",
+   "kicker": "DAY OF DEFEAT \u00b7 GAMECUBE PORT",
+   "head": "17:19: spawned in, no rifle yet",
+   "label": "17:19",
+   "zoom": 0.03
+  },
+  {
+   "kind": "img",
+   "src": "/home/tim/sv-work-2026-11-10/vmfull/172449-playable2.png",
+   "dur": 0.03333333333333333,
+   "chip": "Dolphin emulator capture \u00b7 Nov 10, 2026",
+   "label": "crash"
+  },
+  {
+   "kind": "img",
+   "src": "/home/tim/sv-work-2026-11-10/vmfull/172915-playable4.png",
+   "dur": 0.03333333333333333,
+   "chip": "Dolphin emulator capture \u00b7 Nov 10, 2026",
+   "label": "crash"
+  },
+  {
+   "kind": "img",
+   "src": "/home/tim/sv-work-2026-11-10/vmfull/173509-vm1.png",
+   "dur": 2.4,
+   "chip": "Dolphin emulator capture \u00b7 Nov 10, 2026",
+   "kicker": "DAY OF DEFEAT \u00b7 GAMECUBE PORT",
+   "head": "17:35: the rifle draws",
+   "pill": "untextured, and it fills most of the screen",
+   "label": "17:35",
+   "zoom": 0.03
+  },
+  {
+   "kind": "img",
+   "src": "/home/tim/sv-work-2026-11-10/vmfull/174425-vm4.png",
+   "dur": 1.6,
+   "chip": "Dolphin emulator capture \u00b7 Nov 10, 2026",
+   "kicker": "DAY OF DEFEAT \u00b7 GAMECUBE PORT",
+   "head": "17:44: still oversized",
+   "label": "17:44",
+   "zoom": 0.03
+  },
+  {
+   "kind": "img",
+   "src": "/home/tim/sv-work-2026-11-10/vmfull/175245-vm5.png",
+   "dur": 0.03333333333333333,
+   "chip": "Dolphin emulator capture \u00b7 Nov 10, 2026",
+   "label": "crash"
+  },
+  {
+   "kind": "img",
+   "src": "/home/tim/sv-work-2026-11-10/vmfull/175902-vm6.png",
+   "dur": 1.5,
+   "chip": "Dolphin emulator capture \u00b7 Nov 10, 2026",
+   "kicker": "DAY OF DEFEAT \u00b7 GAMECUBE PORT",
+   "head": "17:59: still oversized",
+   "label": "17:59",
+   "zoom": 0.03
+  },
+  {
+   "kind": "img",
+   "src": "/home/tim/sv-work-2026-11-10/vmfull/180507-vm8.png",
+   "dur": 2.0,
+   "chip": "Dolphin emulator capture \u00b7 Nov 10, 2026",
+   "kicker": "DAY OF DEFEAT \u00b7 GAMECUBE PORT",
+   "head": "18:05: textures start to arrive",
+   "pill": "not always on the right surfaces",
+   "label": "18:05",
+   "zoom": 0.03
+  },
+  {
+   "kind": "img",
+   "src": "/home/tim/sv-work-2026-11-10/vmfull/180901-vm9.png",
+   "dur": 1.5,
+   "chip": "Dolphin emulator capture \u00b7 Nov 10, 2026",
+   "kicker": "DAY OF DEFEAT \u00b7 GAMECUBE PORT",
+   "head": "18:09",
+   "pill": "not always on the right surfaces",
+   "label": "18:09",
+   "zoom": 0.03
+  },
+  {
+   "kind": "img",
+   "src": "/home/tim/sv-work-2026-11-10/vmfull/181124-vm10.png",
+   "dur": 1.4,
+   "chip": "Dolphin emulator capture \u00b7 Nov 10, 2026",
+   "kicker": "DAY OF DEFEAT \u00b7 GAMECUBE PORT",
+   "head": "18:11",
+   "pill": "not always on the right surfaces",
+   "label": "18:11",
+   "zoom": 0.03
+  },
+  {
+   "kind": "img",
+   "src": "/home/tim/sv-work-2026-11-10/vmfull/181403-vm11.png",
+   "dur": 1.5,
+   "chip": "Dolphin emulator capture \u00b7 Nov 10, 2026",
+   "kicker": "DAY OF DEFEAT \u00b7 GAMECUBE PORT",
+   "head": "18:14",
+   "pill": "not always on the right surfaces",
+   "label": "18:14",
+   "zoom": 0.03
+  },
+  {
+   "kind": "img",
+   "src": "/home/tim/sv-work-2026-11-10/vmfull/181612-vm12.png",
+   "dur": 2.0,
+   "chip": "Dolphin emulator capture \u00b7 Nov 10, 2026",
+   "kicker": "DAY OF DEFEAT \u00b7 GAMECUBE PORT",
+   "head": "18:16: hands textured",
+   "pill": "rifle still too big",
+   "label": "18:16",
+   "zoom": 0.03
+  },
+  {
+   "kind": "img",
+   "src": "/home/tim/sv-work-2026-11-10/vmfull/182015-vm13.png",
+   "dur": 2.6,
+   "chip": "Dolphin emulator capture \u00b7 Nov 10, 2026",
+   "kicker": "DAY OF DEFEAT \u00b7 GAMECUBE PORT",
+   "head": "18:20: sized and textured",
+   "label": "18:20",
+   "zoom": 0.04
+  },
+  {
+   "kind": "vid",
+   "src": "/home/tim/Desktop/dod-gc/playtests/videos/20261110-182519-ava-vm15-599494ad0d.mp4",
+   "ss": 41,
+   "dur": 5.5,
+   "chip": "Dolphin emulator capture \u00b7 Nov 10, 2026",
+   "kicker": "DAY OF DEFEAT \u00b7 GAMECUBE PORT",
+   "head": "Rifle in hand on dod_avalanche",
+   "pill": "18:25 run \u00b7 HUD shows HP 100",
+   "label": "18:25"
+  },
+  {
+   "kind": "img",
+   "src": "/home/tim/sv-work-2026-11-10/vmfull/182519-vm15.png",
+   "dur": 3.6,
+   "chip": "Dolphin emulator capture \u00b7 Nov 10, 2026",
+   "kicker": "DAY OF DEFEAT \u00b7 GAMECUBE PORT",
+   "head": "Team menu and spawn work. A full match isn't verified yet.",
+   "endcard": true
+  }
+ ]
+}

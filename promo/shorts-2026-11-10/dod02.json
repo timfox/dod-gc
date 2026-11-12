@@ -1,0 +1,104 @@
+{
+ "name": "dod02",
+ "music": "/home/tim/Desktop/dod-gc/social-media/music/Menace of War.mp3",
+ "music_ss": 0,
+ "out": "/home/tim/Desktop/dod-gc/promo/shorts-2026-11-10/02-dod-team-menu-three-builds.mp4",
+ "segments": [
+  {
+   "kind": "vid",
+   "src": "/home/tim/Desktop/dod-gc/playtests/videos/20261110-145246-flash-teamgui3-7e44ea2556.mp4",
+   "ss": 6,
+   "dur": 3.2,
+   "chip": "Dolphin emulator capture \u00b7 Nov 10, 2026",
+   "kicker": "DAY OF DEFEAT \u00b7 GAMECUBE PORT",
+   "head": "The team menu, three builds in 16 minutes",
+   "pill": "dod_flash",
+   "label": "14:52"
+  },
+  {
+   "kind": "vid",
+   "src": "/home/tim/Desktop/dod-gc/playtests/videos/20261110-143649-flash-teamgui-7e44ea2556.mp4",
+   "ss": 8,
+   "dur": 2.8,
+   "chip": "Dolphin emulator capture \u00b7 Nov 10, 2026",
+   "kicker": "DAY OF DEFEAT \u00b7 GAMECUBE PORT",
+   "head": "14:36: the panel draws",
+   "pill": "but no text",
+   "label": "14:36"
+  },
+  {
+   "kind": "vid",
+   "src": "/home/tim/Desktop/dod-gc/playtests/videos/20261110-143649-flash-teamgui-7e44ea2556.mp4",
+   "ss": 37,
+   "dur": 2.0,
+   "chip": "Dolphin emulator capture \u00b7 Nov 10, 2026",
+   "kicker": "DAY OF DEFEAT \u00b7 GAMECUBE PORT",
+   "head": "14:36: the panel draws",
+   "pill": "then the map at sunset",
+   "label": "14:36"
+  },
+  {
+   "kind": "vid",
+   "src": "/home/tim/Desktop/dod-gc/playtests/videos/20261110-144412-flash-teamgui2-7e44ea2556.mp4",
+   "ss": 13,
+   "dur": 2.0,
+   "chip": "Dolphin emulator capture \u00b7 Nov 10, 2026",
+   "kicker": "DAY OF DEFEAT \u00b7 GAMECUBE PORT",
+   "head": "14:44: still no text",
+   "label": "14:44"
+  },
+  {
+   "kind": "vid",
+   "src": "/home/tim/Desktop/dod-gc/playtests/videos/20261110-144412-flash-teamgui2-7e44ea2556.mp4",
+   "ss": 32,
+   "dur": 2.0,
+   "chip": "Dolphin emulator capture \u00b7 Nov 10, 2026",
+   "kicker": "DAY OF DEFEAT \u00b7 GAMECUBE PORT",
+   "head": "14:44: still no text",
+   "pill": "and the map draws broken",
+   "label": "14:44"
+  },
+  {
+   "kind": "vid",
+   "src": "/home/tim/Desktop/dod-gc/playtests/videos/20261110-145246-flash-teamgui3-7e44ea2556.mp4",
+   "ss": 8,
+   "dur": 3.2,
+   "chip": "Dolphin emulator capture \u00b7 Nov 10, 2026",
+   "kicker": "DAY OF DEFEAT \u00b7 GAMECUBE PORT",
+   "head": "14:52: SELECT A TEAM",
+   "pill": "Allies, Axis, Spectate \u00b7 D-pad + A",
+   "label": "14:52"
+  },
+  {
+   "kind": "vid",
+   "src": "/home/tim/Desktop/dod-gc/playtests/videos/20261110-145246-flash-teamgui3-7e44ea2556.mp4",
+   "ss": 22,
+   "dur": 2.6,
+   "chip": "Dolphin emulator capture \u00b7 Nov 10, 2026",
+   "kicker": "DAY OF DEFEAT \u00b7 GAMECUBE PORT",
+   "head": "14:52: Allies picked",
+   "pill": "the map shows through",
+   "label": "14:52"
+  },
+  {
+   "kind": "vid",
+   "src": "/home/tim/Desktop/dod-gc/playtests/videos/20261110-145246-flash-teamgui3-7e44ea2556.mp4",
+   "ss": 36,
+   "dur": 4.0,
+   "chip": "Dolphin emulator capture \u00b7 Nov 10, 2026",
+   "kicker": "DAY OF DEFEAT \u00b7 GAMECUBE PORT",
+   "head": "Spawn view, Allies, on dod_flash",
+   "label": "14:52"
+  },
+  {
+   "kind": "vid",
+   "src": "/home/tim/Desktop/dod-gc/playtests/videos/20261110-145246-flash-teamgui3-7e44ea2556.mp4",
+   "ss": 50,
+   "dur": 3.6,
+   "chip": "Dolphin emulator capture \u00b7 Nov 10, 2026",
+   "kicker": "DAY OF DEFEAT \u00b7 GAMECUBE PORT",
+   "head": "Menus and spawn work. A full match isn't verified yet.",
+   "endcard": true
+  }
+ ]
+}

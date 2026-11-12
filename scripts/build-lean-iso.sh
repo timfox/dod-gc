@@ -27,7 +27,9 @@ usage: scripts/build-lean-iso.sh [options]
   --full-map       stage mapmodels/weapons/sprites/WADs + core SFX with --map/--smoke/--listen
   --all-maps-audio stage every map's soundscape/ambient WAVs + menu music/UI
   --core-sfx       stage weapons/player/ui/items/doors/buttons/debris/object/common
-  --world-render   render the BSP world in menu or gameplay sessions
+  --world-render   render the BSP world in menu or gameplay sessions (default)
+  --no-world-render
+                   leave the BSP world hidden for diagnostic sessions
   --dumpframes     gamecube.cfg dumpframes (-gcdumpframes stills; with --smoke)
   --dumpeye "x y z [pitch] [yaw]"
                    CapFaces camera override in gamecube.cfg (spawn atlas)
@@ -45,7 +47,8 @@ SKIP_STAGE=0
 SKIP_STARTUP_VIDS=0
 WANT_NET=0
 FULL_MAP=0
-WORLD_RENDER=0
+WORLD_RENDER=1
+WORLD_RENDER_EXPLICIT=0
 DUMPFRAMES=0
 DUMPEYE=""
 TAS=""
@@ -71,7 +74,8 @@ while [[ $# -gt 0 ]]; do
 		--full-map) FULL_MAP=1; STAGE_ARGS+=(--full-map) ;;
 		--all-maps-audio) STAGE_ARGS+=(--all-maps-audio) ;;
 		--core-sfx) STAGE_ARGS+=(--core-sfx) ;;
-		--world-render) WORLD_RENDER=1 ;;
+		--world-render) WORLD_RENDER=1; WORLD_RENDER_EXPLICIT=1 ;;
+		--no-world-render) WORLD_RENDER=0; WORLD_RENDER_EXPLICIT=1 ;;
 		--dumpframes) DUMPFRAMES=1 ;;
 		--dumpeye)
 			DUMPEYE="${2:-}"
@@ -118,6 +122,12 @@ while [[ $# -gt 0 ]]; do
 	esac
 	shift
 done
+
+# Keep discs without a staged map lightweight; map-bearing play builds render
+# CapFaces by default so Create Game can use its packed BSP path and lean mode.
+if [[ -z "$MAP" && "$WORLD_RENDER_EXPLICIT" -eq 0 ]]; then
+	WORLD_RENDER=0
+fi
 if (( DUMPFRAMES )) && [[ -z "$SMOKE" && -z "$LISTEN" && -z "$CONNECT" ]]; then
 	echo "error: --dumpframes requires --smoke, --listen, or --connect" >&2
 	exit 2

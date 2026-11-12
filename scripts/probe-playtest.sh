@@ -46,8 +46,14 @@ done
 
 [[ -f "$ISO" ]] || { echo "error: ISO not found: $ISO" >&2; exit 1; }
 
-DOLPHIN=""
-if [[ -x "$DODGC_ENGINE/3rdparty/dolphin/build/Binaries/dolphin-emu" ]]; then
+DOLPHIN="${DODGC_DOLPHIN_BIN:-}"
+if [[ -n "$DOLPHIN" && ! -x "$DOLPHIN" ]]; then
+	echo "error: DODGC_DOLPHIN_BIN is not executable: $DOLPHIN" >&2
+	exit 2
+fi
+if [[ -n "$DOLPHIN" ]]; then
+	:
+elif [[ -x "$DODGC_ENGINE/3rdparty/dolphin/build/Binaries/dolphin-emu" ]]; then
 	DOLPHIN="$DODGC_ENGINE/3rdparty/dolphin/build/Binaries/dolphin-emu"
 elif command -v dolphin-emu >/dev/null 2>&1; then
 	DOLPHIN="$(command -v dolphin-emu)"
@@ -162,11 +168,37 @@ fi
 grab() {
 	local name=$1
 	local win=""
-	# pipefail: rg exit 1 on no match must not abort the probe
-	win="$(xwininfo -root -tree 2>/dev/null | rg '\("dolphin-emu" "GameCube"\)' | rg -v '800x600' | head -1 | awk '{print $1}' || true)"
-	[[ -z "${win:-}" ]] && win="$(xwininfo -root -tree 2>/dev/null | rg '\("dolphin-emu" "GameCube"\)' | head -1 | awk '{print $1}' || true)"
+	win="$(python3 - "$USER_DIR" <<'PY'
+import subprocess, sys
+user_dir = sys.argv[1]
+tree = subprocess.run(["xwininfo", "-root", "-tree"], text=True, capture_output=True).stdout
+candidates = []
+for line in tree.splitlines():
+    if '("dolphin-emu" "GameCube")' not in line and '("xash-gc-dolphin" "GameCube")' not in line:
+        continue
+    parts = line.split()
+    if not parts or not parts[0].startswith("0x"):
+        continue
+    if "640x480" not in line and "854x480" not in line:
+        continue
+    wid = int(parts[0], 16)
+    prop = subprocess.run(["xprop", "-id", hex(wid), "_NET_WM_PID"], text=True, capture_output=True).stdout
+    try:
+        owner = int(prop.split("=", 1)[1].strip())
+    except (IndexError, ValueError):
+        continue
+    args = subprocess.run(["ps", "-p", str(owner), "-o", "args="], text=True,
+                          capture_output=True).stdout
+    if user_dir in args:
+        candidates.append(wid)
+if candidates:
+    print(hex(candidates[-1]))
+PY
+	)"
 	if [[ -n "${win:-}" ]] && command -v import >/dev/null 2>&1; then
 		import -window "$win" "$SHOT_DIR/${name}.png" 2>/dev/null || true
+	else
+		echo "==> no guest render window for $name (launcher windows are ignored)"
 	fi
 }
 
