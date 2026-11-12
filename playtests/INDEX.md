@@ -4,6 +4,9 @@ Screenshots: `playtests/screenshots/` · Videos: `playtests/videos/` · Notes: `
 
 | Date | File | Route | Duration | Size | Commit |
 |------|------|-------|----------|------|--------|
+| 2026-11-11T17:50:40 | `20261111-175040-ava-sfx-playfix-386d1e9dc6.mp4` | ava-sfx-playfix | 59.6s | 0.4 MB | `386d1e9dc6` |
+| 2026-11-11T17:48:37 | `20261111-174837-ava-sfx-streamfix-386d1e9dc6.mp4` | ava-sfx-streamfix | 74.6s | 0.4 MB | `386d1e9dc6` |
+| 2026-11-11T17:46:02 | `20261111-174602-ava-sfx-merge-386d1e9dc6.mp4` | ava-sfx-merge | 90.0s | 0.4 MB | `386d1e9dc6` |
 | 2026-11-11T16:51:37 | `20261111-165137-ava-prop-6-cc62f9666d.mp4` | ava-prop-6 | 45.3s | 0.8 MB | `cc62f9666d` |
 | 2026-11-11T16:49:59 | `20261111-164959-ava-prop-5-cc62f9666d.mp4` | ava-prop-5 | 51.3s | 0.9 MB | `cc62f9666d` |
 | 2026-11-11T16:47:20 | `20261111-164720-ava-prop-4-cc62f9666d.mp4` | ava-prop-4 | 51.3s | 0.9 MB | `cc62f9666d` |
