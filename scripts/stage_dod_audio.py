@@ -60,6 +60,28 @@ CORE_SFX_DIRS = [
     "object",
 ]
 
+# CapFaces listen: a full weapons/ tree (500+ WAVs) hung ISO9660 boot scans.
+# Keep the combat set tip-safe and small enough for WorldDL listen.
+CORE_SFX_COMBAT = [
+    "weapons/garand_shoot.wav",
+    "weapons/kar_shoot.wav",
+    "weapons/mp40_shoot.wav",
+    "weapons/thompson_shoot.wav",
+    "weapons/colt_shoot.wav",
+    "weapons/luger_shoot.wav",
+    "weapons/pl_gun1.wav",
+    "weapons/pl_gun2.wav",
+    "weapons/pl_gun3.wav",
+    "player/pl_step1.wav",
+    "player/pl_step2.wav",
+    "player/pl_step3.wav",
+    "player/pl_step4.wav",
+    "player/pl_shell1.wav",
+    "buttons/button10.wav",
+    "common/wpn_select.wav",
+    "common/wpn_hudoff.wav",
+]
+
 
 def normalize_sound_path(raw: str) -> str:
     name = raw.replace("\\", "/").lstrip("/")
@@ -279,34 +301,42 @@ def lean_tipsafe_wav(src: Path, dest: Path, max_seconds: float) -> int:
     return dest.stat().st_size if dest.is_file() else 0
 
 
-def stage_core_sfx(dod_sound: Path, lean_sound: Path, valve_sound: Path | None = None) -> dict:
+def stage_core_sfx(
+    dod_sound: Path,
+    lean_sound: Path,
+    valve_sound: Path | None = None,
+    lean_media: Path | None = None,
+) -> dict:
     copied = []
     total = 0
-    sources: list[Path] = [dod_sound]
+    roots = [dod_sound]
     if valve_sound and valve_sound.is_dir():
-        sources.append(valve_sound)
+        roots.append(valve_sound)
+    index = build_index(roots)
+    media_root = lean_media if lean_media is not None else lean_sound.parent / "media"
 
-    for src_root in sources:
-        for dirname in CORE_SFX_DIRS:
-            src_dir = src_root / dirname
-            if not src_dir.is_dir():
-                continue
-            for f in src_dir.rglob("*"):
-                if not f.is_file():
-                    continue
-                if f.suffix.lower() != ".wav":
-                    continue
-                rel = f.relative_to(src_root).as_posix()
-                dest = lean_sound / rel
-                # Prefer DoD originals; do not overwrite with Valve duplicates.
-                if dest.is_file() and src_root is not dod_sound:
-                    continue
-                # Weapons need the transient; steps are short.
-                max_s = 0.45 if dirname == "weapons" else 0.30
-                size = lean_tipsafe_wav(f, dest, max_s)
-                copied.append(rel)
-                total += size
-    return {"files": len(copied), "bytes": total, "dirs": CORE_SFX_DIRS}
+    for rel in CORE_SFX_COMBAT:
+        src, how = resolve_source(rel, index, roots)
+        if src is None:
+            continue
+        dest = lean_sound / rel
+        max_s = 0.45 if rel.startswith("weapons/") else 0.30
+        size = lean_tipsafe_wav(src, dest, max_s)
+        # G278: deep sound/* often misses on libogc ISO9660 — also stage a
+        # shallow media/sfx_<basename>.wav the engine can open during CapFaces.
+        base = Path(rel).name
+        media_dest = media_root / f"sfx_{base}"
+        if dest.is_file():
+            media_root.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(dest, media_dest)
+        copied.append(f"{rel} ({how})")
+        total += size
+    return {
+        "files": len(copied),
+        "bytes": total,
+        "dirs": ["combat-minimal", "media/sfx_*"],
+        "list": copied,
+    }
 
 
 def write_manifest(path: Path, payload: dict) -> None:
