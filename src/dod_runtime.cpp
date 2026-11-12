@@ -16,6 +16,7 @@ extern int gmsgScoreInfo;
 
 static int g_dod_menu_state[DOD_MAX_PLAYERS + 1];
 static int g_dod_winner_announced;
+static float g_dod_next_status;
 
 static int DodGC_PlayerIndex( CBasePlayer *pPlayer )
 {
@@ -42,21 +43,27 @@ static void DodGC_ShowTeamMenu( CBasePlayer *pPlayer )
 	if( index > 0 && index <= DOD_MAX_PLAYERS )
 		g_dod_menu_state[index] = 1;
 	DodGC_SendMenu( pPlayer, 0x0003,
-		"\yDAY OF DEFEAT - CHOOSE A SIDE\n\w\n"
+		"\\yDAY OF DEFEAT - CHOOSE A SIDE\n\\w\n"
 		"1. Allies\n2. Axis\n\n"
 		"Choose a side to continue.\n" );
 }
 
+static DodTeam DodGC_TeamForPlayer( CBasePlayer *pPlayer );
+
 static void DodGC_ShowClassMenu( CBasePlayer *pPlayer )
 {
 	const int index = DodGC_PlayerIndex( pPlayer );
+	const DodTeam team = DodGC_TeamForPlayer( pPlayer );
+	char text[256];
+	int len;
 	if( index > 0 && index <= DOD_MAX_PLAYERS )
 		g_dod_menu_state[index] = 2;
-	DodGC_SendMenu( pPlayer, 0x003f,
-		"\yDAY OF DEFEAT - CHOOSE A CLASS\n\w\n"
-		"1. Rifleman\n2. Assault\n3. Support\n"
-		"4. Sniper\n5. Machine Gunner\n6. Rocket\n\n"
-		"Your class kit is issued on selection.\n" );
+	len = snprintf( text, sizeof( text ), "\\y%s - CHOOSE A CLASS\n\\w\n",
+		team == DOD_TEAM_AXIS ? "AXIS" : "ALLIES" );
+	for( int c = DOD_CLASS_RIFLEMAN; c < DOD_CLASS_COUNT && len < (int)sizeof( text ); c++ )
+		len += snprintf( text + len, sizeof( text ) - len, "%d. %s (%s)\n", c,
+			Dod_TeamClassName( team, (DodClass)c ), Dod_TeamClassWeapon( team, (DodClass)c ) );
+	DodGC_SendMenu( pPlayer, 0x003f, text );
 }
 
 static void DodGC_ClearMenu( CBasePlayer *pPlayer )
@@ -100,32 +107,23 @@ static void DodGC_ApplyClass( CBasePlayer *pPlayer, DodClass player_class )
 	 * the client from the same class state. */
 	pPlayer->RemoveAllItems( FALSE );
 	pPlayer->GiveNamedItem( "weapon_crowbar" );
-	switch( player_class ) {
-	case DOD_CLASS_ASSAULT:
-		pPlayer->GiveNamedItem( "weapon_9mmAR" );
-		pPlayer->GiveAmmo( 45, "9mm", 250 );
-		break;
-	case DOD_CLASS_SUPPORT:
-		pPlayer->GiveNamedItem( "weapon_shotgun" );
-		pPlayer->GiveAmmo( 24, "buckshot", 125 );
-		break;
-	case DOD_CLASS_SNIPER:
-		pPlayer->GiveNamedItem( "weapon_crossbow" );
-		pPlayer->GiveAmmo( 10, "bolts", 50 );
-		break;
-	case DOD_CLASS_MG:
-		pPlayer->GiveNamedItem( "weapon_9mmAR" );
-		pPlayer->GiveAmmo( 120, "9mm", 250 );
-		break;
-	case DOD_CLASS_ROCKET:
-		pPlayer->GiveNamedItem( "weapon_rpg" );
-		pPlayer->GiveAmmo( 2, "rockets", 5 );
-		break;
-	case DOD_CLASS_RIFLEMAN:
-	default:
-		pPlayer->GiveNamedItem( "weapon_9mmAR" );
-		pPlayer->GiveAmmo( 30, "9mm", 250 );
-		break;
+	/* Stand-in HL1 weapons carry the retail loadout's ammo counts. */
+	{
+		DodLoadout load;
+		const char *stand_in = "weapon_9mmAR";
+		const char *ammo = "9mm";
+		int ammo_max = 250;
+		switch( player_class ) {
+		case DOD_CLASS_SUPPORT: stand_in = "weapon_shotgun"; ammo = "buckshot"; ammo_max = 125; break;
+		case DOD_CLASS_SNIPER: stand_in = "weapon_crossbow"; ammo = "bolts"; ammo_max = 50; break;
+		case DOD_CLASS_ROCKET: stand_in = "weapon_rpg"; ammo = "rockets"; ammo_max = 5; break;
+		default: break;
+		}
+		pPlayer->GiveNamedItem( stand_in );
+		if( Dod_GetLoadout( DodGC_TeamForPlayer( pPlayer ), player_class, &load ) ) {
+			int rounds = load.clip_size + load.reserve_rounds;
+			pPlayer->GiveAmmo( rounds > ammo_max ? ammo_max : rounds, ammo, ammo_max );
+		}
 	}
 	DodGC_ClearMenu( pPlayer );
 }
@@ -137,6 +135,7 @@ CHalfLifeDoD::CHalfLifeDoD()
 	Dod_StartRound( CVAR_GET_FLOAT( "mp_timelimit" ) * 60.0f );
 	memset( g_dod_menu_state, 0, sizeof( g_dod_menu_state ) );
 	g_dod_winner_announced = 0;
+	g_dod_next_status = 0.0f;
 }
 
 BOOL CHalfLifeDoD::ClientCommand( CBasePlayer *pPlayer, const char *pcmd )
@@ -257,6 +256,22 @@ void CHalfLifeDoD::Think( void )
 			state->winner == DOD_TEAM_AXIS ? "Axis" : "Round tied";
 		UTIL_ClientPrintAll( HUD_PRINTCENTER, UTIL_VarArgs( "%s win the round", winner ) );
 		g_dod_winner_announced = 1;
+	}
+	/* Match status strip (score, held points, clock) for the lean HUD, which
+	 * has no VGUI scoreboard. Sent as a HUD text channel once per second. */
+	if( gpGlobals->time >= g_dod_next_status ) {
+		char line[96];
+		hudtextparms_t params;
+		memset( &params, 0, sizeof( params ) );
+		params.channel = 3;
+		params.x = -1;
+		params.y = 0.02f;
+		params.effect = 0;
+		params.r1 = 255; params.g1 = 220; params.b1 = 120; params.a1 = 255;
+		params.holdTime = 1.5f;
+		g_dod_next_status = gpGlobals->time + 1.0f;
+		if( Dod_FormatStatus( line, sizeof( line ) ) > 0 )
+			UTIL_HudMessageAll( params, line );
 	}
 }
 

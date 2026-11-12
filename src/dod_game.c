@@ -2,6 +2,7 @@
 #include "dod_game.h"
 
 #include <ctype.h>
+#include <stdio.h>
 #include <string.h>
 
 #define DOD_CAPTURE_SECONDS_DEFAULT 10.0f
@@ -282,6 +283,39 @@ const char *Dod_ClassName(DodClass player_class)
 	}
 }
 
+static const char *const g_allies_class[DOD_CLASS_COUNT] = {
+	"None", "Rifleman", "Staff Sergeant", "Master Sergeant",
+	"Sniper", "Support Infantry", "Bazooka"
+};
+static const char *const g_axis_class[DOD_CLASS_COUNT] = {
+	"None", "Grenadier", "Stosstruppe", "Unteroffizier",
+	"Scharfschuetze", "MG42 Gunner", "Panzerjaeger"
+};
+static const char *const g_allies_weapon[DOD_CLASS_COUNT] = {
+	"None", "M1 Garand", "Thompson", "BAR", "Springfield", "30cal", "Bazooka"
+};
+static const char *const g_axis_weapon[DOD_CLASS_COUNT] = {
+	"None", "Kar98k", "MP40", "StG44", "Scoped Kar98k", "MG42", "Panzerschreck"
+};
+
+const char *Dod_TeamClassName(DodTeam team, DodClass player_class)
+{
+	if (player_class <= DOD_CLASS_NONE || player_class >= DOD_CLASS_COUNT)
+		return "None";
+	if (team == DOD_TEAM_ALLIES) return g_allies_class[player_class];
+	if (team == DOD_TEAM_AXIS) return g_axis_class[player_class];
+	return Dod_ClassName(player_class);
+}
+
+const char *Dod_TeamClassWeapon(DodTeam team, DodClass player_class)
+{
+	if (player_class <= DOD_CLASS_NONE || player_class >= DOD_CLASS_COUNT)
+		return "None";
+	if (team == DOD_TEAM_ALLIES) return g_allies_weapon[player_class];
+	if (team == DOD_TEAM_AXIS) return g_axis_weapon[player_class];
+	return "None";
+}
+
 int Dod_GetWeaponModels(int player_index, DodWeaponModelKind kind,
 	const char **view_model, const char **player_model)
 {
@@ -328,6 +362,48 @@ int Dod_GetWeaponModels(int player_index, DodWeaponModelKind kind,
 		return 1;
 	}
 	return 0;
+}
+
+/* index: [team - 1][class] ; clip, reserve, grenades. Approximate DoD 1.3. */
+static const struct { int clip, reserve, grenades; } g_loadout[2][DOD_CLASS_COUNT] = {
+	{ {0,0,0}, {8,80,2}, {30,180,2}, {20,160,2}, {5,50,0}, {150,300,0}, {1,4,0} },
+	{ {0,0,0}, {5,60,2}, {32,192,2}, {30,180,2}, {5,50,0}, {250,500,0}, {1,4,0} }
+};
+
+int Dod_GetLoadout(DodTeam team, DodClass player_class, DodLoadout *out)
+{
+	if ((team != DOD_TEAM_ALLIES && team != DOD_TEAM_AXIS) ||
+		player_class <= DOD_CLASS_NONE || player_class >= DOD_CLASS_COUNT || !out)
+		return 0;
+	out->weapon = Dod_TeamClassWeapon(team, player_class);
+	out->clip_size = g_loadout[team - 1][player_class].clip;
+	out->reserve_rounds = g_loadout[team - 1][player_class].reserve;
+	out->grenades = g_loadout[team - 1][player_class].grenades;
+	return 1;
+}
+
+int Dod_FormatStatus(char *buffer, int size)
+{
+	const DodGameRulesState *state = Dod_GetState();
+	int seconds, written;
+	if (!buffer || size <= 0)
+		return 0;
+	seconds = state->round_time_remaining > 0.0f ? (int)state->round_time_remaining : 0;
+	if (state->round_time_remaining > 0.0f)
+		written = snprintf(buffer, (size_t)size, "Allies %d  Axis %d | Points %d-%d | %d:%02d",
+			state->allies_score, state->axis_score,
+			state->controlled_objectives[DOD_TEAM_ALLIES],
+			state->controlled_objectives[DOD_TEAM_AXIS], seconds / 60, seconds % 60);
+	else
+		written = snprintf(buffer, (size_t)size, "Allies %d  Axis %d | Points %d-%d",
+			state->allies_score, state->axis_score,
+			state->controlled_objectives[DOD_TEAM_ALLIES],
+			state->controlled_objectives[DOD_TEAM_AXIS]);
+	if (written < 0)
+		buffer[0] = '\0', written = 0;
+	else if (written >= size)
+		written = size - 1;
+	return written;
 }
 
 void Dod_ClearObjectives(void)

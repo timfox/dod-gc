@@ -100,8 +100,28 @@ const DodPlayerState *Dod_GetPlayer(int player_index);
 int Dod_TeamFromName(const char *name);
 const char *Dod_TeamName(DodTeam team);
 const char *Dod_ClassName(DodClass player_class);
+/* Retail DoD class title for a team ("Staff Sergeant", "Stosstruppe", ...). */
+const char *Dod_TeamClassName(DodTeam team, DodClass player_class);
+/* Retail primary weapon title for the class on that team ("Thompson", ...). */
+const char *Dod_TeamClassWeapon(DodTeam team, DodClass player_class);
 int Dod_GetWeaponModels(int player_index, DodWeaponModelKind kind,
 	const char **view_model, const char **player_model);
+
+/* Retail-style class loadout (approximate DoD 1.3 values: magazine size and
+ * spare rounds issued at spawn). The runtime maps these onto the HL1 stand-in
+ * weapon's ammo type until real DoD weapon entities exist. */
+typedef struct DodLoadout {
+	const char *weapon;
+	int clip_size;
+	int reserve_rounds;
+	int grenades;
+} DodLoadout;
+
+int Dod_GetLoadout(DodTeam team, DodClass player_class, DodLoadout *out);
+
+/* One-line match status for the HUD, e.g. "Allies 5  Axis 3 | Points 2-1 | 12:34".
+ * Returns the number of characters written (excluding the terminator). */
+int Dod_FormatStatus(char *buffer, int size);
 
 /* Objective registration and capture. Counts may be zero; contested zones
  * pause. Capture is normalized from 0 (uncaptured) to 1 (complete). */

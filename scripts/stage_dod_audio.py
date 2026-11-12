@@ -163,6 +163,13 @@ def resolve_source(
     return None, "missing"
 
 
+def lean_dest(root: Path, rel: str) -> Path:
+    """Destination under the lean dir, always lowercase so entity refs like
+    Garand_shoot.wav and core staging of garand_shoot.wav never produce two
+    case-twin files (the disc builder rejects those as CASE_MISMATCH)."""
+    return root / rel.lower()
+
+
 def copy_file(src: Path, dst: Path) -> int:
     dst.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(src, dst)
@@ -253,7 +260,7 @@ def stage_map_sounds(
                 entry["missing"].append(rel)
                 missing[rel].append(bsp.stem)
                 continue
-            size = copy_file(src, lean_sound / rel)
+            size = copy_file(src, lean_dest(lean_sound, rel))
             staged[rel] = {"bytes": size, "from": str(src), "how": how}
             entry["staged"].append(rel)
             if how.startswith("substitute"):
@@ -319,13 +326,13 @@ def stage_core_sfx(
         src, how = resolve_source(rel, index, roots)
         if src is None:
             continue
-        dest = lean_sound / rel
+        dest = lean_dest(lean_sound, rel)
         max_s = 0.45 if rel.startswith("weapons/") else 0.30
         size = lean_tipsafe_wav(src, dest, max_s)
         # G278: deep sound/* often misses on libogc ISO9660 — also stage a
         # shallow media/sfx_<basename>.wav the engine can open during CapFaces.
         base = Path(rel).name
-        media_dest = media_root / f"sfx_{base}"
+        media_dest = media_root / f"sfx_{base.lower()}"
         if dest.is_file():
             media_root.mkdir(parents=True, exist_ok=True)
             shutil.copy2(dest, media_dest)
