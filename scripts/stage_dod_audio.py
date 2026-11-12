@@ -249,20 +249,63 @@ def stage_map_sounds(
     }
 
 
-def stage_core_sfx(dod_sound: Path, lean_sound: Path) -> dict:
+def lean_tipsafe_wav(src: Path, dest: Path, max_seconds: float) -> int:
+    """CapFaces listen keeps a 16 KiB memopt WAV ceiling — retail DoD shoots
+    are 60–120 KiB @ 22 kHz. Emit 11.025 kHz mono s16 clips that fit."""
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    if shutil.which("ffmpeg") is None:
+        return copy_file(src, dest)
+    cmd = [
+        "ffmpeg",
+        "-v",
+        "error",
+        "-y",
+        "-i",
+        str(src),
+        "-t",
+        f"{max_seconds:.3f}",
+        "-ar",
+        "11025",
+        "-ac",
+        "1",
+        "-c:a",
+        "pcm_s16le",
+        str(dest),
+    ]
+    try:
+        subprocess.run(cmd, check=True)
+    except (OSError, subprocess.CalledProcessError):
+        return copy_file(src, dest)
+    return dest.stat().st_size if dest.is_file() else 0
+
+
+def stage_core_sfx(dod_sound: Path, lean_sound: Path, valve_sound: Path | None = None) -> dict:
     copied = []
     total = 0
-    for dirname in CORE_SFX_DIRS:
-        src_dir = dod_sound / dirname
-        if not src_dir.is_dir():
-            continue
-        for f in src_dir.rglob("*"):
-            if not f.is_file():
+    sources: list[Path] = [dod_sound]
+    if valve_sound and valve_sound.is_dir():
+        sources.append(valve_sound)
+
+    for src_root in sources:
+        for dirname in CORE_SFX_DIRS:
+            src_dir = src_root / dirname
+            if not src_dir.is_dir():
                 continue
-            rel = f.relative_to(dod_sound).as_posix()
-            size = copy_file(f, lean_sound / rel)
-            copied.append(rel)
-            total += size
+            for f in src_dir.rglob("*"):
+                if not f.is_file():
+                    continue
+                if f.suffix.lower() != ".wav":
+                    continue
+                rel = f.relative_to(src_root).as_posix()
+                dest = lean_sound / rel
+                # Prefer DoD originals; do not overwrite with Valve duplicates.
+                if dest.is_file() and src_root is not dod_sound:
+                    continue
+                # Weapons need the transient; steps are short.
+                max_s = 0.45 if dirname == "weapons" else 0.30
+                size = lean_tipsafe_wav(f, dest, max_s)
+                copied.append(rel)
+                total += size
     return {"files": len(copied), "bytes": total, "dirs": CORE_SFX_DIRS}
 
 
@@ -364,7 +407,7 @@ def main() -> int:
                 )
 
         if args.core_sfx:
-            core = stage_core_sfx(dod / "sound", lean / "sound")
+            core = stage_core_sfx(dod / "sound", lean / "sound", valve / "sound")
             payload["core_sfx"] = core
             print(
                 f"core SFX: files={core['files']} ({core['bytes'] / 1048576:.2f} MiB) "

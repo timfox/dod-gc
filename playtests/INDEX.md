@@ -4,6 +4,12 @@ Screenshots: `playtests/screenshots/` · Videos: `playtests/videos/` · Notes: `
 
 | Date | File | Route | Duration | Size | Commit |
 |------|------|-------|----------|------|--------|
+| 2026-11-11T16:51:37 | `20261111-165137-ava-prop-6-cc62f9666d.mp4` | ava-prop-6 | 45.3s | 0.8 MB | `cc62f9666d` |
+| 2026-11-11T16:49:59 | `20261111-164959-ava-prop-5-cc62f9666d.mp4` | ava-prop-5 | 51.3s | 0.9 MB | `cc62f9666d` |
+| 2026-11-11T16:47:20 | `20261111-164720-ava-prop-4-cc62f9666d.mp4` | ava-prop-4 | 51.3s | 0.9 MB | `cc62f9666d` |
+| 2026-11-11T16:44:55 | `20261111-164455-ava-prop-3-cc62f9666d.mp4` | ava-prop-3 | 50.3s | 0.8 MB | `cc62f9666d` |
+| 2026-11-11T16:38:03 | `20261111-163803-ava-sky-2-cc62f9666d.mp4` | ava-sky-2 | 46.3s | 0.8 MB | `cc62f9666d` |
+| 2026-11-11T16:34:19 | `20261111-163419-ava-sky-1-cc62f9666d.mp4` | ava-sky-1 | 40.3s | 0.7 MB | `cc62f9666d` |
 | 2026-11-10T23:42:47 | `20261110-234247-local-create-match-9f1bd2f5f8.mp4` | local-create-match | 42.3s | 0.2 MB | `9f1bd2f5f8` |
 | 2026-11-10T23:40:30 | `20261110-234030-local-create-match-9f1bd2f5f8.mp4` | local-create-match | 30.3s | 0.2 MB | `9f1bd2f5f8` |
 | 2026-11-10T23:25:22 | `20261110-232522-local-create-match-ee25314c80.mp4` | local-create-match | 3.6s | 0.1 MB | `ee25314c80` |
