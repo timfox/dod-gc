@@ -56,6 +56,23 @@ static void test_loadouts(void)
 	assert(!Dod_GetLoadout(DOD_TEAM_AXIS, DOD_CLASS_NONE, &l));
 }
 
+static void test_player_line(void)
+{
+	char line[64];
+	Dod_GameInit();
+	assert(Dod_PlayerConnect(1));
+	assert(Dod_PlayerConnect(2));
+	assert(Dod_AssignPlayerTeam(1, DOD_TEAM_ALLIES));
+	assert(Dod_AssignPlayerTeam(2, DOD_TEAM_AXIS));
+	Dod_RecordKill(1, 2);
+	assert(Dod_FormatPlayerLine(1, "Bob", line, sizeof(line)) > 0);
+	assert(strcmp(line, "Allies  Bob  1/0") == 0);
+	assert(Dod_FormatPlayerLine(2, "", line, sizeof(line)) > 0);
+	assert(strcmp(line, "Axis  player  0/1") == 0);
+	assert(Dod_FormatPlayerLine(3, "x", line, sizeof(line)) == 0);
+	Dod_GameShutdown();
+}
+
 static void test_status_line(void)
 {
 	char line[96];
@@ -164,6 +181,7 @@ int main(void)
 	test_players_and_weapon_models();
 	test_retail_class_names();
 	test_status_line();
+	test_player_line();
 	test_loadouts();
 	test_contested_capture_flip_and_round_win();
 	test_kill_scoring_and_timed_tie();

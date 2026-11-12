@@ -151,6 +151,28 @@ BOOL CHalfLifeDoD::ClientCommand( CBasePlayer *pPlayer, const char *pcmd )
 		}
 		return TRUE;
 	}
+	if( FStrEq( pcmd, "dod_score" ) ) {
+		/* Text scoreboard for the lean HUD: one HUD text block for the asker. */
+		char board[512];
+		char line[96];
+		int len = snprintf( board, sizeof( board ), "SCOREBOARD\n" );
+		hudtextparms_t params;
+		memset( &params, 0, sizeof( params ) );
+		params.channel = 4;
+		params.x = 0.08f;
+		params.y = 0.25f;
+		params.r1 = 255; params.g1 = 255; params.b1 = 255; params.a1 = 255;
+		params.holdTime = 6.0f;
+		for( int i = 1; i <= gpGlobals->maxClients && len < (int)sizeof( board ) - 1; i++ ) {
+			CBasePlayer *other = (CBasePlayer *)UTIL_PlayerByIndex( i );
+			if( !other || !other->IsPlayer() )
+				continue;
+			if( Dod_FormatPlayerLine( i, STRING( other->pev->netname ), line, sizeof( line ) ) > 0 )
+				len += snprintf( board + len, sizeof( board ) - len, "%s\n", line );
+		}
+		UTIL_HudMessage( pPlayer, params, board );
+		return TRUE;
+	}
 	if( FStrEq( pcmd, "dod_class" ) ) {
 		const char *name = CMD_ARGV( 1 );
 		DodClass player_class = DOD_CLASS_NONE;

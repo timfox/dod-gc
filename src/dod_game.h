@@ -123,6 +123,10 @@ int Dod_GetLoadout(DodTeam team, DodClass player_class, DodLoadout *out);
  * Returns the number of characters written (excluding the terminator). */
 int Dod_FormatStatus(char *buffer, int size);
 
+/* Scoreboard line for one connected player, e.g. "Allies  Bob  5/2".
+ * Returns characters written, or 0 if the player is not connected. */
+int Dod_FormatPlayerLine(int player_index, const char *name, char *buffer, int size);
+
 /* Objective registration and capture. Counts may be zero; contested zones
  * pause. Capture is normalized from 0 (uncaptured) to 1 (complete). */
 void Dod_ClearObjectives(void);
