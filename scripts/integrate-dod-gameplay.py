@@ -298,6 +298,7 @@ def main() -> int:
 		 '\tPRECACHE_MODEL( "models/v_bazooka.mdl" ); PRECACHE_MODEL( "models/p_bazooka.mdl" );\n'
 		 '\tPRECACHE_MODEL( "models/v_panzerschreck.mdl" ); PRECACHE_MODEL( "models/p_pschreck.mdl" );\n'),
 		("crowbar.cpp", "CCrowbar", "DOD_MODEL_MELEE", "CROWBAR_DRAW", "crowbar", "crowbar",
+		 '\tPRECACHE_MODEL( "models/v_amerk.mdl" ); PRECACHE_MODEL( "models/p_amerk.mdl" );\n'
 		 '\tPRECACHE_MODEL( "models/v_spade.mdl" );\n'
 		 '\tPRECACHE_MODEL( "models/p_spade.mdl" );\n'),
 	):

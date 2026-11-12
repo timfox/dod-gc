@@ -325,8 +325,9 @@ int Dod_GetWeaponModels(int player_index, DodWeaponModelKind kind,
 	if (view_model) *view_model = 0;
 	if (player_model) *player_model = 0;
 	if (kind == DOD_MODEL_MELEE) {
-		if (view_model) *view_model = "models/v_spade.mdl";
-		if (player_model) *player_model = "models/p_spade.mdl";
+		/* Retail: Allies carry the American knife, Axis the spade. */
+		if (view_model) *view_model = player->team == DOD_TEAM_ALLIES ? "models/v_amerk.mdl" : "models/v_spade.mdl";
+		if (player_model) *player_model = player->team == DOD_TEAM_ALLIES ? "models/p_amerk.mdl" : "models/p_spade.mdl";
 		return 1;
 	}
 	if (kind == DOD_MODEL_AUTOMATIC) {
