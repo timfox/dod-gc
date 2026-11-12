@@ -1,0 +1,143 @@
+{
+ "name": "dod03",
+ "music": "/home/tim/Desktop/dod-gc/social-media/music/Allied Resolve.mp3",
+ "music_ss": 0,
+ "out": "/home/tim/Desktop/dod-gc/promo/shorts-2026-11-11/03-dod-avalanche-day-of-probes.mp4",
+ "segments": [
+  {
+   "kind": "img",
+   "src": "/home/tim/sv-work-2026-11-11/dodstills/p85.png",
+   "dur": 3.0,
+   "size": [
+    640,
+    480
+   ],
+   "chip": "Dolphin emulator capture \u00b7 Nov 11, 2026",
+   "kicker": "DAY OF DEFEAT \u00b7 GAMECUBE PORT",
+   "head": "Day of Defeat on GameCube: a day on dod_avalanche",
+   "pill": "in development \u00b7 Dolphin emulator",
+   "label": "11:42",
+   "zoom": 0.05
+  },
+  {
+   "kind": "img",
+   "src": "/home/tim/sv-work-2026-11-11/dodstills/p5.png",
+   "dur": 2.4,
+   "size": [
+    640,
+    480
+   ],
+   "chip": "Dolphin emulator capture \u00b7 Nov 11, 2026",
+   "kicker": "DAY OF DEFEAT \u00b7 GAMECUBE PORT",
+   "head": "00:48: in the map, Garand in hand",
+   "pill": "textured world \u00b7 solo listen-server probe",
+   "label": "00:48"
+  },
+  {
+   "kind": "img",
+   "src": "/home/tim/sv-work-2026-11-11/dodstills/p25.png",
+   "dur": 2.2,
+   "size": [
+    640,
+    480
+   ],
+   "chip": "Dolphin emulator capture \u00b7 Nov 11, 2026",
+   "kicker": "DAY OF DEFEAT \u00b7 GAMECUBE PORT",
+   "head": "01:39: still working the rifle in the streets",
+   "label": "01:39"
+  },
+  {
+   "kind": "img",
+   "src": "/home/tim/sv-work-2026-11-11/dodstills/p54.png",
+   "dur": 2.4,
+   "size": [
+    640,
+    480
+   ],
+   "chip": "Dolphin emulator capture \u00b7 Nov 11, 2026",
+   "kicker": "DAY OF DEFEAT \u00b7 GAMECUBE PORT",
+   "head": "02:58: more of the town drawing",
+   "label": "02:58"
+  },
+  {
+   "kind": "img",
+   "src": "/home/tim/sv-work-2026-11-11/dodstills/p80.png",
+   "dur": 2.4,
+   "size": [
+    640,
+    480
+   ],
+   "chip": "Dolphin emulator capture \u00b7 Nov 11, 2026",
+   "kicker": "DAY OF DEFEAT \u00b7 GAMECUBE PORT",
+   "head": "11:27: fixing the Garand's textures",
+   "label": "11:27"
+  },
+  {
+   "kind": "img",
+   "src": "/home/tim/sv-work-2026-11-11/dodstills/p85.png",
+   "dur": 2.8,
+   "size": [
+    640,
+    480
+   ],
+   "chip": "Dolphin emulator capture \u00b7 Nov 11, 2026",
+   "kicker": "DAY OF DEFEAT \u00b7 GAMECUBE PORT",
+   "head": "11:42: the rifle in a courtyard",
+   "label": "11:42"
+  },
+  {
+   "kind": "img",
+   "src": "/home/tim/sv-work-2026-11-11/dodstills/p89.png",
+   "dur": 2.4,
+   "size": [
+    640,
+    480
+   ],
+   "chip": "Dolphin emulator capture \u00b7 Nov 11, 2026",
+   "kicker": "DAY OF DEFEAT \u00b7 GAMECUBE PORT",
+   "head": "11:52: a lighting pass on the viewmodel",
+   "label": "11:52"
+  },
+  {
+   "kind": "img",
+   "src": "/home/tim/sv-work-2026-11-11/dodstills/p91.png",
+   "dur": 2.6,
+   "size": [
+    640,
+    480
+   ],
+   "chip": "Dolphin emulator capture \u00b7 Nov 11, 2026",
+   "kicker": "DAY OF DEFEAT \u00b7 GAMECUBE PORT",
+   "head": "12:00: a fire path runs",
+   "pill": "HUD shows AMMO 7",
+   "label": "12:00"
+  },
+  {
+   "kind": "img",
+   "src": "/home/tim/sv-work-2026-11-11/dodstills/p104.png",
+   "dur": 3.0,
+   "size": [
+    640,
+    480
+   ],
+   "chip": "Dolphin emulator capture \u00b7 Nov 11, 2026",
+   "kicker": "DAY OF DEFEAT \u00b7 GAMECUBE PORT",
+   "head": "12:32: latest probe of the morning",
+   "pill": "still unfinished \u00b7 not a full match",
+   "label": "12:32"
+  },
+  {
+   "kind": "img",
+   "src": "/home/tim/sv-work-2026-11-11/dodstills/p104.png",
+   "dur": 3.4,
+   "size": [
+    640,
+    480
+   ],
+   "chip": "Dolphin emulator capture \u00b7 Nov 11, 2026",
+   "kicker": "DAY OF DEFEAT \u00b7 GAMECUBE PORT",
+   "head": "Still in development, not on hardware yet",
+   "endcard": true
+  }
+ ]
+}
