@@ -24,9 +24,9 @@ usage: scripts/build-lean-iso.sh [options]
   --net-ip IP      static IPv4 address (DHCP when omitted)
   --net-mask MASK  static subnet mask (default 255.255.255.0)
   --net-gateway IP static router address (default same subnet .1)
-  --full-map       stage mapmodels/weapons/sprites/WADs + core SFX with --map/--smoke/--listen
+  --full-map       stage BSP-referenced mapmodels (capped) + lean HUD; not the prop farm
   --all-maps-audio stage every map's soundscape/ambient WAVs + menu music/UI
-  --core-sfx       stage weapons/player/ui/items/doors/buttons/debris/object/common
+  --core-sfx       opt-in weapons/player/ui/items/... WAV trees (OOMs menu if always on)
   --world-render   render the BSP world in menu or gameplay sessions (default)
   --no-world-render
                    leave the BSP world hidden for diagnostic sessions

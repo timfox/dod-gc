@@ -29,11 +29,19 @@ and any other embedded wav string). Files are staged under `sound/` with:
 
 ## Core gameplay SFX
 
-`--full-map` or `--core-sfx` also stages:
+`--core-sfx` (explicit; **not** implied by `--full-map`) stages:
 
 `weapons`, `player`, `common`, `ui`, `items`, `doors`, `buttons`, `debris`, `object`
 
-(~375 files / ~20 MiB).
+(~375 files / ~20 MiB). Leaving this on by default OOMs interactive intro/menu
+via FS searchpaths — same class of bug as dumping every mapmodel.
+
+## Mapmodels (MEM1 tip)
+
+`--full-map` stages **only** studio MDLs the BSP entity lump names, via
+`scripts/stage_bsp_mapmodels.py` (hard caps: 32 files / 4 MiB). The whole
+`models/mapmodels/` tree must never ship on a Cube disc. World textures already
+stream ARAM→MEM1; props are disc-lazy + PRECACHE at map load.
 
 ## Commands
 
@@ -44,7 +52,7 @@ scripts/stage-lean-dod.sh
 # Every map soundscape + menu + core SFX
 scripts/stage-lean-dod.sh --all-maps-audio --core-sfx
 
-# One map disc with complete audio for that BSP + gameplay packs
+# One map: BSP-referenced props only + that map's soundscapes (no core SFX)
 scripts/stage-lean-dod.sh --map dod_flash --full-map
 
 # ISO helpers

@@ -13,8 +13,8 @@ usage: scripts/stage-lean-dod.sh [--map NAME] [--full-map] [--all-maps-audio] [-
 
   --map NAME         copy one .bsp into lean maps/ (searches content/dod then valve)
                      aliases: de_avalanche → dod_avalanche
-  --full-map         with --map: also stage map cfg, mapmodels, player/weapon MDLs,
-                     sprites, common DoD WADs, and core gameplay SFX packs
+  --full-map         with --map: also stage map cfg, BSP-referenced mapmodels,
+                     player/weapon MDLs, sprites, common DoD WADs, and core SFX
   --all-maps-audio   stage soundscape/ambient WAVs for every dod_*.bsp (no BSPs copied)
   --core-sfx         stage weapons/player/ui/items/doors/buttons/debris/object/common
 EOF
@@ -75,7 +75,9 @@ if [[ -z "$MAP_NAME" ]]; then
 	else
 		AUDIO_ARGS+=(--menu-only)
 	fi
-	if (( CORE_SFX )) || (( FULL_MAP )); then
+	# Do NOT imply --core-sfx from --full-map: weapon/player WAV trees inflate
+	# FS searchpaths and OOMs interactive intro/menu. Pass --core-sfx explicitly.
+	if (( CORE_SFX )); then
 		AUDIO_ARGS+=(--core-sfx)
 	fi
 	python3 "$SCRIPT_DIR/stage_dod_audio.py" "${AUDIO_ARGS[@]}"
@@ -152,73 +154,47 @@ if [[ -n "$MAP_NAME" ]]; then
 	if (( ALL_MAPS_AUDIO )); then
 		MAP_AUDIO_ARGS+=(--all-maps)
 	fi
-	if (( CORE_SFX )) || (( FULL_MAP )); then
+	# Map soundscapes yes; core weapon/player trees only when asked.
+	if (( CORE_SFX )); then
 		MAP_AUDIO_ARGS+=(--core-sfx)
 	fi
 	python3 "$SCRIPT_DIR/stage_dod_audio.py" "${MAP_AUDIO_ARGS[@]}"
-	# Map-specific + common WADs (skip decals.wad — Host_InitDecals OOM).
+	# WADs: never put the per-map WAD in the gamedir root. FS_Rescan mounts
+	# every root *.wad at boot (avalanche = 109 lumps) and that alone can leave
+	# GameUI with <30 KiB before Valve intro. CapFaces/WorldDL packs already
+	# supply world textures. Keep only tiny shared WADs in the root; the map
+	# WAD rides next to the BSP under maps/ and is used when that map loads.
 	# Do NOT auto-mount sibling map WADs from the BSP "wad" key (e.g. flash
-	# lists dod_donner.wad). Each foreign map WAD costs ~6 KiB searchpaths and
-	# tipfix proved flash CapFaces drawn=365 without donner; denser maps need
-	# that headroom. CapFaces packs supply world textures on -gcworldrender.
-	map_wads=("${stem}.wad" hlbasics.wad)
-	if (( FULL_MAP )); then
-		map_wads+=(dod.wad dod_shared.wad)
-	fi
-	if command -v python3 >/dev/null 2>&1; then
-		while IFS= read -r wad; do
-			[[ -n "$wad" ]] || continue
-			[[ "$wad" == "decals.wad" ]] && continue
-			[[ "$wad" == "halflife.wad" ]] && continue
-			# Skip other maps' WADs (dod_donner.wad while staging dod_flash, etc.).
-			if [[ "$wad" == dod_*.wad && "$wad" != "${stem}.wad" ]]; then
-				echo "skip foreign map wad: $wad (tip searchpaths)"
-				continue
-			fi
-			map_wads+=("$wad")
-		done < <(python3 - "$bsp" <<'PY'
-import re, struct, sys
-from pathlib import Path
-b = Path(sys.argv[1]).read_bytes()
-off, length = struct.unpack_from("<ii", b, 4)
-ents = b[off:off+length].decode("latin1", "replace")
-m = re.search(r'"wad"\s+"([^"]+)"', ents)
-if not m:
-    raise SystemExit
-for part in m.group(1).split(";"):
-    part = part.strip()
-    if not part:
-        continue
-    name = part.replace("\\", "/").split("/")[-1]
-    if name.lower().endswith(".wad"):
-        print(name)
-PY
-)
-	fi
-	# Drop any leftover foreign map WADs from a prior lean stage.
+	# lists dod_donner.wad) — tip flash CapFaces worked without donner.
+	root_wads=(hlbasics.wad)
 	shopt -s nullglob
 	for leftover in "$LEAN"/dod_*.wad; do
-		base=$(basename "$leftover")
-		[[ "$base" == "${stem}.wad" ]] && continue
 		rm -f "$leftover"
-		echo "removed leftover wad: $base"
+		echo "removed boot-mounted map wad: $(basename "$leftover") (lazy under maps/)"
 	done
 	shopt -u nullglob
-	for wad in "${map_wads[@]}"; do
+	for wad in "${root_wads[@]}"; do
 		for root in "$SRC" "$VALVE"; do
 			if [[ -f "$root/$wad" ]]; then
-				# Cap giant Valve WADs on lean discs (halflife.wad ~38M).
 				sz=$(stat -c%s "$root/$wad" 2>/dev/null || stat -f%z "$root/$wad")
 				if [[ "${sz:-0}" -gt $((12 * 1024 * 1024)) ]]; then
 					echo "skip oversized wad: $wad ($(du -h "$root/$wad" | awk '{print $1}'))"
 					break
 				fi
 				cp -f "$root/$wad" "$LEAN/"
-				echo "staged wad: $wad"
+				echo "staged boot wad: $wad"
 				break
 			fi
 		done
 	done
+	# Lazy map WAD beside the BSP — not auto-mounted at FS_Rescan.
+	if [[ -f "$SRC/${stem}.wad" ]]; then
+		cp -f "$SRC/${stem}.wad" "$LEAN/maps/${stem}.wad"
+		echo "staged lazy map wad: maps/${stem}.wad (opens with map load, not boot)"
+	elif [[ -f "$VALVE/${stem}.wad" ]]; then
+		cp -f "$VALVE/${stem}.wad" "$LEAN/maps/${stem}.wad"
+		echo "staged lazy map wad: maps/${stem}.wad (from valve; opens with map load)"
+	fi
 	# Optional overview / txt next to the BSP.
 	for ext in txt res; do
 		[[ -f "$SRC/maps/${stem}.${ext}" ]] && cp -f "$SRC/maps/${stem}.${ext}" "$LEAN/maps/"
@@ -276,24 +252,30 @@ PY
 	echo "staged skybox: $skyname ($sky_staged CMPR sides + gfx/env for encode)"
 
 	# Full BSP PVS cluster display lists (media/wd_<map>.gcd) — preferred over
-	# CapFaces lean densify when present (ref/gx/r_gx_worlddl.c).
-	wd_src=""
-	for cand in \
-		"$SRC/media/wd_${stem}.gcd" \
-		"$DODGC_ROOT/content/dod/media/wd_${stem}.gcd" \
-		"$DODGC_ROOT/out/media/wd_${stem}.gcd"
-	do
-		if [[ -f "$cand" ]]; then
-			wd_src="$cand"
-			break
+	# CapFaces lean densify when present (ref/gx/r_gx_worlddl.c). Opt-in: the
+	# file is large and interactive menu discs should stay CapFaces-only until
+	# a listen/worlddl probe sets DODGC_STAGE_WORLDDL=1.
+	rm -f "$LEAN/media/wd_${stem}.gcd"
+	if [[ "${DODGC_STAGE_WORLDDL:-0}" == "1" ]]; then
+		wd_src=""
+		for cand in \
+			"$SRC/media/wd_${stem}.gcd" \
+			"$DODGC_ROOT/content/dod/media/wd_${stem}.gcd" \
+			"$DODGC_ROOT/out/media/wd_${stem}.gcd"
+		do
+			if [[ -f "$cand" ]]; then
+				wd_src="$cand"
+				break
+			fi
+		done
+		if [[ -n "$wd_src" ]]; then
+			cp -f "$wd_src" "$LEAN/media/wd_${stem}.gcd"
+			echo "staged world DL: media/wd_${stem}.gcd ($(wc -c < "$LEAN/media/wd_${stem}.gcd") bytes)"
+		else
+			echo "world DL: no media/wd_${stem}.gcd (CapFaces/live BSP fallback)"
 		fi
-	done
-	if [[ -n "$wd_src" ]]; then
-		cp -f "$wd_src" "$LEAN/media/wd_${stem}.gcd"
-		echo "staged world DL: media/wd_${stem}.gcd ($(wc -c < "$LEAN/media/wd_${stem}.gcd") bytes)"
 	else
-		rm -f "$LEAN/media/wd_${stem}.gcd"
-		echo "world DL: no media/wd_${stem}.gcd (CapFaces/live BSP fallback)"
+		echo "world DL: skipped (set DODGC_STAGE_WORLDDL=1 for listen/worlddl discs)"
 	fi
 
 	# World CMPR texture pack (media/wt_<map>.gct) — WorldDL / CapFaces resolve
@@ -350,59 +332,48 @@ PY
 
 	if (( FULL_MAP )); then
 		echo "==> full-map assets for $stem"
-		# Shared DoD WADs (textures beyond the per-map wad).
-		for wad in dod.wad dod_shared.wad gfx.wad; do
-			if [[ -f "$SRC/$wad" ]] && [[ ! -f "$LEAN/$wad" ]]; then
-				cp -f "$SRC/$wad" "$LEAN/"
-				echo "staged wad: $wad"
-			fi
-		done
-		# Mapmodels (props / objectives). Cap by size for MEM1/disc budget.
-		if [[ -d "$SRC/models/mapmodels" ]]; then
-			mkdir -p "$LEAN/models/mapmodels"
-			# Prefer names matching the map stem; else copy all under 18 MiB budget.
-			copied=0
-			budget_bytes=$((18 * 1024 * 1024))
-			used=0
-			shopt -s nullglob
-			for m in "$SRC/models/mapmodels"/*; do
-				[[ -f "$m" ]] || continue
-				sz=$(wc -c < "$m" | tr -d ' ')
-				if (( used + sz > budget_bytes )); then
-					continue
-				fi
-				cp -f "$m" "$LEAN/models/mapmodels/"
-				used=$((used + sz))
-				copied=$((copied + 1))
+		# Never copy dod.wad / dod_shared.wad into the gamedir root — FS_Rescan
+		# auto-mounts every root *.wad at boot and OOMs GameUI (same class of
+		# bug as dumping all mapmodels). CapFaces packs own world materials;
+		# gfx.wad is already staged for the lean menu path above.
+		# Mapmodels: BSP-referenced only (hard-capped helper). Whole-tree dumps
+		# are rejected — Cube streams a working set, it does not preload farms.
+		python3 "$SCRIPT_DIR/stage_bsp_mapmodels.py" "$bsp" "$SRC" "$LEAN"
+
+		# Player / class arsenal is NOT staged here. CapFaces team weapons were
+		# already copied above (~12 MDLs). Dumping player.mdl (~4 MiB) + every
+		# class VM onto interactive discs OOMs GameUI before Valve intro/menu.
+		# Those load lazily when a match grants a class (Mod_ForName / PRECACHE).
+		# Opt in with DODGC_STAGE_ALL_WEAPONS=1 for listen/class-coverage probes.
+		if [[ "${DODGC_STAGE_ALL_WEAPONS:-0}" == "1" ]]; then
+			mkdir -p "$LEAN/models"
+			for m in \
+				player.mdl \
+				allied_grunt.mdl axis_grunt.mdl \
+				allied_ammo.mdl axis_ammo.mdl brit_ammo.mdl \
+				allied_gibs.mdl axis_gibs.mdl \
+				null.mdl \
+				p_garand.mdl p_k98.mdl p_mp40.mdl p_tommy.mdl \
+				p_bar.mdl p_mg34.mdl p_30cal.mdl p_mg42pr.mdl p_bazooka.mdl p_pschreck.mdl \
+				p_bren.mdl p_stg44.mdl p_spring.mdl \
+				p_colt.mdl p_luger.mdl p_amerk.mdl p_spade.mdl \
+				v_garand.mdl v_98k.mdl v_mp40.mdl v_tommy.mdl \
+				v_bar.mdl v_mg34.mdl v_30cal.mdl v_mg42.mdl v_bazooka.mdl v_panzerschreck.mdl \
+				v_bren.mdl v_mp44.mdl v_spring.mdl v_scoped98k.mdl \
+				v_colt.mdl v_luger.mdl v_amerk.mdl v_spade.mdl \
+				w_garand.mdl w_k98.mdl w_mp40.mdl w_tommy.mdl
+			do
+				[[ -f "$SRC/models/$m" ]] && cp -f "$SRC/models/$m" "$LEAN/models/"
 			done
-			shopt -u nullglob
-			echo "staged mapmodels: $copied files ($(numfmt --to=iec "$used" 2>/dev/null || echo "${used}B"))"
+			echo "staged ALL weapon/player MDLs: $(ls "$LEAN/models"/*.mdl 2>/dev/null | wc -l) files"
+		else
+			echo "weapon/player MDLs: CapFaces team set only ($(ls "$LEAN/models"/v_*.mdl 2>/dev/null | wc -l) VMs; lazy class load)"
 		fi
-		# Player / weapon / gib stubs used by listen + client render.
-		mkdir -p "$LEAN/models"
-		for m in \
-			player.mdl \
-			allied_grunt.mdl axis_grunt.mdl \
-			allied_ammo.mdl axis_ammo.mdl brit_ammo.mdl \
-			allied_gibs.mdl axis_gibs.mdl \
-			null.mdl \
-			p_garand.mdl p_k98.mdl p_mp40.mdl p_tommy.mdl \
-			p_bar.mdl p_mg34.mdl p_30cal.mdl p_mg42pr.mdl p_bazooka.mdl p_pschreck.mdl \
-			p_bren.mdl p_stg44.mdl p_spring.mdl \
-			p_colt.mdl p_luger.mdl p_amerk.mdl p_spade.mdl \
-			v_garand.mdl v_98k.mdl v_mp40.mdl v_tommy.mdl \
-			v_bar.mdl v_mg34.mdl v_30cal.mdl v_mg42.mdl v_bazooka.mdl v_panzerschreck.mdl \
-			v_bren.mdl v_mp44.mdl v_spring.mdl v_scoped98k.mdl \
-			v_colt.mdl v_luger.mdl v_amerk.mdl v_spade.mdl \
-			w_garand.mdl w_k98.mdl w_mp40.mdl w_tommy.mdl
-		do
-			[[ -f "$SRC/models/$m" ]] && cp -f "$SRC/models/$m" "$LEAN/models/"
-		done
-		echo "staged CapFaces weapon VMs: $(ls "$LEAN/models"/v_*.mdl 2>/dev/null | wc -l) files"
-		# Sprites for HUD / effects (small).
-		if [[ -d "$SRC/sprites" ]]; then
+		# Sprites: keep the lean HUD set already staged above. Extra effect
+		# sheets (smoke/blood/explode/…) are map-load only — dump them when
+		# DODGC_STAGE_FX_SPRITES=1 so interactive boot stays tip-safe.
+		if [[ "${DODGC_STAGE_FX_SPRITES:-0}" == "1" && -d "$SRC/sprites" ]]; then
 			mkdir -p "$LEAN/sprites"
-			# Cap: copy hud + common effect sheets only.
 			shopt -s nullglob
 			for s in "$SRC/sprites"/hud* "$SRC/sprites"/radar* \
 				"$SRC/sprites"/scope* "$SRC/sprites"/smoke* \
@@ -412,7 +383,9 @@ PY
 				[[ -f "$s" ]] && cp -f "$s" "$LEAN/sprites/"
 			done
 			shopt -u nullglob
-			echo "staged sprites: $(find "$LEAN/sprites" -type f | wc -l) files"
+			echo "staged FX sprites: $(find "$LEAN/sprites" -type f | wc -l) files"
+		else
+			echo "sprites: lean HUD set only ($(find "$LEAN/sprites" -type f 2>/dev/null | wc -l) files)"
 		fi
 		# Soundscapes + core SFX already handled by stage_dod_audio.py above.
 		echo "full-map stage size: $(du -sh "$LEAN" | awk '{print $1}')"

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Launch dodgc.iso in Dolphin and record video + screenshots into playtests/.
+# Launch the interactive DoD disc in Dolphin and record evidence into playtests/.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -19,8 +19,8 @@ usage: scripts/playtest.sh [options] [ISO]
   -h, --help
 
 ISO defaults to out/dodgc-interactive.iso: Valve intro, DoD menu, then Create
-Game on dod_flash with BSP world rendering enabled. Evidence never lands in the
-HL1 .ai/ tree.
+Game. Build it with --build to stage Avalanche gameplay assets and BSP rendering.
+Evidence never lands in the HL1 .ai/ tree.
 For timed milestone probes prefer: scripts/probe-playtest.sh
 EOF
 }
@@ -57,7 +57,7 @@ dodgc_require_content
 
 if (( BUILD )) || [[ ! -f "$ISO" ]]; then
 	[[ -f "$DODGC_DOL" ]] || bash "$SCRIPT_DIR/build-dodgc.sh" --dol-only
-	DODGC_ISO="$ISO" bash "$SCRIPT_DIR/build-lean-iso.sh" --intro-only --map dod_flash --world-render
+	DODGC_ISO="$ISO" bash "$SCRIPT_DIR/build-lean-iso.sh" --map dod_avalanche --full-map --world-render
 fi
 
 if [[ ! -f "$ISO" ]]; then

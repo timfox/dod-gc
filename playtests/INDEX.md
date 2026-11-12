@@ -4,6 +4,26 @@ Screenshots: `playtests/screenshots/` · Videos: `playtests/videos/` · Notes: `
 
 | Date | File | Route | Duration | Size | Commit |
 |------|------|-------|----------|------|--------|
+| 2026-11-12T01:12:16 | `20261112-011216-interactive-intro-menu-186000ab11.mp4` | interactive-intro-menu | 22.5s | 0.4 MB | `186000ab11` |
+| 2026-11-12T01:10:28 | `20261112-011028-interactive-intro-menu-186000ab11.mp4` | interactive-intro-menu | 22.0s | 0.4 MB | `186000ab11` |
+| 2026-11-12T01:07:09 | `20261112-010709-interactive-intro-menu-186000ab11.mp4` | interactive-intro-menu | 40.0s | 0.6 MB | `186000ab11` |
+| 2026-11-12T01:06:17 | `20261112-010617-preflight-sanity-186000ab11.mp4` | preflight-sanity | 22.0s | 0.2 MB | `186000ab11` |
+| 2026-11-12T01:04:37 | `20261112-010437-interactive-intro-menu-186000ab11.mp4` | interactive-intro-menu | 40.6s | 0.6 MB | `186000ab11` |
+| 2026-11-12T00:58:34 | `20261112-005834-interactive-intro-menu-186000ab11.mp4` | interactive-intro-menu | 45.5s | 0.7 MB | `186000ab11` |
+| 2026-11-12T00:55:18 | `20261112-005518-ava-gameplay-proof.mp4` | ava-gameplay-proof | 43.3s | 1.9 MB | `186000ab11` |
+| 2026-11-11T23:56:16 | `20261111-235616-ava-play-finish-186000ab11.mp4` | ava-play-finish | 235.4s | 0.1 MB | `186000ab11` |
+| 2026-11-11T18:30:44 | `20261111-183044-ava-sfx-follow3-186000ab11.mp4` | ava-sfx-follow3 | 54.6s | 0.6 MB | `186000ab11` |
+| 2026-11-11T18:29:19 | `20261111-182919-ava-sfx-follow2-186000ab11.mp4` | ava-sfx-follow2 | 55.0s | 0.6 MB | `186000ab11` |
+| 2026-11-11T18:27:40 | `20261111-182740-ava-sfx-follow-186000ab11.mp4` | ava-sfx-follow | 55.5s | 0.3 MB | `186000ab11` |
+| 2026-11-11T18:24:22 | `20261111-182422-ava-sfx-garand8-186000ab11.mp4` | ava-sfx-garand8 | 48.6s | 0.3 MB | `186000ab11` |
+| 2026-11-11T18:21:15 | `20261111-182115-ava-sfx-garand7-186000ab11.mp4` | ava-sfx-garand7 | 49.5s | 0.3 MB | `186000ab11` |
+| 2026-11-11T18:19:36 | `20261111-181936-ava-sfx-garand6-186000ab11.mp4` | ava-sfx-garand6 | 50.5s | 0.3 MB | `186000ab11` |
+| 2026-11-11T18:15:46 | `20261111-181546-ava-sfx-garand5-186000ab11.mp4` | ava-sfx-garand5 | 50.5s | 0.4 MB | `186000ab11` |
+| 2026-11-11T18:11:03 | `20261111-181103-ava-sfx-garand4-186000ab11.mp4` | ava-sfx-garand4 | 50.5s | 0.4 MB | `186000ab11` |
+| 2026-11-11T18:09:07 | `20261111-180907-ava-sfx-tip-186000ab11.mp4` | ava-sfx-tip | 50.1s | 0.3 MB | `186000ab11` |
+| 2026-11-11T18:07:38 | `20261111-180738-ava-sfx-garand3-186000ab11.mp4` | ava-sfx-garand3 | 49.6s | 1.0 MB | `186000ab11` |
+| 2026-11-11T18:05:50 | `20261111-180550-ava-sfx-garand2-186000ab11.mp4` | ava-sfx-garand2 | 55.5s | 1.2 MB | `186000ab11` |
+| 2026-11-11T18:01:07 | `20261111-180106-ava-sfx-garand-186000ab11.mp4` | ava-sfx-garand | 60.6s | 1.1 MB | `186000ab11` |
 | 2026-11-11T17:50:40 | `20261111-175040-ava-sfx-playfix-386d1e9dc6.mp4` | ava-sfx-playfix | 59.6s | 0.4 MB | `386d1e9dc6` |
 | 2026-11-11T17:48:37 | `20261111-174837-ava-sfx-streamfix-386d1e9dc6.mp4` | ava-sfx-streamfix | 74.6s | 0.4 MB | `386d1e9dc6` |
 | 2026-11-11T17:46:02 | `20261111-174602-ava-sfx-merge-386d1e9dc6.mp4` | ava-sfx-merge | 90.0s | 0.4 MB | `386d1e9dc6` |

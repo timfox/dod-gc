@@ -78,7 +78,7 @@ proof remains `20261107-120407-capfaces-aram-bounce.md`.
 - [x] Boot stability: `MAP_READY dod_flash` + CapFaces pack `lm=384` + Flipper presents≥1200 (no Guru) — `20261109-002036-flash-solo-finish`
 - [x] CapFaces fill: sticky wall-aim `drawn=332` (`20261109-004603-flash-solo-fill`; sky77 stills remain texture-label benchmark)
 - [x] Pad look/move on Dolphin: `player movement` + `native axis movement ready` (`20261109-014719-flash-solo-pad`)
-- [ ] Optional: second map / avalanche flythrough without Guru
+- [x] Optional: second map / avalanche flythrough without Guru — `20261111-235613-ava-play-finish` (`MAP_READY dod_avalanche`, CapFaces `drawn=436`, presents≥1200, garand SFX peak=22823, no Guru)
 
 ### Cube / Swiss (after Dolphin-first)
 - [ ] Swiss boots `dodgc.iso` / `apps/dod-gc/boot.dol` without Guru
