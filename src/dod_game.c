@@ -316,6 +316,12 @@ const char *Dod_TeamClassWeapon(DodTeam team, DodClass player_class)
 	return "None";
 }
 
+int Dod_ClassHasSidearm(DodClass player_class)
+{
+	return player_class == DOD_CLASS_SUPPORT || player_class == DOD_CLASS_SNIPER ||
+		player_class == DOD_CLASS_MG || player_class == DOD_CLASS_ROCKET;
+}
+
 int Dod_GetWeaponModels(int player_index, DodWeaponModelKind kind,
 	const char **view_model, const char **player_model)
 {
@@ -328,6 +334,13 @@ int Dod_GetWeaponModels(int player_index, DodWeaponModelKind kind,
 		/* Retail: Allies carry the American knife, Axis the spade. */
 		if (view_model) *view_model = player->team == DOD_TEAM_ALLIES ? "models/v_amerk.mdl" : "models/v_spade.mdl";
 		if (player_model) *player_model = player->team == DOD_TEAM_ALLIES ? "models/p_amerk.mdl" : "models/p_spade.mdl";
+		return 1;
+	}
+	if (kind == DOD_MODEL_PISTOL) {
+		if (!Dod_ClassHasSidearm(player->player_class))
+			return 0;
+		if (view_model) *view_model = player->team == DOD_TEAM_ALLIES ? "models/v_colt.mdl" : "models/v_luger.mdl";
+		if (player_model) *player_model = player->team == DOD_TEAM_ALLIES ? "models/p_colt.mdl" : "models/p_luger.mdl";
 		return 1;
 	}
 	if (kind == DOD_MODEL_AUTOMATIC) {

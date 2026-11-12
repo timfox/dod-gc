@@ -120,6 +120,8 @@ static void DodGC_ApplyClass( CBasePlayer *pPlayer, DodClass player_class )
 		default: break;
 		}
 		pPlayer->GiveNamedItem( stand_in );
+		if( Dod_ClassHasSidearm( player_class ) )
+			pPlayer->GiveNamedItem( "weapon_9mmhandgun" );
 		if( Dod_GetLoadout( DodGC_TeamForPlayer( pPlayer ), player_class, &load ) ) {
 			int rounds = load.clip_size + load.reserve_rounds;
 			pPlayer->GiveAmmo( rounds > ammo_max ? ammo_max : rounds, ammo, ammo_max );

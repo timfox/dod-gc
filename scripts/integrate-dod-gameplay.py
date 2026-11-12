@@ -297,6 +297,9 @@ def main() -> int:
 		("rpg.cpp", "CRpg", "DOD_MODEL_ROCKET", "m_iClip ? RPG_DRAW1 : RPG_DRAW_UL", "rpg", "rpg",
 		 '\tPRECACHE_MODEL( "models/v_bazooka.mdl" ); PRECACHE_MODEL( "models/p_bazooka.mdl" );\n'
 		 '\tPRECACHE_MODEL( "models/v_panzerschreck.mdl" ); PRECACHE_MODEL( "models/p_pschreck.mdl" );\n'),
+		("glock.cpp", "CGlock", "DOD_MODEL_PISTOL", "GLOCK_DRAW", "onehanded", "9mmhandgun",
+		 '\tPRECACHE_MODEL( "models/v_colt.mdl" ); PRECACHE_MODEL( "models/p_colt.mdl" );\n'
+		 '\tPRECACHE_MODEL( "models/v_luger.mdl" ); PRECACHE_MODEL( "models/p_luger.mdl" );\n'),
 		("crowbar.cpp", "CCrowbar", "DOD_MODEL_MELEE", "CROWBAR_DRAW", "crowbar", "crowbar",
 		 '\tPRECACHE_MODEL( "models/v_amerk.mdl" ); PRECACHE_MODEL( "models/p_amerk.mdl" );\n'
 		 '\tPRECACHE_MODEL( "models/v_spade.mdl" );\n'

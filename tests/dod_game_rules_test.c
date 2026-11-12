@@ -24,6 +24,14 @@ static void test_players_and_weapon_models(void)
 	assert(strcmp(view_model, "models/v_amerk.mdl") == 0 && strcmp(player_model, "models/p_amerk.mdl") == 0);
 	assert(Dod_GetWeaponModels(2, DOD_MODEL_MELEE, &view_model, &player_model));
 	assert(strcmp(view_model, "models/v_spade.mdl") == 0 && strcmp(player_model, "models/p_spade.mdl") == 0);
+	assert(!Dod_GetWeaponModels(1, DOD_MODEL_PISTOL, &view_model, &player_model));
+	assert(Dod_SelectPlayerClass(1, DOD_CLASS_SNIPER));
+	assert(Dod_GetWeaponModels(1, DOD_MODEL_PISTOL, &view_model, &player_model));
+	assert(strcmp(view_model, "models/v_colt.mdl") == 0 && strcmp(player_model, "models/p_colt.mdl") == 0);
+	assert(Dod_SelectPlayerClass(2, DOD_CLASS_MG));
+	assert(Dod_GetWeaponModels(2, DOD_MODEL_PISTOL, &view_model, &player_model));
+	assert(strcmp(view_model, "models/v_luger.mdl") == 0);
+	assert(Dod_SelectPlayerClass(1, DOD_CLASS_RIFLEMAN));
 	assert(Dod_TeamFromName("aLlIeS") == DOD_TEAM_ALLIES);
 	assert(Dod_TeamFromName("German") == DOD_TEAM_AXIS);
 	assert(Dod_TeamFromName("spectator") == DOD_TEAM_SPECTATOR);
