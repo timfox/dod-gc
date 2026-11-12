@@ -85,6 +85,28 @@ class StageBspMapmodelsTest(unittest.TestCase):
 			self.assertTrue((lean / "models" / "mapmodels" / "keep.mdl").is_file())
 			self.assertFalse((lean / "models" / "mapmodels" / "stray.mdl").exists())
 
+	def test_ignores_model_strings_outside_entity_lump(self):
+		"""Regex must not scan texdata/padding — only lump 0."""
+		with tempfile.TemporaryDirectory() as tmp:
+			td = Path(tmp)
+			bsp = td / "poison.bsp"
+			ents = (
+				'{\n"classname" "worldspawn"\n}\n'
+				'{\n"classname" "cycler"\n'
+				'"model" "models/mapmodels/keep.mdl"\n'
+				'"origin" "0 0 0"\n}\n\0'
+			).encode("latin1")
+			# Entity lump at offset 128; plant a decoy "model" string earlier
+			# in the file (would be matched by a whole-BSP findall).
+			header = bytearray(128)
+			struct.pack_into("<ii", header, 4, 128, len(ents))
+			decoy = b'"model" "models/mapmodels/poison_from_texdata.mdl"'
+			header[40 : 40 + len(decoy)] = decoy
+			bsp.write_bytes(bytes(header) + ents)
+			refs = self.mod.bsp_model_refs(bsp)
+			self.assertEqual(refs, ["models/mapmodels/keep.mdl"])
+			self.assertNotIn("models/mapmodels/poison_from_texdata.mdl", refs)
+
 
 if __name__ == "__main__":
 	unittest.main()

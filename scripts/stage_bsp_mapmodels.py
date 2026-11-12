@@ -27,14 +27,20 @@ DEFAULT_MAX_BYTES = 4 * 1024 * 1024
 
 
 def bsp_model_refs(bsp_path: Path) -> list[str]:
+	"""Collect studio MDL paths from the entity lump only (lump 0).
+
+	Do not scan the rest of the BSP — texdata / clipnodes / padding can
+	coincidentally match the `"model" "models/..."` pattern and inflate the
+	ref set past DODGC_MAX_MAPMODELS or stage junk props.
+	"""
 	raw = bsp_path.read_bytes()
+	if len(raw) < 12:
+		raise SystemExit(f"error: BSP too small: {bsp_path}")
 	off, length = struct.unpack_from("<ii", raw, 4)
+	if off < 0 or length < 0 or off + length > len(raw):
+		raise SystemExit(f"error: bad entity lump in {bsp_path}")
 	ents = raw[off : off + length].decode("latin1", "replace")
 	refs = set(re.findall(r'"model"\s+"(models/[^"]+)"', ents, flags=re.I))
-	refs.update(
-		m.decode("latin1")
-		for m in re.findall(br'"model"\s+"(models/[^"]+)"', raw, flags=re.I)
-	)
 	out = []
 	for r in refs:
 		rel = r.replace("\\", "/").lstrip("/")

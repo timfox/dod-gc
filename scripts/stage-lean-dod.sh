@@ -251,6 +251,29 @@ PY
 	shopt -u nullglob
 	echo "staged skybox: $skyname ($sky_staged CMPR sides + gfx/env for encode)"
 
+	# Static studio mapmodel display lists (media/sd_<map>.gsd) — rest-pose
+	# props as GX_CallDispList (ref/gx/r_gx_studiodl.c). Small (~150 KiB for
+	# Avalanche); loaded into ARAM at map start, not at menu. Always stage when
+	# present so listen/CapFaces both skip CPU skin for sandbags/sherman/etc.
+	rm -f "$LEAN/media"/sd_*.gsd
+	sd_src=""
+	for cand in \
+		"$SRC/media/sd_${stem}.gsd" \
+		"$DODGC_ROOT/content/dod/media/sd_${stem}.gsd" \
+		"$DODGC_ROOT/out/media/sd_${stem}.gsd"
+	do
+		if [[ -f "$cand" ]]; then
+			sd_src="$cand"
+			break
+		fi
+	done
+	if [[ -n "$sd_src" ]]; then
+		cp -f "$sd_src" "$LEAN/media/sd_${stem}.gsd"
+		echo "staged studio DL: media/sd_${stem}.gsd ($(wc -c < "$LEAN/media/sd_${stem}.gsd") bytes)"
+	else
+		echo "studio DL: no media/sd_${stem}.gsd (CPU studio fallback for map props)"
+	fi
+
 	# Full BSP PVS cluster display lists (media/wd_<map>.gcd) — preferred over
 	# CapFaces lean densify when present (ref/gx/r_gx_worlddl.c). Opt-in: the
 	# file is large and interactive menu discs should stay CapFaces-only until
