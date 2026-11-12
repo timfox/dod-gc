@@ -259,12 +259,6 @@ def main() -> int:
 			'\t/* GC_MemHeapMark records usage without walking every pool. Mem_PrintStats\n'
 			'\t * runs Mem_Check and can stop menu handoff on unrelated tiny-pool sentinels. */\n',
 		)
-		studio = args.engine_dir / "ref/gx/r_studio.c"
-		studio_text = studio.read_text()
-		# Engine StudioDraw + fwd=36 framed NDC (ava-play99-69/71).
-		if "G162 viewmodel frame offset forward=36 up=+2" not in studio_text:
-			pass
-		studio_text = studio.read_text()
 		image = args.engine_dir / "ref/gx/r_image.c"
 		image_text = image.read_text()
 		# VM skins prefer 128² RGB565 in-tree (ava-play99-43+). Skip the
