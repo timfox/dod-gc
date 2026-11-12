@@ -70,6 +70,11 @@ contested objective pauses capture progress. `Dod_TickObjective` returns 1
 when ownership changes. Round scoring covers enemy kills, completed captures,
 and held objectives when the configured scoring rate is nonzero.
 
+`Dod_FormatStatus` builds the one-line match status (team scores, held points,
+round clock) that `CHalfLifeDoD::Think` sends once per second as a HUD text
+channel. It is a stand-in for the retail scoreboard and has not been run on
+hardware or Dolphin.
+
 Run the host-side rules-core checks with `python3 tests/test_dod_game.py`.
 
 Do not patch HL1 release artifacts (`halflife1.dol`, `boot.dol`, or

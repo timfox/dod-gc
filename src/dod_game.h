@@ -107,6 +107,10 @@ const char *Dod_TeamClassWeapon(DodTeam team, DodClass player_class);
 int Dod_GetWeaponModels(int player_index, DodWeaponModelKind kind,
 	const char **view_model, const char **player_model);
 
+/* One-line match status for the HUD, e.g. "Allies 5  Axis 3 | Points 2-1 | 12:34".
+ * Returns the number of characters written (excluding the terminator). */
+int Dod_FormatStatus(char *buffer, int size);
+
 /* Objective registration and capture. Counts may be zero; contested zones
  * pause. Capture is normalized from 0 (uncaptured) to 1 (complete). */
 void Dod_ClearObjectives(void);

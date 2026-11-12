@@ -45,6 +45,22 @@ static void test_retail_class_names(void)
 	assert(strcmp(Dod_TeamClassName(DOD_TEAM_AXIS, DOD_CLASS_COUNT), "None") == 0);
 }
 
+static void test_status_line(void)
+{
+	char line[96];
+	char tiny[8];
+	Dod_GameInit();
+	Dod_StartRound(125.0f);
+	assert(Dod_FormatStatus(line, sizeof(line)) > 0);
+	assert(strcmp(line, "Allies 0  Axis 0 | Points 0-0 | 2:05") == 0);
+	assert(Dod_FormatStatus(tiny, sizeof(tiny)) == 7);
+	assert(strlen(tiny) == 7);
+	Dod_StartRound(0.0f);
+	Dod_FormatStatus(line, sizeof(line));
+	assert(strcmp(line, "Allies 0  Axis 0 | Points 0-0") == 0);
+	Dod_GameShutdown();
+}
+
 static void test_contested_capture_flip_and_round_win(void)
 {
 	const DodObjectiveState *objective;
@@ -136,6 +152,7 @@ int main(void)
 {
 	test_players_and_weapon_models();
 	test_retail_class_names();
+	test_status_line();
 	test_contested_capture_flip_and_round_win();
 	test_kill_scoring_and_timed_tie();
 	return 0;

@@ -2,6 +2,7 @@
 #include "dod_game.h"
 
 #include <ctype.h>
+#include <stdio.h>
 #include <string.h>
 
 #define DOD_CAPTURE_SECONDS_DEFAULT 10.0f
@@ -361,6 +362,30 @@ int Dod_GetWeaponModels(int player_index, DodWeaponModelKind kind,
 		return 1;
 	}
 	return 0;
+}
+
+int Dod_FormatStatus(char *buffer, int size)
+{
+	const DodGameRulesState *state = Dod_GetState();
+	int seconds, written;
+	if (!buffer || size <= 0)
+		return 0;
+	seconds = state->round_time_remaining > 0.0f ? (int)state->round_time_remaining : 0;
+	if (state->round_time_remaining > 0.0f)
+		written = snprintf(buffer, (size_t)size, "Allies %d  Axis %d | Points %d-%d | %d:%02d",
+			state->allies_score, state->axis_score,
+			state->controlled_objectives[DOD_TEAM_ALLIES],
+			state->controlled_objectives[DOD_TEAM_AXIS], seconds / 60, seconds % 60);
+	else
+		written = snprintf(buffer, (size_t)size, "Allies %d  Axis %d | Points %d-%d",
+			state->allies_score, state->axis_score,
+			state->controlled_objectives[DOD_TEAM_ALLIES],
+			state->controlled_objectives[DOD_TEAM_AXIS]);
+	if (written < 0)
+		buffer[0] = '\0', written = 0;
+	else if (written >= size)
+		written = size - 1;
+	return written;
 }
 
 void Dod_ClearObjectives(void)

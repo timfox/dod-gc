@@ -16,6 +16,7 @@ extern int gmsgScoreInfo;
 
 static int g_dod_menu_state[DOD_MAX_PLAYERS + 1];
 static int g_dod_winner_announced;
+static float g_dod_next_status;
 
 static int DodGC_PlayerIndex( CBasePlayer *pPlayer )
 {
@@ -143,6 +144,7 @@ CHalfLifeDoD::CHalfLifeDoD()
 	Dod_StartRound( CVAR_GET_FLOAT( "mp_timelimit" ) * 60.0f );
 	memset( g_dod_menu_state, 0, sizeof( g_dod_menu_state ) );
 	g_dod_winner_announced = 0;
+	g_dod_next_status = 0.0f;
 }
 
 BOOL CHalfLifeDoD::ClientCommand( CBasePlayer *pPlayer, const char *pcmd )
@@ -263,6 +265,22 @@ void CHalfLifeDoD::Think( void )
 			state->winner == DOD_TEAM_AXIS ? "Axis" : "Round tied";
 		UTIL_ClientPrintAll( HUD_PRINTCENTER, UTIL_VarArgs( "%s win the round", winner ) );
 		g_dod_winner_announced = 1;
+	}
+	/* Match status strip (score, held points, clock) for the lean HUD, which
+	 * has no VGUI scoreboard. Sent as a HUD text channel once per second. */
+	if( gpGlobals->time >= g_dod_next_status ) {
+		char line[96];
+		hudtextparms_t params;
+		memset( &params, 0, sizeof( params ) );
+		params.channel = 3;
+		params.x = -1;
+		params.y = 0.02f;
+		params.effect = 0;
+		params.r1 = 255; params.g1 = 220; params.b1 = 120; params.a1 = 255;
+		params.holdTime = 1.5f;
+		g_dod_next_status = gpGlobals->time + 1.0f;
+		if( Dod_FormatStatus( line, sizeof( line ) ) > 0 )
+			UTIL_HudMessageAll( params, line );
 	}
 }
 
