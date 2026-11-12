@@ -406,6 +406,24 @@ int Dod_FormatStatus(char *buffer, int size)
 	return written;
 }
 
+int Dod_FormatPlayerLine(int player_index, const char *name, char *buffer, int size)
+{
+	const DodPlayerState *player = Dod_GetPlayer(player_index);
+	int written;
+	if (!buffer || size <= 0)
+		return 0;
+	buffer[0] = '\0';
+	if (!player || !player->connected)
+		return 0;
+	written = snprintf(buffer, (size_t)size, "%s  %s  %d/%d", Dod_TeamName(player->team),
+		name && name[0] ? name : "player", player->kills, player->deaths);
+	if (written < 0) {
+		buffer[0] = '\0';
+		return 0;
+	}
+	return written >= size ? size - 1 : written;
+}
+
 void Dod_ClearObjectives(void)
 {
 	memset(g_dod_objectives, 0, sizeof(g_dod_objectives));
