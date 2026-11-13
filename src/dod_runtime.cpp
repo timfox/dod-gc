@@ -7,6 +7,7 @@
 #include "teamplay_gamerules.h"
 #include "dod_runtime.h"
 #include "client.h"
+#include "dod_hud.h"
 #include "dod_game.h"
 #include "dod_weapons.h"
 #include "dod_bot.h"
@@ -18,6 +19,8 @@
 static cvar_t dod_roundtime = { "dod_roundtime", "600", FCVAR_SERVER };
 static cvar_t dod_rounds = { "dod_rounds", "2", FCVAR_SERVER };
 static BOOL g_dod_cvars_registered;
+static int gmsgDodHud;
+static float g_dod_next_hud;
 static int g_dod_seen_restart;
 static int g_dod_seen_match;
 
@@ -167,6 +170,9 @@ CHalfLifeDoD::CHalfLifeDoD()
 	Dod_StartRound( round_seconds );
 	g_dod_seen_restart = 0;
 	g_dod_seen_match = 0;
+	g_dod_next_hud = 0.0f;
+	/* Registered here, before any client connects, so the client can hook it. */
+	gmsgDodHud = REG_USER_MSG( "DodHud", -1 );
 	memset( g_dod_menu_state, 0, sizeof( g_dod_menu_state ) );
 	g_dod_winner_announced = 0;
 	g_dod_next_status = 0.0f;
@@ -314,6 +320,49 @@ edict_t *CHalfLifeDoD::GetPlayerSpawnSpot( CBasePlayer *pPlayer )
 	return chosen->edict();
 }
 
+/* The numbers the client sprite HUD draws, one message per human client. */
+static void DodGC_SendHud( void )
+{
+	const DodGameRulesState *state = Dod_GetState();
+	int owners[DOD_HUD_MAX_POINTS], points = 0, id, i;
+	unsigned short packed;
+
+	if( !gmsgDodHud || !state )
+		return;
+	for( id = 0; id < DOD_HUD_MAX_POINTS; id++ ) {
+		const DodObjectiveState *objective = Dod_GetObjective( id );
+		if( objective && objective->active )
+			owners[points++] = (int)objective->owner;
+	}
+	packed = Dod_HudPackOwners( owners, points );
+	for( i = 1; i <= gpGlobals->maxClients; i++ ) {
+		CBasePlayer *player = (CBasePlayer *)UTIL_PlayerByIndex( i );
+		const DodPlayerState *me;
+		int grenades = 0, ammo_index;
+		if( !player || !player->IsPlayer() || ( player->pev->flags & FL_FAKECLIENT ) )
+			continue;
+		me = Dod_GetPlayer( i );
+		ammo_index = player->GetAmmoIndex( "Hand Grenade" );
+		if( ammo_index >= 0 )
+			grenades = player->m_rgAmmo[ammo_index];
+		MESSAGE_BEGIN( MSG_ONE, gmsgDodHud, NULL, player->edict() );
+			WRITE_SHORT( state->allies_score );
+			WRITE_SHORT( state->axis_score );
+			WRITE_BYTE( state->round_number );
+			WRITE_BYTE( state->rounds_to_win );
+			WRITE_BYTE( state->rounds_won[DOD_TEAM_ALLIES] );
+			WRITE_BYTE( state->rounds_won[DOD_TEAM_AXIS] );
+			WRITE_SHORT( state->round_time_remaining > 0.0f ? (int)state->round_time_remaining : 0 );
+			WRITE_BYTE( (int)state->phase );
+			WRITE_BYTE( points );
+			WRITE_SHORT( packed );
+			WRITE_BYTE( me ? (int)me->team : 0 );
+			WRITE_BYTE( me ? (int)me->player_class : 0 );
+			WRITE_BYTE( grenades > 255 ? 255 : grenades );
+		MESSAGE_END();
+	}
+}
+
 void CHalfLifeDoD::Think( void )
 {
 	CHalfLifeTeamplay::Think();
@@ -348,9 +397,15 @@ void CHalfLifeDoD::Think( void )
 				respawn( player->pev, FALSE );
 		}
 	}
-	/* Match status strip (score, held points, clock) for the lean HUD, which
-	 * has no VGUI scoreboard. Sent as a HUD text channel once per second. */
-	if( gpGlobals->time >= g_dod_next_status ) {
+	/* Match status for the lean HUD, which has no VGUI scoreboard. With the client
+	 * sprite HUD on (cl_dodhud, a cvar the local client registers) the server sends
+	 * the numbers for it to draw; otherwise it shows the text strip, once a second. */
+	if( CVAR_GET_FLOAT( "cl_dodhud" ) != 0.0f ) {
+		if( gpGlobals->time >= g_dod_next_hud ) {
+			g_dod_next_hud = gpGlobals->time + 0.5f;
+			DodGC_SendHud();
+		}
+	} else if( gpGlobals->time >= g_dod_next_status ) {
 		char line[96];
 		hudtextparms_t params;
 		memset( &params, 0, sizeof( params ) );
