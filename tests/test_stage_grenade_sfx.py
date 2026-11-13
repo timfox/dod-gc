@@ -59,5 +59,27 @@ class StageGrenadeSfxTests(unittest.TestCase):
             self.assertIn("weapons/grenthrow.wav", report["missing"])
 
 
+    def test_gun_clips_come_from_the_weapon_table(self):
+        stager = load_stager()
+        table = ROOT / "src/dod_weapons.c"
+        sounds = stager.weapon_table_sounds(table)
+        self.assertEqual(sounds["weapons/garand_shoot.wav"], 0.45)
+        self.assertEqual(sounds["weapons/garand_reload_clipin.wav"], 0.60)
+        # every fire and reload sound named in the table is picked up
+        text = table.read_text()
+        for rel in set(__import__("re").findall(r'"(weapons/[^"]+\.wav)"', text)):
+            self.assertIn(rel, sounds, rel)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_wav(root / "dod/sound/weapons/garand_shoot.wav", 1.0)
+            write_wav(root / "dod/sound/weapons/garand_reload_clipin.wav", 1.0)
+            fake = root / "table.c"
+            fake.write_text('		"weapons/garand_shoot.wav", "weapons/garand_reload_clipin.wav" },\n')
+            report = stager.stage_grenade_sfx(root / "dod/sound", root / "lean/sound", None, root / "lean/media", fake)
+            self.assertTrue((root / "lean/sound/weapons/garand_shoot.wav").is_file())
+            self.assertTrue((root / "lean/sound/weapons/garand_reload_clipin.wav").is_file())
+            self.assertIn("weapons/grenthrow.wav", report["missing"], "grenade clips are still staged")
+
+
 if __name__ == "__main__":
     unittest.main()

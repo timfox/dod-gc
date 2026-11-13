@@ -1,5 +1,6 @@
 /* Server-side Day of Defeat rules state for the GameCube HL1SDK port. */
 #include "dod_game.h"
+#include "dod_weapons.h"
 
 #include <ctype.h>
 #include <stdio.h>
@@ -392,21 +393,22 @@ int Dod_GetWeaponModels(int player_index, DodWeaponModelKind kind,
 	return 0;
 }
 
-/* index: [team - 1][class] ; clip, reserve, grenades. Approximate DoD 1.3. */
-static const struct { int clip, reserve, grenades; } g_loadout[2][DOD_CLASS_COUNT] = {
-	{ {0,0,0}, {8,80,2}, {30,180,2}, {20,160,2}, {5,50,0}, {150,300,0}, {1,4,0} },
-	{ {0,0,0}, {5,60,2}, {32,192,2}, {30,180,2}, {5,50,0}, {250,500,0}, {1,4,0} }
+/* Grenades issued per [team - 1][class]. Clip and reserve come from the
+ * weapon table (dod_weapons.c) so the two can never disagree. */
+static const int g_loadout_grenades[2][DOD_CLASS_COUNT] = {
+	{ 0, 2, 2, 2, 0, 0, 0 },
+	{ 0, 2, 2, 2, 0, 0, 0 }
 };
 
 int Dod_GetLoadout(DodTeam team, DodClass player_class, DodLoadout *out)
 {
-	if ((team != DOD_TEAM_ALLIES && team != DOD_TEAM_AXIS) ||
-		player_class <= DOD_CLASS_NONE || player_class >= DOD_CLASS_COUNT || !out)
+	const DodWeaponDef *weapon = Dod_ClassWeaponDef(team, player_class);
+	if (!weapon || !out)
 		return 0;
-	out->weapon = Dod_TeamClassWeapon(team, player_class);
-	out->clip_size = g_loadout[team - 1][player_class].clip;
-	out->reserve_rounds = g_loadout[team - 1][player_class].reserve;
-	out->grenades = g_loadout[team - 1][player_class].grenades;
+	out->weapon = weapon->title;
+	out->clip_size = weapon->clip;
+	out->reserve_rounds = weapon->reserve;
+	out->grenades = g_loadout_grenades[team - 1][player_class];
 	return 1;
 }
 

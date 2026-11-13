@@ -121,16 +121,12 @@ static void DodGrenade_SendDebris( const Vector &origin, const Vector &normal )
 BOOL DodGrenade_Explode( CGrenade *pGrenade, TraceResult *pTrace, int bitsDamageType )
 {
 	entvars_t *pev, *pevOwner;
-	DodGrenadeDef def;
 	int plan, contents, flags;
 	BOOL water;
 
 	if( !pGrenade || !pGrenade->pev || pGrenade->pev->iuser3 != (int)DODGC_GRENADE_MAGIC )
 		return FALSE;
 	pev = pGrenade->pev;
-	/* Both teams share damage and radius; only models differ. */
-	if( !Dod_GetGrenade( DOD_TEAM_ALLIES, &def ) )
-		return FALSE;
 	/* Never explode twice: a grenade shot or touched mid-blast. */
 	pev->iuser3 = 0;
 	if( pev->iuser4 )
@@ -163,7 +159,7 @@ BOOL DodGrenade_Explode( CGrenade *pGrenade, TraceResult *pTrace, int bitsDamage
 		WRITE_COORD( pev->origin.y );
 		WRITE_COORD( pev->origin.z );
 		WRITE_SHORT( water ? g_sModelIndexWExplosion : g_sModelIndexFireball );
-		WRITE_BYTE( (int)( ( def.damage - 50.0f ) * 0.6f ) );	/* scale * 10 */
+		WRITE_BYTE( (int)( ( pev->dmg - 50.0f ) * 0.6f ) );	/* scale * 10 */
 		WRITE_BYTE( 15 );	/* framerate */
 		WRITE_BYTE( flags );
 	MESSAGE_END();
@@ -178,8 +174,9 @@ BOOL DodGrenade_Explode( CGrenade *pGrenade, TraceResult *pTrace, int bitsDamage
 
 	pevOwner = pev->owner ? VARS( pev->owner ) : NULL;
 	pev->owner = NULL;	/* the thrower can be hurt by their own blast */
-	/* radius is explicit: 2.5 x damage, the same value HL1 would derive */
-	::RadiusDamage( pev->origin, pev, pevOwner, pev->dmg, def.radius, CLASS_NONE, bitsDamageType );
+	/* radius is explicit: 2.5 x damage, the same rule HL1 uses, so grenades
+	 * (100) and rockets (150) share this explosion at their own size */
+	::RadiusDamage( pev->origin, pev, pevOwner, pev->dmg, pev->dmg * 2.5f, CLASS_NONE, bitsDamageType );
 
 	UTIL_DecalTrace( pTrace, RANDOM_LONG( 0, 1 ) ? DECAL_SCORCH2 : DECAL_SCORCH1 );
 	switch( RANDOM_LONG( 0, 2 ) )

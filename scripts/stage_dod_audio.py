@@ -102,6 +102,24 @@ GRENADE_SFX = {
 }
 
 
+def weapon_table_sounds(table: Path) -> dict[str, float]:
+    """Fire and reload clips named in src/dod_weapons.c, with a length cap each.
+
+    The C table is the single source of truth for which sound a gun plays, so
+    staging reads it instead of keeping a second list that could drift.
+    Gunshots are cut to 0.45 s and reloads to 0.6 s, under the 16 KiB ceiling
+    at 11.025 kHz mono s16.
+    """
+    sounds: dict[str, float] = {}
+    pattern = re.compile(r'^\s*"(weapons/[^"]+\.wav)",\s*"(weapons/[^"]+\.wav)"\s*\},?\s*$')
+    for line in table.read_text().splitlines():
+        match = pattern.match(line)
+        if match:
+            sounds.setdefault(match.group(1), 0.45)
+            sounds.setdefault(match.group(2), 0.60)
+    return sounds
+
+
 def normalize_sound_path(raw: str) -> str:
     name = raw.replace("\\", "/").lstrip("/")
     if name.lower().startswith("sound/"):
@@ -370,8 +388,10 @@ def stage_grenade_sfx(
     lean_sound: Path,
     valve_sound: Path | None = None,
     lean_media: Path | None = None,
+    weapon_table: Path | None = None,
 ) -> dict:
-    """Stage the small grenade clip set (dod sound first, valve as fallback)."""
+    """Stage the grenade clips and every gun's fire/reload clip from the weapon
+    table (dod sound first, valve as fallback)."""
     roots = [dod_sound]
     if valve_sound and valve_sound.is_dir():
         roots.append(valve_sound)
@@ -380,7 +400,11 @@ def stage_grenade_sfx(
     staged: list[str] = []
     missing: list[str] = []
     total = 0
-    for rel, max_seconds in GRENADE_SFX.items():
+    clips = dict(GRENADE_SFX)
+    if weapon_table is not None and weapon_table.is_file():
+        for rel, seconds in weapon_table_sounds(weapon_table).items():
+            clips.setdefault(rel, seconds)
+    for rel, max_seconds in clips.items():
         src, how = resolve_source(rel, index, roots, allow_substitute=False)
         if src is None:
             missing.append(rel)
@@ -491,10 +515,13 @@ def main() -> int:
                     f"subs={subs} miss={miss}"
                 )
 
-        grenades = stage_grenade_sfx(dod / "sound", lean / "sound", valve / "sound")
+        grenades = stage_grenade_sfx(
+            dod / "sound", lean / "sound", valve / "sound",
+            weapon_table=Path(__file__).resolve().parent.parent / "src" / "dod_weapons.c",
+        )
         payload["grenade_sfx"] = grenades
         print(
-            f"grenade SFX: files={grenades['files']} ({grenades['bytes'] / 1024:.0f} KiB)"
+            f"grenade + gun SFX: files={grenades['files']} ({grenades['bytes'] / 1024:.0f} KiB)"
             + (f" missing={grenades['missing']}" if grenades["missing"] else "")
         )
 
