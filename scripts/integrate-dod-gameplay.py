@@ -305,6 +305,9 @@ def main() -> int:
 		("glock.cpp", "CGlock", "DOD_MODEL_PISTOL", "GLOCK_DRAW", "onehanded", "9mmhandgun",
 		 '\tPRECACHE_MODEL( "models/v_colt.mdl" ); PRECACHE_MODEL( "models/p_colt.mdl" );\n'
 		 '\tPRECACHE_MODEL( "models/v_luger.mdl" ); PRECACHE_MODEL( "models/p_luger.mdl" );\n'),
+		("handgrenade.cpp", "CHandGrenade", "DOD_MODEL_GRENADE", "HANDGRENADE_DRAW", "crowbar", "grenade",
+		 '\tPRECACHE_MODEL( "models/v_grenade.mdl" ); PRECACHE_MODEL( "models/p_grenade.mdl" );\n'
+		 '\tPRECACHE_MODEL( "models/v_stick.mdl" ); PRECACHE_MODEL( "models/p_stick.mdl" );\n'),
 		("crowbar.cpp", "CCrowbar", "DOD_MODEL_MELEE", "CROWBAR_DRAW", "crowbar", "crowbar",
 		 '\tPRECACHE_MODEL( "models/v_amerk.mdl" ); PRECACHE_MODEL( "models/p_amerk.mdl" );\n'
 		 '\tPRECACHE_MODEL( "models/v_spade.mdl" );\n'

@@ -336,6 +336,14 @@ int Dod_GetWeaponModels(int player_index, DodWeaponModelKind kind,
 		if (player_model) *player_model = player->team == DOD_TEAM_ALLIES ? "models/p_amerk.mdl" : "models/p_spade.mdl";
 		return 1;
 	}
+	if (kind == DOD_MODEL_GRENADE) {
+		/* Allies throw the frag grenade, Axis the stick grenade. */
+		if (Dod_PlayerGrenadeCount(player_index) <= 0)
+			return 0;
+		if (view_model) *view_model = player->team == DOD_TEAM_ALLIES ? "models/v_grenade.mdl" : "models/v_stick.mdl";
+		if (player_model) *player_model = player->team == DOD_TEAM_ALLIES ? "models/p_grenade.mdl" : "models/p_stick.mdl";
+		return 1;
+	}
 	if (kind == DOD_MODEL_PISTOL) {
 		if (!Dod_ClassHasSidearm(player->player_class))
 			return 0;
@@ -383,6 +391,15 @@ static const struct { int clip, reserve, grenades; } g_loadout[2][DOD_CLASS_COUN
 	{ {0,0,0}, {8,80,2}, {30,180,2}, {20,160,2}, {5,50,0}, {150,300,0}, {1,4,0} },
 	{ {0,0,0}, {5,60,2}, {32,192,2}, {30,180,2}, {5,50,0}, {250,500,0}, {1,4,0} }
 };
+
+int Dod_PlayerGrenadeCount(int player_index)
+{
+	const DodPlayerState *player = Dod_GetPlayer(player_index);
+	if (!player || !player->connected || !dod_valid_team(player->team) ||
+		player->player_class <= DOD_CLASS_NONE || player->player_class >= DOD_CLASS_COUNT)
+		return 0;
+	return g_loadout[player->team - 1][player->player_class].grenades;
+}
 
 int Dod_GetLoadout(DodTeam team, DodClass player_class, DodLoadout *out)
 {

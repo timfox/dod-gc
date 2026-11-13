@@ -32,6 +32,16 @@ static void test_players_and_weapon_models(void)
 	assert(Dod_GetWeaponModels(2, DOD_MODEL_PISTOL, &view_model, &player_model));
 	assert(strcmp(view_model, "models/v_luger.mdl") == 0);
 	assert(Dod_SelectPlayerClass(1, DOD_CLASS_RIFLEMAN));
+	assert(Dod_SelectPlayerClass(2, DOD_CLASS_RIFLEMAN));
+	assert(Dod_PlayerGrenadeCount(1) == 2);
+	assert(Dod_GetWeaponModels(1, DOD_MODEL_GRENADE, &view_model, &player_model));
+	assert(strcmp(view_model, "models/v_grenade.mdl") == 0 && strcmp(player_model, "models/p_grenade.mdl") == 0);
+	assert(Dod_GetWeaponModels(2, DOD_MODEL_GRENADE, &view_model, &player_model));
+	assert(strcmp(view_model, "models/v_stick.mdl") == 0);
+	assert(Dod_SelectPlayerClass(1, DOD_CLASS_SNIPER));
+	assert(Dod_PlayerGrenadeCount(1) == 0);
+	assert(!Dod_GetWeaponModels(1, DOD_MODEL_GRENADE, &view_model, &player_model));
+	assert(Dod_SelectPlayerClass(1, DOD_CLASS_RIFLEMAN));
 	assert(Dod_TeamFromName("aLlIeS") == DOD_TEAM_ALLIES);
 	assert(Dod_TeamFromName("German") == DOD_TEAM_AXIS);
 	assert(Dod_TeamFromName("spectator") == DOD_TEAM_SPECTATOR);
