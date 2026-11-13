@@ -8,6 +8,7 @@ extern "C" {
 
 #define DOD_MAX_PLAYERS 32
 #define DOD_MAX_OBJECTIVES 32
+#define DOD_INTERMISSION_SECONDS 8.0f	/* between a round's end and the next round */
 
 typedef enum {
 	DOD_TEAM_UNASSIGNED = 0,
@@ -64,6 +65,7 @@ typedef struct DodObjectiveState {
 	int id;
 	DodObjectiveKind kind;
 	DodTeam owner;
+	DodTeam default_owner;	/* owner at the start of every round */
 	DodTeam capturing_team;
 	float capture_progress;
 	float capture_seconds;
@@ -81,6 +83,15 @@ typedef struct DodGameRulesState {
 	int connected_players[4];
 	int controlled_objectives[4];
 	int objective_count;
+	/* Match loop: a round ends, the intermission runs out, and the next round
+	 * starts by itself. restart_serial and match_serial change when that
+	 * happens so the game DLL knows to respawn and to announce. */
+	int round_number;		/* 1-based within the match */
+	int rounds_won[4];		/* indexed by DodTeam */
+	int rounds_to_win;		/* first to this many wins the match; 0 = no match */
+	int restart_serial;
+	int match_serial;
+	DodTeam match_winner;		/* valid after match_serial changes */
 } DodGameRulesState;
 
 /* Game lifecycle and round clock. A zero duration disables the time limit. */
@@ -88,6 +99,10 @@ void Dod_GameInit(void);
 void Dod_GameShutdown(void);
 int Dod_GameIsActive(void);
 void Dod_StartRound(float duration_seconds);
+/* Rounds to win a match (0 turns the match tally off and rounds repeat forever). */
+void Dod_SetRoundsToWin(int rounds);
+/* Zero everybody's kills, deaths and objective score; teams and classes stay. */
+void Dod_ResetPlayerStats(void);
 void Dod_EndRound(DodTeam winner);
 void Dod_Think(float frametime);
 const DodGameRulesState *Dod_GetState(void);

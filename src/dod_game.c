@@ -7,12 +7,13 @@
 #include <string.h>
 
 #define DOD_CAPTURE_SECONDS_DEFAULT 10.0f
-#define DOD_INTERMISSION_SECONDS 8.0f
 
 static DodGameRulesState g_dod_state;
 static DodPlayerState g_dod_players[DOD_MAX_PLAYERS + 1];
 static DodObjectiveState g_dod_objectives[DOD_MAX_OBJECTIVES];
 static float g_score_remainder[4];
+static float g_round_seconds;
+static int g_rounds_to_win;
 static int g_dod_active;
 
 static int dod_valid_player(int player_index)
@@ -70,7 +71,8 @@ static void dod_add_team_score(DodTeam team, float amount)
 {
 	float total;
 	int whole;
-	if (!dod_valid_team(team) || amount <= 0.0f)
+	/* Nothing scores between rounds. */
+	if (!dod_valid_team(team) || amount <= 0.0f || g_dod_state.phase != DOD_ROUND_ACTIVE)
 		return;
 	total = g_score_remainder[team] + amount;
 	whole = (int)total;
@@ -92,6 +94,8 @@ void Dod_GameInit(void)
 	memset(g_score_remainder, 0, sizeof(g_score_remainder));
 	g_dod_state.phase = DOD_ROUND_WAITING;
 	g_dod_state.winner = DOD_TEAM_UNASSIGNED;
+	g_round_seconds = 0.0f;
+	g_rounds_to_win = 0;
 	g_grenades_live = 0;
 	g_fx_count = 0;
 	g_dod_active = 1;
@@ -116,8 +120,26 @@ int Dod_GameIsActive(void)
 	return g_dod_active;
 }
 
+void Dod_SetRoundsToWin(int rounds)
+{
+	g_rounds_to_win = rounds > 0 ? rounds : 0;
+	g_dod_state.rounds_to_win = g_rounds_to_win;
+}
+
+void Dod_ResetPlayerStats(void)
+{
+	int i;
+	for (i = 1; i <= DOD_MAX_PLAYERS; ++i) {
+		g_dod_players[i].kills = 0;
+		g_dod_players[i].deaths = 0;
+		g_dod_players[i].objective_score = 0;
+	}
+}
+
 void Dod_StartRound(float duration_seconds)
 {
+	g_round_seconds = duration_seconds > 0.0f ? duration_seconds : 0.0f;
+	++g_dod_state.round_number;
 	g_dod_state.phase = DOD_ROUND_ACTIVE;
 	g_dod_state.round_active = 1;
 	g_dod_state.winner = DOD_TEAM_UNASSIGNED;
@@ -141,10 +163,42 @@ void Dod_EndRound(DodTeam winner)
 			winner = DOD_TEAM_UNASSIGNED;
 	}
 	g_dod_state.winner = winner;
+	if (dod_valid_team(winner))
+		++g_dod_state.rounds_won[winner];
 	g_dod_state.phase = DOD_ROUND_INTERMISSION;
 	g_dod_state.round_active = 0;
 	g_dod_state.round_time_remaining = 0.0f;
 	g_dod_state.intermission_remaining = DOD_INTERMISSION_SECONDS;
+}
+
+/* The intermission ran out: close the match if a team has won enough rounds,
+ * put every control point back to its starting owner, and start the next round. */
+static void dod_next_round(void)
+{
+	int i, team;
+	if (g_rounds_to_win > 0) {
+		for (team = DOD_TEAM_ALLIES; team <= DOD_TEAM_AXIS; ++team) {
+			if (g_dod_state.rounds_won[team] >= g_rounds_to_win) {
+				g_dod_state.match_winner = (DodTeam)team;
+				++g_dod_state.match_serial;
+				memset(g_dod_state.rounds_won, 0, sizeof(g_dod_state.rounds_won));
+				g_dod_state.round_number = 0;
+				Dod_ResetPlayerStats();
+				break;
+			}
+		}
+	}
+	for (i = 0; i < DOD_MAX_OBJECTIVES; ++i) {
+		DodObjectiveState *objective = &g_dod_objectives[i];
+		if (!objective->active)
+			continue;
+		objective->owner = objective->default_owner;
+		objective->capturing_team = DOD_TEAM_UNASSIGNED;
+		objective->capture_progress = 0.0f;
+	}
+	dod_recount_objectives();
+	Dod_StartRound(g_round_seconds);
+	++g_dod_state.restart_serial;
 }
 
 void Dod_Think(float frametime)
@@ -166,8 +220,10 @@ void Dod_Think(float frametime)
 		}
 	} else if (g_dod_state.phase == DOD_ROUND_INTERMISSION) {
 		g_dod_state.intermission_remaining -= frametime;
-		if (g_dod_state.intermission_remaining < 0.0f)
+		if (g_dod_state.intermission_remaining <= 0.0f) {
 			g_dod_state.intermission_remaining = 0.0f;
+			dod_next_round();
+		}
 	}
 }
 
@@ -518,6 +574,10 @@ int Dod_FormatStatus(char *buffer, int size)
 			state->allies_score, state->axis_score,
 			state->controlled_objectives[DOD_TEAM_ALLIES],
 			state->controlled_objectives[DOD_TEAM_AXIS]);
+	/* With a match tally, show the round and who has won how many. */
+	if (state->rounds_to_win > 0 && written > 0 && written < size)
+		written += snprintf(buffer + written, (size_t)(size - written), " | Round %d (%d-%d)",
+			state->round_number, state->rounds_won[DOD_TEAM_ALLIES], state->rounds_won[DOD_TEAM_AXIS]);
 	if (written < 0)
 		buffer[0] = '\0', written = 0;
 	else if (written >= size)
@@ -571,6 +631,7 @@ int Dod_RegisterObjective(int id, DodObjectiveKind kind, DodTeam initial_owner,
 	objective->id = id;
 	objective->kind = kind;
 	objective->owner = dod_valid_team(initial_owner) ? initial_owner : DOD_TEAM_UNASSIGNED;
+	objective->default_owner = objective->owner;
 	objective->capture_seconds = capture_seconds > 0.0f ? capture_seconds : DOD_CAPTURE_SECONDS_DEFAULT;
 	objective->score_per_minute = score_per_minute > 0.0f ? score_per_minute : 0.0f;
 	dod_recount_objectives();
