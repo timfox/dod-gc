@@ -93,5 +93,40 @@ class HeapTipGateTest(unittest.TestCase):
 				INTEGRATOR.integrate_heap_tip_gate(path)
 
 
+class WeaponIncludeTest(unittest.TestCase):
+	SOURCE = (
+		'#include "extdll.h"\n#include "weapons.h"\n#include "player.h"\n'
+		'void CGlock::Precache( void )\n{\n\tPRECACHE_MODEL( "models/p_9mmhandgun.mdl" );\n}\n'
+		'BOOL CGlock::Deploy()\n{\n\treturn FALSE;\n}\n'
+	)
+
+	def integrate(self, source):
+		with tempfile.TemporaryDirectory() as directory:
+			path = Path(directory) / "glock.cpp"
+			path.write_text(source)
+			INTEGRATOR.integrate_weapon(path, "CGlock", "DOD_MODEL_PISTOL", "GLOCK_DRAW",
+				"onehanded", "9mmhandgun", '\tPRECACHE_MODEL( "models/v_colt.mdl" );\n')
+			return path.read_text()
+
+	def test_include_added_without_gamerules_header(self):
+		text = self.integrate(self.SOURCE)
+		self.assertIn('#include "dod_game.h"', text)
+		self.assertIn("DOD_MODEL_PISTOL", text)
+		self.assertEqual(text.count('#include "dod_game.h"'), 1)
+
+	def test_include_added_after_gamerules_header(self):
+		text = self.integrate(self.SOURCE.replace('"weapons.h"\n', '"weapons.h"\n#include "gamerules.h"\n'))
+		self.assertEqual(text.count('#include "dod_game.h"'), 1)
+
+	def test_integration_is_idempotent(self):
+		once = self.integrate(self.SOURCE)
+		with tempfile.TemporaryDirectory() as directory:
+			path = Path(directory) / "glock.cpp"
+			path.write_text(once)
+			INTEGRATOR.integrate_weapon(path, "CGlock", "DOD_MODEL_PISTOL", "GLOCK_DRAW",
+				"onehanded", "9mmhandgun", '\tPRECACHE_MODEL( "models/v_colt.mdl" );\n')
+			self.assertEqual(path.read_text(), once)
+
+
 if __name__ == "__main__":
 	unittest.main()
