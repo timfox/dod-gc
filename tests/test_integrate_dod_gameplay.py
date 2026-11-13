@@ -223,10 +223,12 @@ class WeaponHookIntegrationTest(unittest.TestCase):
 		for name in ("dod_weapons.c", "dod_weapons.h", "dod_weapon.cpp", "dod_weapon.h",
 				"dod_bots.c", "dod_bots.h", "dod_bot.cpp", "dod_bot.h"):
 			self.assertIn(f'"{name}"', source)
-		self.assertIn("dod_weapon.cpp", source.split("CMakeLists.txt")[1])
+		cmake = source.split('dlls / "CMakeLists.txt",')[1].split("wscript")[0]
+		self.assertIn("dod_weapon.cpp", cmake)
 		self.assertIn("ant_glob('dod_weapons.c')", source)
 		self.assertIn("ant_glob('dod_bots.c')", source)
-		self.assertIn("\\tdod_bots.c\\n\\tdod_bot.cpp\\n", source)
+		self.assertIn("dod_bots.c", cmake)
+		self.assertIn("dod_bot.cpp", cmake)
 
 
 class HudIntegrationTest(unittest.TestCase):
@@ -315,6 +317,13 @@ class SourceSyncTest(unittest.TestCase):
 			for name in INTEGRATOR.DOD_DLL_SOURCES:
 				(src / name).write_text("new " + name)
 				(dlls / name).write_text("old " + name)
+			(dlls / "dod_old_feature.cpp").write_text("from another branch")
+			(dlls / "dod_old_feature.h").write_text("from another branch")
+			(dlls / "weapons.cpp").write_text("upstream")
+			(dlls / "dod_notes.txt").write_text("not a source")
+			removed = INTEGRATOR.sync_dod_sources(src, dlls)
+			self.assertEqual(removed, ["dod_old_feature.cpp", "dod_old_feature.h"])
+			self.assertFalse((dlls / "dod_old_feature.cpp").exists())
 			(dlls / "dod_old_bot.cpp").write_text("from another branch")
 			(dlls / "dod_old_bots.h").write_text("from another branch")
 			(dlls / "weapons.cpp").write_text("upstream")
