@@ -4,6 +4,7 @@ Screenshots: `playtests/screenshots/` · Videos: `playtests/videos/` · Notes: `
 
 | Date | File | Route | Duration | Size | Commit |
 |------|------|-------|----------|------|--------|
+| 2026-11-13T02:25:35 | `20261113-022535-intro-menu-5009a7759a.mp4` | intro-menu | 49.5s | 0.9 MB | `5009a7759a` |
 | 2026-11-12T01:12:16 | `20261112-011216-interactive-intro-menu-186000ab11.mp4` | interactive-intro-menu | 22.5s | 0.4 MB | `186000ab11` |
 | 2026-11-12T01:10:28 | `20261112-011028-interactive-intro-menu-186000ab11.mp4` | interactive-intro-menu | 22.0s | 0.4 MB | `186000ab11` |
 | 2026-11-12T01:07:09 | `20261112-010709-interactive-intro-menu-186000ab11.mp4` | interactive-intro-menu | 40.0s | 0.6 MB | `186000ab11` |

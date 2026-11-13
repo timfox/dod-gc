@@ -11,6 +11,8 @@ MEM1 tip is tiny. **Never preload asset farms.** Stream a working set.
 | Studio prop DLs | `media/sd_<map>.gsd` | Rest-pose mapmodels → ARAM + `GX_CallDispList` (no CPU skin) |
 | Lightmaps | disc LM → ARAM (G154) | Per-face hydrate into ~32 KiB MEM1 buf |
 | Menu music / UI | `media/gamestartup.wav`, `launch_*.wav` | Stream / play after GameUI is up |
+| Valve intro | `media/valve.avi` + `StartupVids.txt` | Disc bake → `valve.gcvid`; plays before menu |
+| Loading plaque | `resource/gc_menu/loading.tga` | DoD `800_*_loading` tiles → 320×240 bake |
 
 ## Disc laziness (required for intro/menu)
 

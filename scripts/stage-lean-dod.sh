@@ -465,18 +465,29 @@ cp -f "$SRC/config.cfg" "$LEAN/" 2>/dev/null || true
 cp -f "$SRC/autoexec.cfg" "$LEAN/" 2>/dev/null || printf '\n' > "$LEAN/autoexec.cfg"
 
 # HL1 Valve intro (AVI; disc bake builds .gcvid/.gcpcm companions).
+# Retail StartupVids.txt is often webm-only — always force an .avi playlist when
+# valve.avi is present so interactive boots play the cinematic.
+mkdir -p "$LEAN/media"
 if [[ "${DODGC_STAGE_INTRO:-1}" == "1" ]]; then
-	cp -f "$VALVE/media/valve.avi" "$LEAN/media/" 2>/dev/null || true
-	[[ -f "$VALVE/media/logo.avi" ]] && cp -f "$VALVE/media/logo.avi" "$LEAN/media/"
-	if [[ -f "$VALVE/media/StartupVids.txt" ]]; then
-		# Prefer retail list but force .avi (GC path); drop .webm-only lines.
-		awk '/\.avi[[:space:]]*$/ {print}' "$VALVE/media/StartupVids.txt" > "$LEAN/media/StartupVids.txt"
-	fi
-	if [[ ! -s "$LEAN/media/StartupVids.txt" ]]; then
+	if [[ -f "$VALVE/media/valve.avi" ]]; then
+		cp -f "$VALVE/media/valve.avi" "$LEAN/media/"
 		printf 'media/valve.avi\n' > "$LEAN/media/StartupVids.txt"
+		echo "staged intro: media/valve.avi + StartupVids.txt"
+	else
+		: > "$LEAN/media/StartupVids.txt"
+		echo "warning: missing $VALVE/media/valve.avi — intro disabled" >&2
 	fi
+	# logo.avi is optional (menu banner bake / optional second cinematic).
+	[[ -f "$VALVE/media/logo.avi" ]] && cp -f "$VALVE/media/logo.avi" "$LEAN/media/"
 else
 	: > "$LEAN/media/StartupVids.txt"
+	echo "intro: skipped (DODGC_STAGE_INTRO=0)"
+fi
+
+# Tip-safe DoD loading plaque for GC_DrawLoadingStatus (New Game / map load).
+if command -v python3 >/dev/null && [[ -f "$DODGC_ROOT/scripts/bake_gc_loading_plaque.py" ]]; then
+	python3 "$DODGC_ROOT/scripts/bake_gc_loading_plaque.py" "$LEAN" "$LEAN" \
+		|| echo "warning: loading plaque bake failed" >&2
 fi
 
 # Minimal valve basedir sibling (DoD falls back here).
