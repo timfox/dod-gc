@@ -220,10 +220,15 @@ class WeaponHookIntegrationTest(unittest.TestCase):
 
 	def test_new_sources_are_copied_and_built(self):
 		source = SCRIPT.read_text()
-		for name in ("dod_weapons.c", "dod_weapons.h", "dod_weapon.cpp", "dod_weapon.h"):
+		for name in ("dod_weapons.c", "dod_weapons.h", "dod_weapon.cpp", "dod_weapon.h",
+				"dod_bots.c", "dod_bots.h", "dod_bot.cpp", "dod_bot.h"):
 			self.assertIn(f'"{name}"', source)
 		self.assertIn("dod_weapon.cpp", source.split("CMakeLists.txt")[1])
 		self.assertIn("ant_glob('dod_weapons.c')", source)
+		self.assertIn("ant_glob('dod_bots.c')", source)
+		cmake = source.split("CMakeLists.txt")[1]
+		self.assertIn("dod_bots.c", cmake)
+		self.assertIn("dod_bot.cpp", cmake)
 
 
 if __name__ == "__main__":

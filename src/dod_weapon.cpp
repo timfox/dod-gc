@@ -12,6 +12,7 @@
 #include "dod_weapons.h"
 #include "dod_grenade.h"
 #include "dod_weapon.h"
+#include "dod_bot.h"
 
 /* Defined in weapons.cpp, declared in no header. */
 extern void UTIL_PrecacheOtherWeapon( const char *szClassname );
@@ -166,7 +167,9 @@ void CDodWeapon::Spawn( void )
 	Precache();
 
 	/* Late precache: this is the only model/sound load for this weapon. */
-	PRECACHE_MODEL( (char *)def->view_model );
+	/* A bot has no view, so it never spends the viewmodel budget. */
+	if( !DodBots_Granting() )
+		PRECACHE_MODEL( (char *)def->view_model );
 	PRECACHE_MODEL( (char *)def->player_model );
 	PRECACHE_SOUND( (char *)def->fire_sound );
 	PRECACHE_SOUND( (char *)def->reload_sound );

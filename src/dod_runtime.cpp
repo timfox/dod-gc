@@ -9,6 +9,7 @@
 #include "client.h"
 #include "dod_game.h"
 #include "dod_weapons.h"
+#include "dod_bot.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -120,6 +121,8 @@ static void DodGC_ApplyClass( CBasePlayer *pPlayer, DodClass player_class )
 	{
 		const DodTeam team = DodGC_TeamForPlayer( pPlayer );
 		const DodWeaponDef *weapon = Dod_ClassWeaponDef( team, player_class );
+		/* A bot has no view: its guns must not precache viewmodels. */
+		DodBots_SetGranting( DodBots_IsBot( pPlayer ) );
 		const DodWeaponDef *sidearm = Dod_ClassSidearmDef( team, player_class );
 		DodLoadout load;
 		DodGrenadeDef grenade;
@@ -141,12 +144,14 @@ static void DodGC_ApplyClass( CBasePlayer *pPlayer, DodClass player_class )
 			if( load.grenades > 1 && Dod_GetGrenade( team, &grenade ) )
 				pPlayer->GiveAmmo( load.grenades - 1, "Hand Grenade", grenade.max_carry );
 		}
+		DodBots_SetGranting( FALSE );
 	}
 	DodGC_ClearMenu( pPlayer );
 }
 
 CHalfLifeDoD::CHalfLifeDoD()
 {
+	DodBots_Init();
 	float round_seconds;
 	if( !g_dod_cvars_registered ) {
 		CVAR_REGISTER( &dod_roundtime );
@@ -165,6 +170,18 @@ CHalfLifeDoD::CHalfLifeDoD()
 	memset( g_dod_menu_state, 0, sizeof( g_dod_menu_state ) );
 	g_dod_winner_announced = 0;
 	g_dod_next_status = 0.0f;
+}
+
+void DodGC_BotJoin( CBasePlayer *pPlayer, DodTeam team, DodClass player_class )
+{
+	const int index = DodGC_PlayerIndex( pPlayer );
+	if( !pPlayer || index < 1 || index > DOD_MAX_PLAYERS )
+		return;
+	DodGC_EnsurePlayer( pPlayer );
+	if( g_pGameRules && stricmp( pPlayer->m_szTeamName, Dod_TeamName( team ) ) )
+		( (CHalfLifeDoD *)g_pGameRules )->ChangePlayerTeam( pPlayer, Dod_TeamName( team ), TRUE, FALSE );
+	Dod_AssignPlayerTeam( index, team );
+	DodGC_ApplyClass( pPlayer, player_class );
 }
 
 BOOL CHalfLifeDoD::ClientCommand( CBasePlayer *pPlayer, const char *pcmd )
@@ -301,6 +318,7 @@ void CHalfLifeDoD::Think( void )
 {
 	CHalfLifeTeamplay::Think();
 	Dod_Think( gpGlobals->frametime );
+	DodBots_Think();
 	const DodGameRulesState *state = Dod_GetState();
 	if( state && state->phase == DOD_ROUND_INTERMISSION && !g_dod_winner_announced ) {
 		const char *winner = state->winner == DOD_TEAM_ALLIES ? "Allies win the round" :
