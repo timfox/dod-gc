@@ -22,6 +22,7 @@ class DodGameRulesTests(unittest.TestCase):
                     "-I",
                     str(ROOT / "src"),
                     str(ROOT / "src/dod_game.c"),
+                    str(ROOT / "src/dod_weapons.c"),
                     str(ROOT / "tests/dod_game_rules_test.c"),
                     "-o",
                     str(binary),

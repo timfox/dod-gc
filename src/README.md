@@ -47,6 +47,59 @@ BSP-surface allocation failure and a DSI after map startup. Map-bearing play
 ISOs enable the packed BSP renderer by default so low-memory loads can select
 the CapFaces path when the live surface table cannot fit.
 
+## Weapons
+
+The class guns are real DoD weapons, not HL1 stand-ins. `dod_weapons.c` holds
+one table (`DodWeaponDef`) with everything a gun needs: classname, team, fire
+mode (semi, auto, bolt, rocket), damage, rate of fire, spread, recoil, reach,
+clip, reserve, reload time, scope FOV, bipod, HUD slot, models and sounds.
+`dod_weapon.cpp` is a single generic game-DLL weapon class driven by that
+table, with a thin subclass per classname (`weapon_dod_garand`,
+`weapon_dod_k98`, ...). Class loadouts (`Dod_GetLoadout`) read clip and
+reserve from the same table, so they cannot disagree. Damage and rate numbers
+are approximate and meant to be tuned in the table, not in the weapon code.
+
+| Class | Allies | Axis |
+|-------|--------|------|
+| Rifleman | M1 Garand (semi) | Kar98k (bolt) |
+| Assault | Thompson (auto) | MP40 (auto) |
+| Support | BAR (auto) | StG44 (auto) |
+| Sniper | Springfield (bolt, scope) | Scoped Kar98k (bolt, scope) |
+| Machine gunner | 30cal (auto, bipod) | MG42 (auto, bipod) |
+| Rocket | Bazooka | Panzerschreck |
+
+Heavy and special classes also carry a Colt (Allies) or Luger (Axis); every
+class gets the knife/spade (still the HL1 crowbar wearing the DoD models) and
+its grenades.
+
+- **Behaviour.** Semi and bolt guns need a fresh trigger pull; automatics fire
+  while held. Spread widens when moving or airborne and tightens when
+  crouching, with a deployed bipod, or scoped (`Dod_WeaponSpread`). `+attack2`
+  toggles the sniper scope (FOV zoom) or the MG bipod; moving cancels a
+  bipod. Reload moves what fits and is limited by reserve
+  (`Dod_ReloadAmount`). Rockets use the grenade explosion (budgeted effects,
+  radius damage) at 150 damage.
+- **Server only.** Fire sound, muzzle flash, recoil and the animation all come
+  from the server, so no client event or prediction code is needed. Each gun
+  has its own HL1 weapon id (16-29), because HL1 keeps its clip and ammo
+  info per id.
+- **Memory.** `W_Precache` registers the guns' ItemInfo and ammo only. A gun's
+  models and sounds are precached when it is granted (late precache), so a
+  map holds only what its players carry. Staging reads the fire and reload
+  clips straight from the table, cuts them under the 16 KiB WAV ceiling and
+  lists the staged weapon audio in the ARAM prefetch manifest (at most 32
+  entries, none over 64 KiB).
+- **Known limits.** The MG viewmodels animate their carried ("down") state only;
+  the bipod up/down transition sequences are not played. The lean `v_mg42`
+  (274 KB) and `v_30cal` (191 KB) are large because they carry about 58
+  ammo-count sequences and may not fit the studio arena on a tight boot;
+  they need sequence pruning if they do not. The sniper scope has no overlay
+  sprite yet, only the zoom. Shots have no distance falloff (HL1 bullets).
+
+Not verified in Dolphin: any of the gun behaviour above. The table, loadouts,
+spread and reload maths, integration anchors, audio staging, manifest and the
+engine animation remap have host tests.
+
 ## Grenades
 
 `dod_grenade.cpp` puts the DoD hand grenade on top of the HL1 `CHandGrenade` /

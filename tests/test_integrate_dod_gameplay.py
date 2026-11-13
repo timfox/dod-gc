@@ -183,5 +183,48 @@ class GrenadeIntegrationTest(unittest.TestCase):
 				INTEGRATOR.integrate_grenades(dlls)
 
 
+class WeaponHookIntegrationTest(unittest.TestCase):
+	WEAPONS = ('#include "gamerules.h"\n\nvoid W_Precache( void )\n{\n'
+		'\tUTIL_PrecacheOtherWeapon( "weapon_crowbar" );\n'
+		'\t// hand grenade\n\tUTIL_PrecacheOtherWeapon("weapon_handgrenade");\n'
+		'#if !OEM_BUILD\n\tUTIL_PrecacheOtherWeapon( "weapon_snark" );\n#endif\n}\n')
+
+	def integrate(self, body):
+		with tempfile.TemporaryDirectory() as directory:
+			dlls = Path(directory)
+			(dlls / "weapons.cpp").write_text(body)
+			INTEGRATOR.integrate_weapons(dlls)
+			first = (dlls / "weapons.cpp").read_text()
+			INTEGRATOR.integrate_weapons(dlls)
+			self.assertEqual((dlls / "weapons.cpp").read_text(), first, "must be idempotent")
+			return first
+
+	def test_precache_hook_registers_guns_after_the_grenade(self):
+		text = self.integrate(self.WEAPONS)
+		self.assertIn('#include "dod_weapon.h"', text)
+		self.assertEqual(text.count("DodWeapons_PrecacheAll();"), 1)
+		self.assertLess(text.index('"weapon_handgrenade"'), text.index("DodWeapons_PrecacheAll();"))
+
+	def test_missing_anchor_fails_loudly(self):
+		with tempfile.TemporaryDirectory() as directory:
+			dlls = Path(directory)
+			(dlls / "weapons.cpp").write_text('#include "gamerules.h"\nint unrelated;\n')
+			with self.assertRaises(SystemExit):
+				INTEGRATOR.integrate_weapons(dlls)
+
+	def test_only_melee_still_uses_the_stand_in_hooks(self):
+		source = SCRIPT.read_text()
+		for stand_in in ("mp5.cpp", "shotgun.cpp", "crossbow.cpp", "rpg.cpp", "glock.cpp"):
+			self.assertNotIn(f'("{stand_in}", "C', source, f"{stand_in} is a real DoD weapon now")
+		self.assertIn('("crowbar.cpp", "CCrowbar"', source)
+
+	def test_new_sources_are_copied_and_built(self):
+		source = SCRIPT.read_text()
+		for name in ("dod_weapons.c", "dod_weapons.h", "dod_weapon.cpp", "dod_weapon.h"):
+			self.assertIn(f'"{name}"', source)
+		self.assertIn("dod_weapon.cpp", source.split("CMakeLists.txt")[1])
+		self.assertIn("ant_glob('dod_weapons.c')", source)
+
+
 if __name__ == "__main__":
 	unittest.main()
