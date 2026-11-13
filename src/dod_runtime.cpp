@@ -122,12 +122,6 @@ static void DodGC_ApplyClass( CBasePlayer *pPlayer, DodClass player_class )
 		pPlayer->GiveNamedItem( stand_in );
 		if( Dod_ClassHasSidearm( player_class ) )
 			pPlayer->GiveNamedItem( "weapon_9mmhandgun" );
-		if( Dod_PlayerGrenadeCount( index ) > 0 ) {
-			/* HL grenade provides throw, fuse, explosion, splash damage and the
-			 * explosion/smoke effects; DoD supplies the viewmodel and count. */
-			pPlayer->GiveNamedItem( "weapon_handgrenade" );
-			pPlayer->GiveAmmo( Dod_PlayerGrenadeCount( index ), "Hand Grenade", 10 );
-		}
 		if( Dod_GetLoadout( DodGC_TeamForPlayer( pPlayer ), player_class, &load ) ) {
 			int rounds = load.clip_size + load.reserve_rounds;
 			pPlayer->GiveAmmo( rounds > ammo_max ? ammo_max : rounds, ammo, ammo_max );

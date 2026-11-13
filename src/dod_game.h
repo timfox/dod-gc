@@ -40,8 +40,7 @@ typedef enum {
 	DOD_MODEL_SUPPORT,
 	DOD_MODEL_SNIPER,
 	DOD_MODEL_ROCKET,
-	DOD_MODEL_PISTOL,
-	DOD_MODEL_GRENADE
+	DOD_MODEL_PISTOL
 } DodWeaponModelKind;
 
 typedef enum {
@@ -108,8 +107,6 @@ const char *Dod_TeamClassName(DodTeam team, DodClass player_class);
 const char *Dod_TeamClassWeapon(DodTeam team, DodClass player_class);
 /* Approximate DoD 1.3: heavy and special classes spawn with a Colt/Luger. */
 int Dod_ClassHasSidearm(DodClass player_class);
-/* Grenades issued at spawn for the player's current class (0 if none). */
-int Dod_PlayerGrenadeCount(int player_index);
 int Dod_GetWeaponModels(int player_index, DodWeaponModelKind kind,
 	const char **view_model, const char **player_model);
 
