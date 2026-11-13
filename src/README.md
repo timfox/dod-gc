@@ -100,6 +100,46 @@ Not verified in Dolphin: any of the gun behaviour above. The table, loadouts,
 spread and reload maths, integration anchors, audio staging, manifest and the
 engine animation remap have host tests.
 
+## Bots
+
+A default Create Game match fills the free client slots with bots, no setup.
+Bots are fake clients (`pfnCreateFakeClient`) driven from
+`CHalfLifeDoD::Think`: `dod_bot.cpp` talks to the engine, `dod_bots.c` holds
+the host-tested logic.
+
+- **Count.** `dod_bots` (default 3 on GameCube, 1 elsewhere) is how many bots
+  to add next to the humans; `Dod_BotTargetCount` caps it by the free client
+  slots, so it means "fill the server" without ever over-asking. `dod_bot_skill`
+  (0-3, default 1) tightens their aim. Bots are only added once a human is
+  present and are kicked if the cvar drops. A server with no humans has no bots.
+- **Slots.** The engine decides how many slots there are. By default a GameCube
+  listen server has two (human plus one bot). A build with slim client slots
+  (`XASH_GC_SLIM_CLIENTS=1`, see the engine) can hold more: every extra slot is
+  a bot-only slot of about 9.3 KiB instead of 89 KiB, measured as +18.6 KiB of
+  BSS for 4 slots over 2. Four slots give two a side (a human plus three bots)
+  and are the next step once Dolphin shows the heap can afford them: the logs
+  show only 2-38 KiB of free heap after map load, and each bot also costs about
+  five edicts (its weapons) out of the dod profile's 460.
+- **Networked servers.** When the network link is up (`gc_net_status` shows an
+  address) the free slot is kept for the peer and no bots are added, unless
+  `dod_bots_online 1`. An engine with slim slots also drops a bot to make room
+  for a person.
+- **Memory.** A bot shares the player model the human already has loaded and
+  skips viewmodel precache for its weapons (it has no view), so it never spends
+  the studio arena's viewmodel budget. Its class is drawn from cheap infantry
+  classes; each special class (sniper, MG, rocket) is taken at most once per
+  team.
+- **Behaviour.** A bot joins the smaller team (so four players come out two a
+  side), picks the nearest visible enemy, turns toward it at a limited rate with
+  a skill-dependent aim error, keeps a fighting distance, strafes, and fires
+  inside a 6 degree cone (semi-auto weapons release the trigger between shots).
+  With nothing in sight it roams between control points, hopping low obstacles
+  and turning away from walls and ledges. A dead bot presses fire to respawn.
+
+Not verified in Dolphin: fake client creation, the AI, respawn and kick. The
+count, the online rule, team and class selection, turning, aim error and the
+move decision have host tests.
+
 ## Grenades
 
 `dod_grenade.cpp` puts the DoD hand grenade on top of the HL1 `CHandGrenade` /
