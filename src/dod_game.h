@@ -39,7 +39,9 @@ typedef enum {
 	DOD_MODEL_AUTOMATIC,
 	DOD_MODEL_SUPPORT,
 	DOD_MODEL_SNIPER,
-	DOD_MODEL_ROCKET
+	DOD_MODEL_ROCKET,
+	DOD_MODEL_PISTOL,
+	DOD_MODEL_GRENADE
 } DodWeaponModelKind;
 
 typedef enum {
@@ -104,6 +106,8 @@ const char *Dod_ClassName(DodClass player_class);
 const char *Dod_TeamClassName(DodTeam team, DodClass player_class);
 /* Retail primary weapon title for the class on that team ("Thompson", ...). */
 const char *Dod_TeamClassWeapon(DodTeam team, DodClass player_class);
+/* Approximate DoD 1.3: heavy and special classes spawn with a Colt/Luger. */
+int Dod_ClassHasSidearm(DodClass player_class);
 int Dod_GetWeaponModels(int player_index, DodWeaponModelKind kind,
 	const char **view_model, const char **player_model);
 
@@ -118,6 +122,51 @@ typedef struct DodLoadout {
 } DodLoadout;
 
 int Dod_GetLoadout(DodTeam team, DodClass player_class, DodLoadout *out);
+
+/* Hand grenades. Allies throw the Mk2 pineapple, Axis the stick grenade; values
+ * are approximate DoD 1.3. radius follows the HL1 RadiusDamage rule (2.5 x
+ * damage) so the falloff below matches what the game DLL really applies. */
+typedef struct DodGrenadeDef {
+	const char *view_model;
+	const char *player_model;
+	const char *world_model;
+	float fuse;		/* seconds from pin pull to detonation */
+	float damage;		/* at the blast centre */
+	float radius;		/* GoldSrc units; zero damage beyond it */
+	float throw_speed;	/* maximum release speed, units/second */
+	int max_carry;
+} DodGrenadeDef;
+
+int Dod_GetGrenade(DodTeam team, DodGrenadeDef *out);
+/* Linear falloff from centre to radius; zero outside it or for bad input. */
+float Dod_GrenadeDamageAt(const DodGrenadeDef *def, float distance);
+/* The HL1 hand grenade lifts the aim 10 degrees and stretches it; this is the
+ * pitch the grenade is actually thrown along (negative looks up). */
+float Dod_GrenadeThrowPitch(float view_pitch);
+/* Throw speed for a view pitch in degrees, clamped to the def's maximum.
+ * Looking up lobs further, down is a short toss. */
+float Dod_GrenadeThrowSpeed(const DodGrenadeDef *def, float view_pitch);
+/* Fuse left after cooking for held_seconds; never negative. */
+float Dod_GrenadeFuseLeft(const DodGrenadeDef *def, float held_seconds);
+
+/* Live grenade entities are capped so the static edict pool and the client
+ * temp-entity budget cannot be exhausted by grenade spam. Acquire before
+ * creating the entity (0 = refuse), release when it detonates or is removed. */
+#define DOD_MAX_LIVE_GRENADES 8
+int Dod_GrenadeAcquire(void);
+void Dod_GrenadeRelease(void);
+int Dod_GrenadesLive(void);
+
+/* Explosion effect budget. Each blast plans which effect layers to send; the
+ * layers shrink as blasts arrive within DOD_FX_WINDOW seconds of each other so
+ * the client's tempent and sprite memory stays bounded. The fireball (and its
+ * damage) is never skipped. */
+#define DOD_FX_FIREBALL 1
+#define DOD_FX_SMOKE 2
+#define DOD_FX_SPARKS 4
+#define DOD_FX_DEBRIS 8
+#define DOD_FX_WINDOW 2.0f
+int Dod_FxPlanExplosion(float now);
 
 /* One-line match status for the HUD, e.g. "Allies 5  Axis 3 | Points 2-1 | 12:34".
  * Returns the number of characters written (excluding the terminator). */

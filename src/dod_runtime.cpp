@@ -7,6 +7,7 @@
 #include "teamplay_gamerules.h"
 #include "dod_runtime.h"
 #include "dod_game.h"
+#include "dod_weapons.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -102,27 +103,33 @@ static void DodGC_ApplyClass( CBasePlayer *pPlayer, DodClass player_class )
 	if( !Dod_SelectPlayerClass( index, player_class ) )
 		return;
 
-	/* Keep one primary and a melee weapon. The HL1SDK weapons provide the
-	 * server-side firing/ammo path while DoD class viewmodels are selected by
-	 * the client from the same class state. */
-	pPlayer->RemoveAllItems( FALSE );
-	pPlayer->GiveNamedItem( "weapon_crowbar" );
-	/* Stand-in HL1 weapons carry the retail loadout's ammo counts. */
+	/* Melee (the HL1 crowbar wearing the knife/spade models), the class gun
+	 * from the DoD weapon table, a Colt/Luger for the heavy classes, and
+	 * grenades. Guns are real DoD weapons (dod_weapon.cpp); their models and
+	 * sounds are loaded here, when granted, never at map load. */
 	{
+		const DodTeam team = DodGC_TeamForPlayer( pPlayer );
+		const DodWeaponDef *weapon = Dod_ClassWeaponDef( team, player_class );
+		const DodWeaponDef *sidearm = Dod_ClassSidearmDef( team, player_class );
 		DodLoadout load;
-		const char *stand_in = "weapon_9mmAR";
-		const char *ammo = "9mm";
-		int ammo_max = 250;
-		switch( player_class ) {
-		case DOD_CLASS_SUPPORT: stand_in = "weapon_shotgun"; ammo = "buckshot"; ammo_max = 125; break;
-		case DOD_CLASS_SNIPER: stand_in = "weapon_crossbow"; ammo = "bolts"; ammo_max = 50; break;
-		case DOD_CLASS_ROCKET: stand_in = "weapon_rpg"; ammo = "rockets"; ammo_max = 5; break;
-		default: break;
+		DodGrenadeDef grenade;
+
+		pPlayer->RemoveAllItems( FALSE );
+		pPlayer->GiveNamedItem( "weapon_crowbar" );
+		if( sidearm ) {
+			pPlayer->GiveNamedItem( sidearm->classname );
+			pPlayer->GiveAmmo( sidearm->reserve, sidearm->ammo, sidearm->ammo_max );
 		}
-		pPlayer->GiveNamedItem( stand_in );
-		if( Dod_GetLoadout( DodGC_TeamForPlayer( pPlayer ), player_class, &load ) ) {
-			int rounds = load.clip_size + load.reserve_rounds;
-			pPlayer->GiveAmmo( rounds > ammo_max ? ammo_max : rounds, ammo, ammo_max );
+		if( weapon ) {
+			/* Last, so it is the best weapon and gets drawn. */
+			pPlayer->GiveNamedItem( weapon->classname );
+			pPlayer->GiveAmmo( weapon->reserve, weapon->ammo, weapon->ammo_max );
+		}
+		if( Dod_GetLoadout( team, player_class, &load ) && load.grenades > 0 ) {
+			/* The weapon spawns with one grenade; top up to the loadout. */
+			pPlayer->GiveNamedItem( "weapon_handgrenade" );
+			if( load.grenades > 1 && Dod_GetGrenade( team, &grenade ) )
+				pPlayer->GiveAmmo( load.grenades - 1, "Hand Grenade", grenade.max_carry );
 		}
 	}
 	DodGC_ClearMenu( pPlayer );
