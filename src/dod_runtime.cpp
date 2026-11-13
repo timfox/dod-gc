@@ -6,12 +6,22 @@
 #include "gamerules.h"
 #include "teamplay_gamerules.h"
 #include "dod_runtime.h"
+#include "client.h"
 #include "dod_game.h"
 #include "dod_weapons.h"
 #include "dod_bot.h"
 
 #include <stdlib.h>
 #include <string.h>
+
+/* Round length when mp_timelimit is 0, and how many rounds win a match. */
+static cvar_t dod_roundtime = { "dod_roundtime", "600", FCVAR_SERVER };
+static cvar_t dod_rounds = { "dod_rounds", "2", FCVAR_SERVER };
+static BOOL g_dod_cvars_registered;
+static int g_dod_seen_restart;
+static int g_dod_seen_match;
+
+#define DOD_POINT_SCORE_PER_MINUTE 2.0f
 
 extern int gmsgShowMenu;
 extern int gmsgScoreInfo;
@@ -142,9 +152,21 @@ static void DodGC_ApplyClass( CBasePlayer *pPlayer, DodClass player_class )
 CHalfLifeDoD::CHalfLifeDoD()
 {
 	DodBots_Init();
+	float round_seconds;
+	if( !g_dod_cvars_registered ) {
+		CVAR_REGISTER( &dod_roundtime );
+		CVAR_REGISTER( &dod_rounds );
+		g_dod_cvars_registered = TRUE;
+	}
 	Dod_GameInit();
 	Dod_ClearObjectives();
-	Dod_StartRound( CVAR_GET_FLOAT( "mp_timelimit" ) * 60.0f );
+	round_seconds = CVAR_GET_FLOAT( "mp_timelimit" ) * 60.0f;
+	if( round_seconds <= 0.0f )
+		round_seconds = CVAR_GET_FLOAT( "dod_roundtime" );
+	Dod_SetRoundsToWin( (int)CVAR_GET_FLOAT( "dod_rounds" ) );
+	Dod_StartRound( round_seconds );
+	g_dod_seen_restart = 0;
+	g_dod_seen_match = 0;
 	memset( g_dod_menu_state, 0, sizeof( g_dod_menu_state ) );
 	g_dod_winner_announced = 0;
 	g_dod_next_status = 0.0f;
@@ -299,10 +321,32 @@ void CHalfLifeDoD::Think( void )
 	DodBots_Think();
 	const DodGameRulesState *state = Dod_GetState();
 	if( state && state->phase == DOD_ROUND_INTERMISSION && !g_dod_winner_announced ) {
-		const char *winner = state->winner == DOD_TEAM_ALLIES ? "Allies" :
-			state->winner == DOD_TEAM_AXIS ? "Axis" : "Round tied";
-		UTIL_ClientPrintAll( HUD_PRINTCENTER, UTIL_VarArgs( "%s win the round", winner ) );
+		const char *winner = state->winner == DOD_TEAM_ALLIES ? "Allies win the round" :
+			state->winner == DOD_TEAM_AXIS ? "Axis win the round" : "Round tied";
+		UTIL_ClientPrintAll( HUD_PRINTCENTER, UTIL_VarArgs( "%s\nNext round in %d seconds", winner,
+			(int)DOD_INTERMISSION_SECONDS ) );
 		g_dod_winner_announced = 1;
+	}
+	if( state && state->restart_serial != g_dod_seen_restart ) {
+		/* The intermission ran out: everybody starts the new round at their
+		 * spawn with a fresh loadout (bots included). */
+		g_dod_seen_restart = state->restart_serial;
+		g_dod_winner_announced = 0;
+		if( state->match_serial != g_dod_seen_match ) {
+			g_dod_seen_match = state->match_serial;
+			UTIL_ClientPrintAll( HUD_PRINTCENTER, UTIL_VarArgs( "%s win the match",
+				state->match_winner == DOD_TEAM_ALLIES ? "Allies" : "Axis" ) );
+		} else {
+			UTIL_ClientPrintAll( HUD_PRINTCENTER, UTIL_VarArgs( "Round %d", state->round_number ) );
+		}
+		for( int i = 1; i <= gpGlobals->maxClients; i++ ) {
+			CBasePlayer *player = (CBasePlayer *)UTIL_PlayerByIndex( i );
+			if( !player || !player->IsPlayer() )
+				continue;
+			const DodTeam team = DodGC_TeamForPlayer( player );
+			if( team == DOD_TEAM_ALLIES || team == DOD_TEAM_AXIS )
+				respawn( player->pev, FALSE );
+		}
 	}
 	/* Match status strip (score, held points, clock) for the lean HUD, which
 	 * has no VGUI scoreboard. Sent as a HUD text channel once per second. */
@@ -364,7 +408,7 @@ void CDoDControlPoint::Spawn( void )
 	pev->movetype = MOVETYPE_NONE;
 	if( m_iPointIndex < 0 ) m_iPointIndex = 0;
 	Dod_RegisterObjective( m_iPointIndex, DOD_OBJ_CAPTURE_POINT,
-		(DodTeam)m_iDefaultOwner, 10.0f, 0.0f );
+		(DodTeam)m_iDefaultOwner, 10.0f, DOD_POINT_SCORE_PER_MINUTE );
 	SetThink( &CDoDControlPoint::Think );
 	pev->nextthink = gpGlobals->time + 0.25f;
 }
