@@ -226,6 +226,76 @@ class WeaponHookIntegrationTest(unittest.TestCase):
 		self.assertIn("ant_glob('dod_weapons.c')", source)
 
 
+class HudIntegrationTest(unittest.TestCase):
+	HUD_H = "class CHudMenu\n{\n};\n\nclass CHud\n{\npublic:\n\tCHudMenu\t\tm_Menu;\n};\n"
+	HUD_CPP = ('void CHud::Init( void )\n{\n#ifdef __GAMECUBE__\n'
+		'\tgEngfuncs.Con_Printf( "Xash3D GameCube: CHud::Init begin quality=%d\\n", quality );\n#endif\n'
+		'\tm_Menu.Init();\n}\nvoid CHud::VidInit( void )\n{\n\tm_Menu.VidInit();\n}\n')
+	REDRAW = ("\t\t\tif( m_Menu.m_fMenuDisplayed )\n\t\t\t\tm_Menu.Draw( flTime );\n")
+
+	def integrate(self):
+		with tempfile.TemporaryDirectory() as directory:
+			client = Path(directory)
+			(client / "hud.h").write_text(self.HUD_H)
+			(client / "hud.cpp").write_text(self.HUD_CPP)
+			(client / "hud_redraw.cpp").write_text(self.REDRAW)
+			INTEGRATOR.integrate_dod_hud(client)
+			first = {n: (client / n).read_text() for n in ("hud.h", "hud.cpp", "hud_redraw.cpp")}
+			INTEGRATOR.integrate_dod_hud(client)
+			again = {n: (client / n).read_text() for n in first}
+			self.assertEqual(first, again, "must be idempotent")
+			return first
+
+	def test_hooks_in_all_three_files(self):
+		files = self.integrate()
+		self.assertIn('#include "hud_dod.h"\n\nclass CHud\n{', files["hud.h"])
+		self.assertIn("CHudDod\t\tm_Dod;", files["hud.h"])
+		self.assertIn("m_Dod.InitState();", files["hud.cpp"])
+		self.assertIn("m_Dod.Init();", files["hud.cpp"])
+		self.assertIn("m_Dod.VidInit();", files["hud.cpp"])
+		self.assertIn("m_Dod.Draw( flTime );", files["hud_redraw.cpp"])
+
+	def test_state_is_set_up_before_the_lean_branch(self):
+		# the lean (quality 0) path never runs m_Menu.Init(), so InitState runs first
+		files = self.integrate()
+		self.assertLess(files["hud.cpp"].index("m_Dod.InitState();"), files["hud.cpp"].index("m_Menu.Init();"))
+
+	def test_missing_anchor_fails_loudly(self):
+		with tempfile.TemporaryDirectory() as directory:
+			client = Path(directory)
+			for name in ("hud.h", "hud.cpp", "hud_redraw.cpp"):
+				(client / name).write_text("int unrelated;\n")
+			with self.assertRaises(SystemExit):
+				INTEGRATOR.integrate_dod_hud(client)
+
+
+class ClientSourceSyncTest(unittest.TestCase):
+	def test_client_sources_are_copied_and_stale_ones_removed(self):
+		with tempfile.TemporaryDirectory() as directory:
+			root = Path(directory)
+			src, client = root / "src", root / "cl_dll"
+			(src / "client").mkdir(parents=True)
+			client.mkdir()
+			for source, dest in INTEGRATOR.DOD_CLIENT_SOURCES:
+				(src / source).write_text("new " + dest)
+			(client / "hud_dod.h").write_text("old")
+			(client / "hud_dod_old.cpp").write_text("from another branch")
+			(client / "dod_extra.h").write_text("stale")
+			(client / "hud.cpp").write_text("upstream")
+			removed = INTEGRATOR.sync_dod_client_sources(src, client)
+			self.assertEqual(removed, ["dod_extra.h", "hud_dod_old.cpp"])
+			self.assertTrue((client / "hud.cpp").exists())
+			for _, dest in INTEGRATOR.DOD_CLIENT_SOURCES:
+				self.assertEqual((client / dest).read_text(), "new " + dest)
+
+	def test_every_client_source_exists_in_the_repo(self):
+		src = Path(__file__).resolve().parents[1] / "src"
+		for source, _ in INTEGRATOR.DOD_CLIENT_SOURCES:
+			self.assertTrue((src / source).is_file(), source)
+		on_disk = {p.name for p in (src / "client").glob("*")}
+		self.assertEqual(on_disk, {Path(s).name for s, _ in INTEGRATOR.DOD_CLIENT_SOURCES if s.startswith("client/")})
+
+
 class SourceSyncTest(unittest.TestCase):
 	def test_list_covers_every_dod_source_in_src(self):
 		src = Path(__file__).resolve().parents[1] / "src"

@@ -100,6 +100,34 @@ Not verified in Dolphin: any of the gun behaviour above. The table, loadouts,
 spread and reload maths, integration anchors, audio staging, manifest and the
 engine animation remap have host tests.
 
+## HUD
+
+The lean client HUD already draws ammo, crosshair and health from a tiny digit
+sheet, so the match HUD only adds what the match needs: a clock, both team
+scores, one flag per control point, the round and tally, and the player's class
+and grenades. It is the `cl_dodhud` cvar, **off by default**; with it off the
+server keeps sending the text strip, so nothing changes until it is turned on
+(after Dolphin shows the headroom).
+
+- **Server.** `DodGC_SendHud` sends a `DodHud` message to each human client twice
+  a second (about 22 bytes) and stops the text strip while `cl_dodhud` is set.
+  The local client registers the cvar, so the listen server reads it directly.
+- **Layout.** `dod_hud.h` is header-only and shared: `Dod_HudLayout` turns the
+  state into at most 24 draw ops (text and flag icons), inside any screen size,
+  with the flag colours by owner. It has host tests, including bounds on
+  640x480 and 320x240 and a buffer that is too small.
+- **Memory.** Text uses the engine's resident console font. The flags use one
+  sheet, `sprites/icon_obj.spr` (96x32, 3.9 KB: neutral, Allies, Axis), loaded
+  with `SPR_Load` the first time a flag is drawn and never when the cvar is off.
+  Nothing is added to the studio arena or the sprite budget at boot. The sheet
+  is small enough that ARAM caching would not pay for itself.
+- **Not done.** The retail DoD HUD art (`hud_icons`, `hud_layout`, ammo clip
+  pictures) is not used: those sheets are 66 KB each and the lean HUD has no
+  room for them. Flag models in the world are also not done.
+
+Not verified in Dolphin: that `SPR_DrawHoles` renders the icon sheet's palette
+correctly, the message being hooked, and the cvar toggle.
+
 ## Match loop
 
 Rounds repeat by themselves, so a Create Game match plays on without anyone

@@ -122,6 +122,13 @@ for s in 320hud1.spr 320hud2.spr 320_pain.spr 320_train.spr crosshairs.spr; do
 done
 echo "staged lean HUD sources: $hud_staged sprites (for gc_* bootstrap inject)"
 
+# DoD match HUD (cl_dodhud): one 96x32 sheet with the neutral, Allies and Axis
+# flag icons (3.9 KB). The client loads it the first time it draws a flag.
+if [[ -f "$SRC/sprites/icon_obj.spr" ]]; then
+	cp -f "$SRC/sprites/icon_obj.spr" "$LEAN/sprites/"
+	echo "staged DoD HUD flag sheet: sprites/icon_obj.spr"
+fi
+
 # DoD UI / title art (no loading-screen wallpaper farms).
 mkdir -p "$LEAN/resource"
 # Skip dod_english.txt (≈90 KiB) — MEM1 tip cannot Localize_AddToDict it at
