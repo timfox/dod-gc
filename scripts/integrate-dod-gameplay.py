@@ -215,7 +215,13 @@ def integrate_grenades(dlls: Path) -> None:
 DOD_DLL_SOURCES = (
 	"dod_game.c", "dod_game.h", "dod_runtime.cpp", "dod_runtime.h",
 	"dod_grenade.cpp", "dod_grenade.h", "dod_weapons.c", "dod_weapons.h",
-	"dod_weapon.cpp", "dod_weapon.h",
+	"dod_weapon.cpp", "dod_weapon.h", "dod_hud.h",
+)
+# Client HUD sources, copied into cl_dll/ (dod_hud.h is shared with the DLL).
+DOD_CLIENT_SOURCES = (
+	("dod_hud.h", "dod_hud.h"),
+	("client/hud_dod.h", "hud_dod.h"),
+	("client/hud_dod.cpp", "hud_dod.cpp"),
 )
 
 
@@ -236,6 +242,41 @@ def sync_dod_sources(src: Path, dlls: Path) -> list[str]:
 	return removed
 
 
+def sync_dod_client_sources(src: Path, client: Path) -> list[str]:
+	"""Same for cl_dll/: copy the HUD sources, delete dod_*/hud_dod* files we no longer own."""
+	owned = {dest for _, dest in DOD_CLIENT_SOURCES}
+	removed = []
+	for pattern in ("dod_*", "hud_dod*"):
+		for stale in sorted(client.glob(pattern)):
+			if stale.is_file() and stale.suffix in (".c", ".cpp", ".h") and stale.name not in owned:
+				stale.unlink()
+				removed.append(stale.name)
+	for source, dest in DOD_CLIENT_SOURCES:
+		shutil.copy2(src / source, client / dest)
+	return removed
+
+
+def integrate_dod_hud(client: Path) -> None:
+	"""Hook the DoD HUD element into the client HUD (normal and lean quality-0 paths)."""
+	replace_once(client / "hud.h", "class CHud\n{",
+		'#include "hud_dod.h"\n\nclass CHud\n{')
+	replace_once(client / "hud.h", "\tCHudMenu\t\tm_Menu;\n",
+		"\tCHudMenu\t\tm_Menu;\n\tCHudDod\t\tm_Dod;\n")
+	hud = client / "hud.cpp"
+	replace_once(hud,
+		'\tgEngfuncs.Con_Printf( "Xash3D GameCube: CHud::Init begin quality=%d\\n", quality );\n',
+		'\tgEngfuncs.Con_Printf( "Xash3D GameCube: CHud::Init begin quality=%d\\n", quality );\n'
+		'\t/* cl_dodhud and the DodHud message: needed by the lean path too. */\n'
+		'\tm_Dod.InitState();\n')
+	replace_once(hud, "\tm_Menu.Init();\n", "\tm_Menu.Init();\n\tm_Dod.Init();\n")
+	replace_once(hud, "\tm_Menu.VidInit();\n", "\tm_Menu.VidInit();\n\tm_Dod.VidInit();\n")
+	replace_once(client / "hud_redraw.cpp",
+		"\t\t\tif( m_Menu.m_fMenuDisplayed )\n\t\t\t\tm_Menu.Draw( flTime );\n",
+		"\t\t\tif( m_Menu.m_fMenuDisplayed )\n\t\t\t\tm_Menu.Draw( flTime );\n"
+		"\t\t\t/* DoD match HUD (cl_dodhud): score, clock, flags, round. */\n"
+		"\t\t\tm_Dod.Draw( flTime );\n")
+
+
 def main() -> int:
 	parser = argparse.ArgumentParser()
 	parser.add_argument("--hlsdk-dir", required=True, type=Path)
@@ -248,6 +289,7 @@ def main() -> int:
 		raise SystemExit(f"not an hlsdk-portable source tree: {args.hlsdk_dir}")
 
 	removed = sync_dod_sources(root / "src", dlls)
+	removed += sync_dod_client_sources(root / "src", client)
 	if removed:
 		print("removed stale DoD sources from the HLSDK tree: " + ", ".join(removed))
 
@@ -372,6 +414,7 @@ def main() -> int:
 		integrate_weapon(dlls / filename, class_name, kind, animation, event, legacy_model, models)
 	integrate_grenades(dlls)
 	integrate_weapons(dlls)
+	integrate_dod_hud(client)
 
 	replace_once(
 		dlls / "CMakeLists.txt",
