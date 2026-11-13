@@ -345,13 +345,18 @@ PY
 	cap_vm=0
 	for m in v_garand.mdl v_mp40.mdl v_98k.mdl v_tommy.mdl \
 		v_colt.mdl v_luger.mdl v_amerk.mdl v_spade.mdl \
+		v_grenade.mdl v_stick.mdl p_grenade.mdl p_stick.mdl w_grenade.mdl w_stick.mdl \
+		v_bren.mdl v_mp44.mdl v_spring.mdl v_scoped98k.mdl v_30cal.mdl v_mg42.mdl \
+		v_bazooka.mdl v_panzerschreck.mdl w_bazooka_rocket.mdl \
+		p_bren.mdl p_stg44.mdl p_spring.mdl p_30cal.mdl p_mg42pr.mdl p_bazooka.mdl p_pschreck.mdl \
+		p_colt.mdl p_luger.mdl p_amerk.mdl p_spade.mdl \
 		p_garand.mdl p_mp40.mdl p_k98.mdl p_tommy.mdl; do
 		if [[ -f "$SRC/models/$m" ]]; then
 			cp -f "$SRC/models/$m" "$LEAN/models/"
 			cap_vm=$((cap_vm + 1))
 		fi
 	done
-	echo "staged CapFaces team weapon MDLs: $cap_vm files"
+	echo "staged CapFaces team weapon + grenade MDLs: $cap_vm files"
 
 	if (( FULL_MAP )); then
 		echo "==> full-map assets for $stem"

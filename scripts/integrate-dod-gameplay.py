@@ -161,6 +161,56 @@ def integrate_gc_hud(client: Path) -> None:
 	menu_cpp.write_text(menu_text)
 
 
+def integrate_weapons(dlls: Path) -> None:
+	"""Register the DoD guns' ItemInfo and ammo when the game precaches weapons."""
+	weapons = dlls / "weapons.cpp"
+	replace_once(weapons, '#include "gamerules.h"\n',
+		'#include "gamerules.h"\n#include "dod_weapon.h"\n')
+	replace_once(weapons,
+		'\tUTIL_PrecacheOtherWeapon("weapon_handgrenade");\n',
+		'\tUTIL_PrecacheOtherWeapon("weapon_handgrenade");\n'
+		'\t/* DoD guns: ItemInfo and ammo only; models load when granted. */\n'
+		'\tDodWeapons_PrecacheAll();\n')
+
+
+def integrate_grenades(dlls: Path) -> None:
+	"""DoD hand grenades: models, fuse, damage and a budgeted explosion."""
+	hand = dlls / "handgrenade.cpp"
+	replace_once(hand, '#include "player.h"\n',
+		'#include "player.h"\n#include "dod_game.h"\n#include "dod_grenade.h"\n')
+	replace_once(hand,
+		'\tPRECACHE_MODEL( "models/p_grenade.mdl" );\n}',
+		'\tPRECACHE_MODEL( "models/p_grenade.mdl" );\n\tDodGrenade_Precache();\n}')
+	replace_once(hand,
+		'\treturn DefaultDeploy( "models/v_grenade.mdl", "models/p_grenade.mdl", HANDGRENADE_DRAW, "crowbar" );\n',
+		'\t{\n'
+		'\t\tconst char *viewModel, *playerModel;\n'
+		'\t\tif( Dod_GameIsActive() && Dod_GetWeaponModels( m_pPlayer->entindex(), DOD_MODEL_GRENADE, &viewModel, &playerModel ) )\n'
+		'\t\t\treturn DefaultDeploy( viewModel, playerModel, HANDGRENADE_DRAW, "crowbar" );\n'
+		'\t}\n'
+		'\treturn DefaultDeploy( "models/v_grenade.mdl", "models/p_grenade.mdl", HANDGRENADE_DRAW, "crowbar" );\n')
+	replace_once(hand,
+		'\tif( !m_flStartThrow && m_pPlayer->m_rgAmmo[m_iPrimaryAmmoType] > 0 )\n',
+		'\tif( !m_flStartThrow && m_pPlayer->m_rgAmmo[m_iPrimaryAmmoType] > 0 && DodGrenade_CanPrime() )\n')
+	replace_once(hand,
+		'\t\tSendWeaponAnim( HANDGRENADE_PINPULL );\n',
+		'\t\tSendWeaponAnim( HANDGRENADE_PINPULL );\n'
+		'\t\tif( Dod_GameIsActive() )\n'
+		'\t\t\tEMIT_SOUND( ENT( m_pPlayer->pev ), CHAN_WEAPON, "weapons/grenpinpull.wav", 1.0f, ATTN_NORM );\n')
+	replace_once(hand,
+		'\t\tCGrenade::ShootTimed( m_pPlayer->pev, vecSrc, vecThrow, time );\n',
+		'\t\t/* DoD: team model, 5s fuse that cooking shortens, capped live count. */\n'
+		'\t\tif( !DodGrenade_Throw( m_pPlayer, gpGlobals->time - m_flStartThrow ) )\n'
+		'\t\t\tCGrenade::ShootTimed( m_pPlayer->pev, vecSrc, vecThrow, time );\n')
+	ggrenade = dlls / "ggrenade.cpp"
+	replace_once(ggrenade, '#include "game.h"\n', '#include "game.h"\n#include "dod_grenade.h"\n')
+	replace_once(ggrenade,
+		'void CGrenade::Explode( TraceResult *pTrace, int bitsDamageType )\n{\n',
+		'void CGrenade::Explode( TraceResult *pTrace, int bitsDamageType )\n{\n'
+		'\tif( DodGrenade_Explode( this, pTrace, bitsDamageType ) )\n'
+		'\t\treturn;\n')
+
+
 def main() -> int:
 	parser = argparse.ArgumentParser()
 	parser.add_argument("--hlsdk-dir", required=True, type=Path)
@@ -172,7 +222,9 @@ def main() -> int:
 	if not (dlls / "CMakeLists.txt").is_file() or not (client / "hud.cpp").is_file():
 		raise SystemExit(f"not an hlsdk-portable source tree: {args.hlsdk_dir}")
 
-	for name in ("dod_game.c", "dod_game.h", "dod_runtime.cpp", "dod_runtime.h"):
+	for name in ("dod_game.c", "dod_game.h", "dod_runtime.cpp", "dod_runtime.h",
+				 "dod_grenade.cpp", "dod_grenade.h", "dod_weapons.c", "dod_weapons.h",
+				 "dod_weapon.cpp", "dod_weapon.h"):
 		shutil.copy2(root / "src" / name, dlls / name)
 
 	if args.engine_dir:
@@ -285,43 +337,29 @@ def main() -> int:
 				)
 
 
+	# The guns are real DoD weapons now (dod_weapon.cpp); only the melee weapon is
+	# still the HL1 crowbar wearing the knife/spade models.
 	for filename, class_name, kind, animation, event, legacy_model, models in (
-		("mp5.cpp", "CMP5", "DOD_MODEL_AUTOMATIC", "MP5_DEPLOY", "mp5", "9mmAR",
-		 '\tPRECACHE_MODEL( "models/v_garand.mdl" ); PRECACHE_MODEL( "models/p_garand.mdl" );\n'
-		 '\tPRECACHE_MODEL( "models/v_98k.mdl" ); PRECACHE_MODEL( "models/p_k98.mdl" );\n'
-		 '\tPRECACHE_MODEL( "models/v_tommy.mdl" ); PRECACHE_MODEL( "models/p_tommy.mdl" );\n'
-		 '\tPRECACHE_MODEL( "models/v_mp40.mdl" ); PRECACHE_MODEL( "models/p_mp40.mdl" );\n'
-		 '\tPRECACHE_MODEL( "models/v_30cal.mdl" ); PRECACHE_MODEL( "models/p_30cal.mdl" );\n'
-		 '\tPRECACHE_MODEL( "models/v_mg42.mdl" ); PRECACHE_MODEL( "models/p_mg42pr.mdl" );\n'),
-		("shotgun.cpp", "CShotgun", "DOD_MODEL_SUPPORT", "SHOTGUN_DRAW", "shotgun", "shotgun",
-		 '\tPRECACHE_MODEL( "models/v_bren.mdl" ); PRECACHE_MODEL( "models/p_bren.mdl" );\n'
-		 '\tPRECACHE_MODEL( "models/v_mp44.mdl" ); PRECACHE_MODEL( "models/p_stg44.mdl" );\n'),
-		("crossbow.cpp", "CCrossbow", "DOD_MODEL_SNIPER", "m_iClip ? CROSSBOW_DRAW1 : CROSSBOW_DRAW2", "bow", "crossbow",
-		 '\tPRECACHE_MODEL( "models/v_spring.mdl" ); PRECACHE_MODEL( "models/p_spring.mdl" );\n'
-		 '\tPRECACHE_MODEL( "models/v_scoped98k.mdl" ); PRECACHE_MODEL( "models/p_k98.mdl" );\n'),
-		("rpg.cpp", "CRpg", "DOD_MODEL_ROCKET", "m_iClip ? RPG_DRAW1 : RPG_DRAW_UL", "rpg", "rpg",
-		 '\tPRECACHE_MODEL( "models/v_bazooka.mdl" ); PRECACHE_MODEL( "models/p_bazooka.mdl" );\n'
-		 '\tPRECACHE_MODEL( "models/v_panzerschreck.mdl" ); PRECACHE_MODEL( "models/p_pschreck.mdl" );\n'),
-		("glock.cpp", "CGlock", "DOD_MODEL_PISTOL", "GLOCK_DRAW", "onehanded", "9mmhandgun",
-		 '\tPRECACHE_MODEL( "models/v_colt.mdl" ); PRECACHE_MODEL( "models/p_colt.mdl" );\n'
-		 '\tPRECACHE_MODEL( "models/v_luger.mdl" ); PRECACHE_MODEL( "models/p_luger.mdl" );\n'),
 		("crowbar.cpp", "CCrowbar", "DOD_MODEL_MELEE", "CROWBAR_DRAW", "crowbar", "crowbar",
 		 '\tPRECACHE_MODEL( "models/v_amerk.mdl" ); PRECACHE_MODEL( "models/p_amerk.mdl" );\n'
 		 '\tPRECACHE_MODEL( "models/v_spade.mdl" );\n'
 		 '\tPRECACHE_MODEL( "models/p_spade.mdl" );\n'),
 	):
 		integrate_weapon(dlls / filename, class_name, kind, animation, event, legacy_model, models)
+	integrate_grenades(dlls)
+	integrate_weapons(dlls)
 
 	replace_once(
 		dlls / "CMakeLists.txt",
 		"\tmultiplay_gamerules.cpp\n",
-		"\tmultiplay_gamerules.cpp\n\tdod_game.c\n\tdod_runtime.cpp\n",
+		"\tmultiplay_gamerules.cpp\n\tdod_game.c\n\tdod_weapons.c\n\tdod_runtime.cpp\n\tdod_grenade.cpp\n\tdod_weapon.cpp\n",
 	)
 	replace_once(
 		dlls / "wscript",
 		"\tsource = bld.path.ant_glob('**/*.cpp', excl=excluded_files)\n",
 		"\tsource = bld.path.ant_glob('**/*.cpp', excl=excluded_files)\n"
-		"\tsource += bld.path.ant_glob('dod_game.c')\n",
+		"\tsource += bld.path.ant_glob('dod_game.c')\n"
+		"\tsource += bld.path.ant_glob('dod_weapons.c')\n",
 	)
 	replace_once(
 		dlls / "gamerules.cpp",
