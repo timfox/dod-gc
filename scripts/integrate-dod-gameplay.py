@@ -70,8 +70,11 @@ def integrate_weapon(path: Path, class_name: str, kind: str, deploy_anim: str,
 	text = path.read_text()
 	if '#include "dod_game.h"' not in text:
 		text = text.replace('#include "gamerules.h"\n', '#include "gamerules.h"\n#include "dod_game.h"\n', 1)
-		if '#include "dod_game.h"' not in text:  # glock.cpp has no gamerules.h
-			text = text.replace('#include "weapons.h"\n', '#include "weapons.h"\n#include "dod_game.h"\n', 1)
+	if '#include "dod_game.h"' not in text:
+		# glock.cpp has no gamerules.h include; weapons.h is in every weapon file.
+		text = text.replace('#include "weapons.h"\n', '#include "weapons.h"\n#include "dod_game.h"\n', 1)
+	if '#include "dod_game.h"' not in text:
+		raise SystemExit(f"no include anchor for dod_game.h in {path}")
 	if models not in text:
 		anchor = f'\tPRECACHE_MODEL( "models/p_{legacy_model}.mdl" );\n'
 		if anchor not in text:

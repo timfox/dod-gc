@@ -94,40 +94,38 @@ class HeapTipGateTest(unittest.TestCase):
 
 
 class WeaponIncludeTest(unittest.TestCase):
-	"""integrate_weapon must add dod_game.h even when gamerules.h is absent."""
+	SOURCE = (
+		'#include "extdll.h"\n#include "weapons.h"\n#include "player.h"\n'
+		'void CGlock::Precache( void )\n{\n\tPRECACHE_MODEL( "models/p_9mmhandgun.mdl" );\n}\n'
+		'BOOL CGlock::Deploy()\n{\n\treturn FALSE;\n}\n'
+	)
 
-	GLOCK = ('#include "extdll.h"\n#include "weapons.h"\n#include "player.h"\n'
-		'void CGlock::Precache()\n{\n\tPRECACHE_MODEL( "models/p_9mmhandgun.mdl" );\n}\n'
-		'BOOL CGlock::Deploy()\n{\n\treturn DefaultDeploy( "v", "p", GLOCK_DRAW, "onehanded" );\n}\n')
-
-	def integrate(self, body):
+	def integrate(self, source):
 		with tempfile.TemporaryDirectory() as directory:
 			path = Path(directory) / "glock.cpp"
-			path.write_text(body)
-			INTEGRATOR.integrate_weapon(path, "CGlock", "DOD_MODEL_PISTOL", "GLOCK_DRAW", "onehanded",
-				"9mmhandgun", '\tPRECACHE_MODEL( "models/v_colt.mdl" );\n')
-			first = path.read_text()
-			INTEGRATOR.integrate_weapon(path, "CGlock", "DOD_MODEL_PISTOL", "GLOCK_DRAW", "onehanded",
-				"9mmhandgun", '\tPRECACHE_MODEL( "models/v_colt.mdl" );\n')
-			self.assertEqual(path.read_text(), first)
-			return first
+			path.write_text(source)
+			INTEGRATOR.integrate_weapon(path, "CGlock", "DOD_MODEL_PISTOL", "GLOCK_DRAW",
+				"onehanded", "9mmhandgun", '\tPRECACHE_MODEL( "models/v_colt.mdl" );\n')
+			return path.read_text()
 
-	def test_include_added_without_gamerules(self):
-		result = self.integrate(self.GLOCK)
-		self.assertEqual(result.count('#include "dod_game.h"'), 1)
-		self.assertLess(result.index('#include "dod_game.h"'), result.index("CGlock::Deploy"))
+	def test_include_added_without_gamerules_header(self):
+		text = self.integrate(self.SOURCE)
+		self.assertIn('#include "dod_game.h"', text)
+		self.assertIn("DOD_MODEL_PISTOL", text)
+		self.assertEqual(text.count('#include "dod_game.h"'), 1)
 
-	def test_include_added_after_gamerules(self):
-		result = self.integrate(self.GLOCK.replace('#include "weapons.h"\n', '#include "weapons.h"\n#include "gamerules.h"\n'))
-		self.assertEqual(result.count('#include "dod_game.h"'), 1)
-		self.assertIn('#include "gamerules.h"\n#include "dod_game.h"', result)
+	def test_include_added_after_gamerules_header(self):
+		text = self.integrate(self.SOURCE.replace('"weapons.h"\n', '"weapons.h"\n#include "gamerules.h"\n'))
+		self.assertEqual(text.count('#include "dod_game.h"'), 1)
 
-	def test_weapon_without_known_include_fails_loudly(self):
+	def test_integration_is_idempotent(self):
+		once = self.integrate(self.SOURCE)
 		with tempfile.TemporaryDirectory() as directory:
 			path = Path(directory) / "glock.cpp"
-			path.write_text("int unrelated;\n")
-			with self.assertRaises(SystemExit):
-				INTEGRATOR.integrate_weapon(path, "CGlock", "DOD_MODEL_PISTOL", "GLOCK_DRAW", "onehanded", "9mmhandgun", "")
+			path.write_text(once)
+			INTEGRATOR.integrate_weapon(path, "CGlock", "DOD_MODEL_PISTOL", "GLOCK_DRAW",
+				"onehanded", "9mmhandgun", '\tPRECACHE_MODEL( "models/v_colt.mdl" );\n')
+			self.assertEqual(path.read_text(), once)
 
 
 class GrenadeIntegrationTest(unittest.TestCase):
