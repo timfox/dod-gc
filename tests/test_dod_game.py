@@ -32,6 +32,21 @@ class DodGameRulesTests(unittest.TestCase):
             )
             subprocess.run([str(binary)], check=True)
 
+    def test_native_hud_layout(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            binary = Path(tmp) / "dod-hud"
+            subprocess.run(
+                [
+                    "cc", "-std=c99", "-Wall", "-Wextra", "-Werror",
+                    "-fsanitize=address,undefined",
+                    "-I", str(ROOT / "src"),
+                    str(ROOT / "tests/dod_hud_test.c"),
+                    "-o", str(binary),
+                ],
+                check=True,
+            )
+            subprocess.run([str(binary)], check=True)
+
 
 if __name__ == "__main__":
     unittest.main()
