@@ -80,6 +80,9 @@ static void dod_add_team_score(DodTeam team, float amount)
 		g_dod_state.axis_score += whole;
 }
 
+static int g_grenades_live;
+static int g_fx_count;
+
 void Dod_GameInit(void)
 {
 	memset(&g_dod_state, 0, sizeof(g_dod_state));
@@ -88,6 +91,8 @@ void Dod_GameInit(void)
 	memset(g_score_remainder, 0, sizeof(g_score_remainder));
 	g_dod_state.phase = DOD_ROUND_WAITING;
 	g_dod_state.winner = DOD_TEAM_UNASSIGNED;
+	g_grenades_live = 0;
+	g_fx_count = 0;
 	g_dod_active = 1;
 }
 
@@ -330,6 +335,15 @@ int Dod_GetWeaponModels(int player_index, DodWeaponModelKind kind,
 		return 0;
 	if (view_model) *view_model = 0;
 	if (player_model) *player_model = 0;
+	if (kind == DOD_MODEL_GRENADE) {
+		/* Allies: Mk2 grenade, Axis: stick grenade. */
+		DodGrenadeDef def;
+		if (!Dod_GetGrenade(player->team, &def))
+			return 0;
+		if (view_model) *view_model = def.view_model;
+		if (player_model) *player_model = def.player_model;
+		return 1;
+	}
 	if (kind == DOD_MODEL_MELEE) {
 		/* Retail: Allies carry the American knife, Axis the spade. */
 		if (view_model) *view_model = player->team == DOD_TEAM_ALLIES ? "models/v_amerk.mdl" : "models/v_spade.mdl";
@@ -394,6 +408,95 @@ int Dod_GetLoadout(DodTeam team, DodClass player_class, DodLoadout *out)
 	out->reserve_rounds = g_loadout[team - 1][player_class].reserve;
 	out->grenades = g_loadout[team - 1][player_class].grenades;
 	return 1;
+}
+
+static const DodGrenadeDef g_grenades[2] = {
+	{ "models/v_grenade.mdl", "models/p_grenade.mdl", "models/w_grenade.mdl", 5.0f, 100.0f, 250.0f, 800.0f, 4 },
+	{ "models/v_stick.mdl", "models/p_stick.mdl", "models/w_stick.mdl", 5.0f, 100.0f, 250.0f, 800.0f, 4 }
+};
+
+int Dod_GetGrenade(DodTeam team, DodGrenadeDef *out)
+{
+	if ((team != DOD_TEAM_ALLIES && team != DOD_TEAM_AXIS) || !out)
+		return 0;
+	*out = g_grenades[team - 1];
+	return 1;
+}
+
+float Dod_GrenadeDamageAt(const DodGrenadeDef *def, float distance)
+{
+	if (!def || def->radius <= 0.0f || def->damage <= 0.0f || distance < 0.0f || distance >= def->radius)
+		return 0.0f;
+	return def->damage * (1.0f - distance / def->radius);
+}
+
+float Dod_GrenadeThrowPitch(float view_pitch)
+{
+	return view_pitch < 0.0f ? -10.0f + view_pitch * (80.0f / 90.0f)
+		: -10.0f + view_pitch * (100.0f / 90.0f);
+}
+
+float Dod_GrenadeThrowSpeed(const DodGrenadeDef *def, float view_pitch)
+{
+	float speed = (90.0f - Dod_GrenadeThrowPitch(view_pitch)) * 6.5f;
+	if (!def)
+		return 0.0f;
+	if (speed < 0.0f)
+		speed = 0.0f;
+	return speed > def->throw_speed ? def->throw_speed : speed;
+}
+
+float Dod_GrenadeFuseLeft(const DodGrenadeDef *def, float held_seconds)
+{
+	float left;
+	if (!def)
+		return 0.0f;
+	left = def->fuse - (held_seconds > 0.0f ? held_seconds : 0.0f);
+	return left > 0.0f ? left : 0.0f;
+}
+
+int Dod_GrenadeAcquire(void)
+{
+	if (g_grenades_live >= DOD_MAX_LIVE_GRENADES)
+		return 0;
+	g_grenades_live++;
+	return 1;
+}
+
+void Dod_GrenadeRelease(void)
+{
+	if (g_grenades_live > 0)
+		g_grenades_live--;
+}
+
+int Dod_GrenadesLive(void)
+{
+	return g_grenades_live;
+}
+
+#define DOD_FX_HISTORY 8
+static float g_fx_times[DOD_FX_HISTORY];
+
+int Dod_FxPlanExplosion(float now)
+{
+	static const int plans[4] = {
+		DOD_FX_FIREBALL | DOD_FX_SMOKE | DOD_FX_SPARKS | DOD_FX_DEBRIS,
+		DOD_FX_FIREBALL | DOD_FX_SMOKE | DOD_FX_SPARKS,
+		DOD_FX_FIREBALL | DOD_FX_SMOKE,
+		DOD_FX_FIREBALL
+	};
+	int recent = 0, kept = 0, i;
+	for (i = 0; i < g_fx_count; i++) {
+		if (now - g_fx_times[i] < DOD_FX_WINDOW && now >= g_fx_times[i]) {
+			g_fx_times[kept++] = g_fx_times[i];
+			recent++;
+		}
+	}
+	if (kept >= DOD_FX_HISTORY)
+		kept = DOD_FX_HISTORY - 1;
+	g_fx_times[kept++] = now;
+	g_fx_count = kept;
+	return plans[recent > 3 ? 3 : recent];
 }
 
 int Dod_FormatStatus(char *buffer, int size)

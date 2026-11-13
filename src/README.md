@@ -47,6 +47,53 @@ BSP-surface allocation failure and a DSI after map startup. Map-bearing play
 ISOs enable the packed BSP renderer by default so low-memory loads can select
 the CapFaces path when the live surface table cannot fit.
 
+## Grenades
+
+`dod_grenade.cpp` puts the DoD hand grenade on top of the HL1 `CHandGrenade` /
+`CGrenade` code, which still does the pin pull, throw, bounce and fuse timing.
+Class loadouts issue grenades (`Dod_GetLoadout`), and the rules core
+(`Dod_GetGrenade` and friends in `dod_game.c`) holds the numbers:
+
+- Allies throw the Mk2 grenade, Axis the stick grenade (`v_grenade`/`p_grenade`/
+  `w_grenade`, `v_stick`/`p_stick`/`w_stick`). Values are approximate DoD 1.3:
+  5 second fuse that cooking shortens (a grenade held past its fuse goes off in
+  the thrower's hand), 100 damage at the centre falling off linearly to a 250
+  unit radius, 800 unit/second maximum throw.
+- Damage is applied with the engine's `RadiusDamage`, so team damage rules and
+  kill credit work as for any other weapon. The thrower can be hurt.
+- The explosion replaces `CGrenade::Explode` for DoD grenades only (marker in
+  `pev->iuser3`); rockets and every other user of `CGrenade` are untouched.
+
+### Memory
+
+Everything here is sized for MEM1 + ARAM:
+
+- **No new sprites.** The fireball, smoke and underwater sprites are the ones HL1
+  already precaches for every weapon.
+- **Effect budget.** `Dod_FxPlanExplosion` decides which layers one blast sends
+  (fireball, smoke, sparks, debris). A lone blast sends all four; blasts landing
+  within two seconds of each other shed debris, then sparks, then smoke, down to
+  the fireball alone. The fireball and damage are never skipped. The HL1
+  `spark_shower` entities are replaced by client-side `TE_SPARKS`, so a blast
+  costs no edicts.
+- **Live cap.** At most `DOD_MAX_LIVE_GRENADES` (8) grenades exist at once, so
+  the static edict pool cannot be exhausted by throwing spam. A new pin cannot
+  be pulled while the cap is full.
+- **Viewmodels** ride the engine's studio allowlist, are lean-stripped into
+  `gc_studio/` with a downsampled skin companion like the other DoD viewmodels,
+  and are cached whole in ARAM after their first load.
+- **Audio.** The eleven grenade clips are cut to fit the 16 KiB WAV ceiling
+  (about 110 KiB in total) and listed in `media/c0a0.prefetch`, so the engine
+  copies them into ARAM during menu idle instead of reading them from disc
+  mid-fight. Half-Life discs get no such entries.
+
+Both viewmodels use the `pinpull` / `throw` / `draw` / `holster` / `idle`
+sequences through the engine's `gc_vmanim` remap.
+
+Not verified in Dolphin yet: viewmodel animation, throw feel, the explosion and
+particle rendering, and the Mk2 versus stick world models. The rules core, the
+integration anchors, audio staging and the prefetch manifest have host tests.
+
 ## Build integration
 
 `scripts/integrate-dod-gameplay.py` copies the tracked runtime into the linked

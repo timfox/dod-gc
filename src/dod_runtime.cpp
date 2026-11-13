@@ -125,6 +125,13 @@ static void DodGC_ApplyClass( CBasePlayer *pPlayer, DodClass player_class )
 		if( Dod_GetLoadout( DodGC_TeamForPlayer( pPlayer ), player_class, &load ) ) {
 			int rounds = load.clip_size + load.reserve_rounds;
 			pPlayer->GiveAmmo( rounds > ammo_max ? ammo_max : rounds, ammo, ammo_max );
+			if( load.grenades > 0 ) {
+				/* The weapon spawns with one grenade; top up to the loadout. */
+				DodGrenadeDef grenade;
+				pPlayer->GiveNamedItem( "weapon_handgrenade" );
+				if( load.grenades > 1 && Dod_GetGrenade( DodGC_TeamForPlayer( pPlayer ), &grenade ) )
+					pPlayer->GiveAmmo( load.grenades - 1, "Hand Grenade", grenade.max_carry );
+			}
 		}
 	}
 	DodGC_ClearMenu( pPlayer );

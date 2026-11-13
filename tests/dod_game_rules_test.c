@@ -1,6 +1,7 @@
 #include "dod_game.h"
 
 #include <assert.h>
+#include <math.h>
 #include <string.h>
 
 static void test_players_and_weapon_models(void)
@@ -188,6 +189,105 @@ static void test_kill_scoring_and_timed_tie(void)
 	assert(Dod_GetState()->intermission_remaining == 0.0f);
 }
 
+static void test_grenades(void)
+{
+	DodGrenadeDef allies, axis;
+	const char *view_model = 0, *player_model = 0;
+	int i, plan;
+
+	Dod_GameInit();
+	assert(!Dod_GetGrenade(DOD_TEAM_UNASSIGNED, &allies));
+	assert(!Dod_GetGrenade(DOD_TEAM_ALLIES, 0));
+	assert(Dod_GetGrenade(DOD_TEAM_ALLIES, &allies));
+	assert(Dod_GetGrenade(DOD_TEAM_AXIS, &axis));
+	assert(strcmp(allies.view_model, "models/v_grenade.mdl") == 0);
+	assert(strcmp(allies.world_model, "models/w_grenade.mdl") == 0);
+	assert(strcmp(axis.view_model, "models/v_stick.mdl") == 0);
+	assert(strcmp(axis.player_model, "models/p_stick.mdl") == 0);
+	assert(strcmp(axis.world_model, "models/w_stick.mdl") == 0);
+	/* radius follows the HL1 RadiusDamage rule the game DLL applies */
+	assert(allies.radius == allies.damage * 2.5f);
+	{
+		DodLoadout load;
+		int c;
+		for (c = DOD_CLASS_RIFLEMAN; c < DOD_CLASS_COUNT; c++) {
+			assert(Dod_GetLoadout(DOD_TEAM_ALLIES, (DodClass)c, &load));
+			assert(load.grenades <= allies.max_carry);
+			assert(Dod_GetLoadout(DOD_TEAM_AXIS, (DodClass)c, &load));
+			assert(load.grenades <= axis.max_carry);
+		}
+	}
+
+	/* falloff: full at the centre, linear, zero at and beyond the radius */
+	assert(Dod_GrenadeDamageAt(&allies, 0.0f) == allies.damage);
+	assert(Dod_GrenadeDamageAt(&allies, allies.radius * 0.5f) == allies.damage * 0.5f);
+	assert(Dod_GrenadeDamageAt(&allies, allies.radius) == 0.0f);
+	assert(Dod_GrenadeDamageAt(&allies, allies.radius + 1.0f) == 0.0f);
+	assert(Dod_GrenadeDamageAt(&allies, -1.0f) == 0.0f);
+	assert(Dod_GrenadeDamageAt(0, 10.0f) == 0.0f);
+
+	/* throws: lobbing up goes further than a toss down, always clamped */
+	assert(Dod_GrenadeThrowSpeed(&allies, -45.0f) > Dod_GrenadeThrowSpeed(&allies, 45.0f));
+	for (i = -90; i <= 90; i += 5) {
+		const float s = Dod_GrenadeThrowSpeed(&allies, (float)i);
+		assert(s >= 0.0f && s <= allies.throw_speed);
+	}
+	assert(Dod_GrenadeThrowSpeed(0, 0.0f) == 0.0f);
+	assert(Dod_GrenadeThrowPitch(0.0f) == -10.0f);
+	assert(fabsf(Dod_GrenadeThrowPitch(-90.0f) + 90.0f) < 0.001f);
+	assert(fabsf(Dod_GrenadeThrowPitch(90.0f) - 90.0f) < 0.001f);
+
+	/* cooking shortens the fuse and it never goes negative */
+	assert(Dod_GrenadeFuseLeft(&allies, 0.0f) == allies.fuse);
+	assert(Dod_GrenadeFuseLeft(&allies, 2.0f) == allies.fuse - 2.0f);
+	assert(Dod_GrenadeFuseLeft(&allies, allies.fuse + 3.0f) == 0.0f);
+	assert(Dod_GrenadeFuseLeft(&allies, -4.0f) == allies.fuse);
+
+	/* grenade models by team, once connected */
+	assert(Dod_PlayerConnect(1));
+	assert(Dod_PlayerConnect(2));
+	assert(Dod_AssignPlayerTeam(1, DOD_TEAM_ALLIES));
+	assert(Dod_AssignPlayerTeam(2, DOD_TEAM_AXIS));
+	assert(Dod_GetWeaponModels(1, DOD_MODEL_GRENADE, &view_model, &player_model));
+	assert(strcmp(view_model, "models/v_grenade.mdl") == 0 && strcmp(player_model, "models/p_grenade.mdl") == 0);
+	assert(Dod_GetWeaponModels(2, DOD_MODEL_GRENADE, &view_model, &player_model));
+	assert(strcmp(view_model, "models/v_stick.mdl") == 0 && strcmp(player_model, "models/p_stick.mdl") == 0);
+	assert(!Dod_GetWeaponModels(3, DOD_MODEL_GRENADE, &view_model, &player_model));
+
+	/* live cap: refuse past the limit, release frees a slot, never underflows */
+	for (i = 0; i < DOD_MAX_LIVE_GRENADES; i++)
+		assert(Dod_GrenadeAcquire());
+	assert(!Dod_GrenadeAcquire());
+	assert(Dod_GrenadesLive() == DOD_MAX_LIVE_GRENADES);
+	Dod_GrenadeRelease();
+	assert(Dod_GrenadeAcquire());
+	for (i = 0; i < DOD_MAX_LIVE_GRENADES + 4; i++)
+		Dod_GrenadeRelease();
+	assert(Dod_GrenadesLive() == 0);
+	Dod_GrenadeAcquire();
+	Dod_GameInit();
+	assert(Dod_GrenadesLive() == 0);
+
+	/* fx budget: a lone blast gets every layer, a barrage degrades to the
+	 * fireball alone, and the fireball is never dropped; quiet time recovers */
+	plan = Dod_FxPlanExplosion(10.0f);
+	assert(plan == (DOD_FX_FIREBALL | DOD_FX_SMOKE | DOD_FX_SPARKS | DOD_FX_DEBRIS));
+	plan = Dod_FxPlanExplosion(10.2f);
+	assert(plan == (DOD_FX_FIREBALL | DOD_FX_SMOKE | DOD_FX_SPARKS));
+	plan = Dod_FxPlanExplosion(10.4f);
+	assert(plan == (DOD_FX_FIREBALL | DOD_FX_SMOKE));
+	for (i = 0; i < 20; i++) {
+		plan = Dod_FxPlanExplosion(10.5f + 0.01f * (float)i);
+		assert(plan == DOD_FX_FIREBALL);
+	}
+	plan = Dod_FxPlanExplosion(20.0f);
+	assert(plan == (DOD_FX_FIREBALL | DOD_FX_SMOKE | DOD_FX_SPARKS | DOD_FX_DEBRIS));
+	/* a clock that goes backwards (map change) must not wedge the budget */
+	plan = Dod_FxPlanExplosion(1.0f);
+	assert(plan & DOD_FX_FIREBALL);
+	Dod_GameInit();
+}
+
 int main(void)
 {
 	test_players_and_weapon_models();
@@ -197,5 +297,6 @@ int main(void)
 	test_loadouts();
 	test_contested_capture_flip_and_round_win();
 	test_kill_scoring_and_timed_tie();
+	test_grenades();
 	return 0;
 }

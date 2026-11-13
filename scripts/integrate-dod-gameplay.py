@@ -70,6 +70,8 @@ def integrate_weapon(path: Path, class_name: str, kind: str, deploy_anim: str,
 	text = path.read_text()
 	if '#include "dod_game.h"' not in text:
 		text = text.replace('#include "gamerules.h"\n', '#include "gamerules.h"\n#include "dod_game.h"\n', 1)
+		if '#include "dod_game.h"' not in text:  # glock.cpp has no gamerules.h
+			text = text.replace('#include "weapons.h"\n', '#include "weapons.h"\n#include "dod_game.h"\n', 1)
 	if models not in text:
 		anchor = f'\tPRECACHE_MODEL( "models/p_{legacy_model}.mdl" );\n'
 		if anchor not in text:
@@ -156,6 +158,44 @@ def integrate_gc_hud(client: Path) -> None:
 	menu_cpp.write_text(menu_text)
 
 
+def integrate_grenades(dlls: Path) -> None:
+	"""DoD hand grenades: models, fuse, damage and a budgeted explosion."""
+	hand = dlls / "handgrenade.cpp"
+	replace_once(hand, '#include "player.h"\n',
+		'#include "player.h"\n#include "dod_game.h"\n#include "dod_grenade.h"\n')
+	replace_once(hand,
+		'\tPRECACHE_MODEL( "models/p_grenade.mdl" );\n}',
+		'\tPRECACHE_MODEL( "models/p_grenade.mdl" );\n\tDodGrenade_Precache();\n}')
+	replace_once(hand,
+		'\treturn DefaultDeploy( "models/v_grenade.mdl", "models/p_grenade.mdl", HANDGRENADE_DRAW, "crowbar" );\n',
+		'\t{\n'
+		'\t\tconst char *viewModel, *playerModel;\n'
+		'\t\tif( Dod_GameIsActive() && Dod_GetWeaponModels( m_pPlayer->entindex(), DOD_MODEL_GRENADE, &viewModel, &playerModel ) )\n'
+		'\t\t\treturn DefaultDeploy( viewModel, playerModel, HANDGRENADE_DRAW, "crowbar" );\n'
+		'\t}\n'
+		'\treturn DefaultDeploy( "models/v_grenade.mdl", "models/p_grenade.mdl", HANDGRENADE_DRAW, "crowbar" );\n')
+	replace_once(hand,
+		'\tif( !m_flStartThrow && m_pPlayer->m_rgAmmo[m_iPrimaryAmmoType] > 0 )\n',
+		'\tif( !m_flStartThrow && m_pPlayer->m_rgAmmo[m_iPrimaryAmmoType] > 0 && DodGrenade_CanPrime() )\n')
+	replace_once(hand,
+		'\t\tSendWeaponAnim( HANDGRENADE_PINPULL );\n',
+		'\t\tSendWeaponAnim( HANDGRENADE_PINPULL );\n'
+		'\t\tif( Dod_GameIsActive() )\n'
+		'\t\t\tEMIT_SOUND( ENT( m_pPlayer->pev ), CHAN_WEAPON, "weapons/grenpinpull.wav", 1.0f, ATTN_NORM );\n')
+	replace_once(hand,
+		'\t\tCGrenade::ShootTimed( m_pPlayer->pev, vecSrc, vecThrow, time );\n',
+		'\t\t/* DoD: team model, 5s fuse that cooking shortens, capped live count. */\n'
+		'\t\tif( !DodGrenade_Throw( m_pPlayer, gpGlobals->time - m_flStartThrow ) )\n'
+		'\t\t\tCGrenade::ShootTimed( m_pPlayer->pev, vecSrc, vecThrow, time );\n')
+	ggrenade = dlls / "ggrenade.cpp"
+	replace_once(ggrenade, '#include "game.h"\n', '#include "game.h"\n#include "dod_grenade.h"\n')
+	replace_once(ggrenade,
+		'void CGrenade::Explode( TraceResult *pTrace, int bitsDamageType )\n{\n',
+		'void CGrenade::Explode( TraceResult *pTrace, int bitsDamageType )\n{\n'
+		'\tif( DodGrenade_Explode( this, pTrace, bitsDamageType ) )\n'
+		'\t\treturn;\n')
+
+
 def main() -> int:
 	parser = argparse.ArgumentParser()
 	parser.add_argument("--hlsdk-dir", required=True, type=Path)
@@ -167,7 +207,8 @@ def main() -> int:
 	if not (dlls / "CMakeLists.txt").is_file() or not (client / "hud.cpp").is_file():
 		raise SystemExit(f"not an hlsdk-portable source tree: {args.hlsdk_dir}")
 
-	for name in ("dod_game.c", "dod_game.h", "dod_runtime.cpp", "dod_runtime.h"):
+	for name in ("dod_game.c", "dod_game.h", "dod_runtime.cpp", "dod_runtime.h",
+				 "dod_grenade.cpp", "dod_grenade.h"):
 		shutil.copy2(root / "src" / name, dlls / name)
 
 	if args.engine_dir:
@@ -306,11 +347,12 @@ def main() -> int:
 		 '\tPRECACHE_MODEL( "models/p_spade.mdl" );\n'),
 	):
 		integrate_weapon(dlls / filename, class_name, kind, animation, event, legacy_model, models)
+	integrate_grenades(dlls)
 
 	replace_once(
 		dlls / "CMakeLists.txt",
 		"\tmultiplay_gamerules.cpp\n",
-		"\tmultiplay_gamerules.cpp\n\tdod_game.c\n\tdod_runtime.cpp\n",
+		"\tmultiplay_gamerules.cpp\n\tdod_game.c\n\tdod_runtime.cpp\n\tdod_grenade.cpp\n",
 	)
 	replace_once(
 		dlls / "wscript",

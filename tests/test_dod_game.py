@@ -25,6 +25,7 @@ class DodGameRulesTests(unittest.TestCase):
                     str(ROOT / "tests/dod_game_rules_test.c"),
                     "-o",
                     str(binary),
+                    "-lm",
                 ],
                 check=True,
             )

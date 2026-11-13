@@ -83,6 +83,25 @@ CORE_SFX_COMBAT = [
 ]
 
 
+# Hand grenade audio. Always staged with a map (unlike CORE_SFX_COMBAT, which
+# needs --core-sfx): grenades are part of every class loadout. Each clip is
+# cut to a length that stays under the 16 KiB memopt WAV ceiling at 11.025 kHz
+# mono s16 (about 0.7 s), and the engine's ARAM prefetch manifest lists them.
+GRENADE_SFX = {
+    "weapons/explode3.wav": 0.70,
+    "weapons/explode4.wav": 0.70,
+    "weapons/explode5.wav": 0.70,
+    "weapons/grenpinpull.wav": 0.45,
+    "weapons/grenthrow.wav": 0.45,
+    "weapons/grenade_hit1.wav": 0.30,
+    "weapons/grenade_hit2.wav": 0.30,
+    "weapons/grenade_hit3.wav": 0.30,
+    "weapons/debris1.wav": 0.45,
+    "weapons/debris2.wav": 0.45,
+    "weapons/debris3.wav": 0.45,
+}
+
+
 def normalize_sound_path(raw: str) -> str:
     name = raw.replace("\\", "/").lstrip("/")
     if name.lower().startswith("sound/"):
@@ -346,6 +365,35 @@ def stage_core_sfx(
     }
 
 
+def stage_grenade_sfx(
+    dod_sound: Path,
+    lean_sound: Path,
+    valve_sound: Path | None = None,
+    lean_media: Path | None = None,
+) -> dict:
+    """Stage the small grenade clip set (dod sound first, valve as fallback)."""
+    roots = [dod_sound]
+    if valve_sound and valve_sound.is_dir():
+        roots.append(valve_sound)
+    index = build_index(roots)
+    media_root = lean_media if lean_media is not None else lean_sound.parent / "media"
+    staged: list[str] = []
+    missing: list[str] = []
+    total = 0
+    for rel, max_seconds in GRENADE_SFX.items():
+        src, how = resolve_source(rel, index, roots, allow_substitute=False)
+        if src is None:
+            missing.append(rel)
+            continue
+        dest = lean_dest(lean_sound, rel)
+        total += lean_tipsafe_wav(src, dest, max_seconds)
+        if dest.is_file():
+            media_root.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(dest, media_root / f"sfx_{Path(rel).name.lower()}")
+            staged.append(f"{rel} ({how})")
+    return {"files": len(staged), "bytes": total, "missing": missing, "list": staged}
+
+
 def write_manifest(path: Path, payload: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     import json
@@ -442,6 +490,13 @@ def main() -> int:
                     f"  {stem}: refs={len(info['refs'])} staged={len(info['staged'])} "
                     f"subs={subs} miss={miss}"
                 )
+
+        grenades = stage_grenade_sfx(dod / "sound", lean / "sound", valve / "sound")
+        payload["grenade_sfx"] = grenades
+        print(
+            f"grenade SFX: files={grenades['files']} ({grenades['bytes'] / 1024:.0f} KiB)"
+            + (f" missing={grenades['missing']}" if grenades["missing"] else "")
+        )
 
         if args.core_sfx:
             core = stage_core_sfx(dod / "sound", lean / "sound", valve / "sound")
