@@ -248,6 +248,8 @@ pack() {
 			(( DUMPFRAMES )) && echo "dumpframes"
 			[[ -n "$DUMPEYE" ]] && echo "dumpeye $DUMPEYE"
 			[[ -n "$TAS" ]] && echo "tas $TAS"
+			# A networked listen server's second client slot is for the peer, not a bot.
+			(( WANT_NET || HEADLESS )) && echo "dod_bots 0"
 		} > "$LEAN/gamecube.cfg"
 		echo "==> listenserver cfg: $LISTEN net=$([[ $WANT_NET -eq 1 ]] && echo "${NET_IP:-dhcp}" || echo off) world_render=$WORLD_RENDER dumpframes=$DUMPFRAMES tas=${TAS:-off}"
 	elif [[ -n "$CONNECT" ]]; then

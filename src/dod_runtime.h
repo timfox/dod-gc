@@ -2,6 +2,7 @@
 #define DODGC_DOD_RUNTIME_H
 
 #include "teamplay_gamerules.h"
+#include "dod_game.h"
 
 class CHalfLifeDoD : public CHalfLifeTeamplay
 {
@@ -18,5 +19,7 @@ public:
 };
 
 void DodGC_ResetMapObjectives( void );
+/* Put a bot on a team with a class: the same steps a human's menu choices take. */
+void DodGC_BotJoin( CBasePlayer *pPlayer, DodTeam team, DodClass player_class );
 
 #endif

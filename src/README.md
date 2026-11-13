@@ -100,6 +100,41 @@ Not verified in Dolphin: any of the gun behaviour above. The table, loadouts,
 spread and reload maths, integration anchors, audio staging, manifest and the
 engine animation remap have host tests.
 
+## Bots
+
+A default Create Game match is the human plus one bot, with no setup. Bots are
+fake clients (`pfnCreateFakeClient`) driven from `CHalfLifeDoD::Think`:
+`dod_bot.cpp` talks to the engine, `dod_bots.c` holds the host-tested logic.
+
+- **Count.** `dod_bots` (default 1) is the number of bots next to the humans;
+  `dod_bot_skill` (0-3, default 1) tightens their aim. `Dod_BotTargetCount`
+  caps the count by the free client slots and a platform ceiling. Bots are only
+  added once a human is present and are kicked if the cvar drops or a second
+  human fills the slot. A server with no humans has no bots.
+- **Why one on GameCube.** The listen server has exactly two client slots: an
+  `sv_client_t` is about 89 KiB, the 2-slot table is a 178 KiB BSS array, and
+  the packet and frame tables are sized for two. A bot costs one edict and one
+  of those slots. More bots need an engine change (smaller client slots), not
+  more game code, so the GameCube ceiling is 1 (`DOD_BOT_HARD_CAP`); other
+  builds allow 8.
+- **Memory.** A bot shares the player model the human already has loaded and
+  skips viewmodel precache for its weapons (it has no view), so it never spends
+  the studio arena's viewmodel budget. Its class is drawn from cheap infantry
+  classes; each special class (sniper, MG, rocket) is taken at most once per
+  team.
+- **Behaviour.** A bot joins the smaller team, picks the nearest visible enemy,
+  turns toward it at a limited rate with a skill-dependent aim error, keeps a
+  fighting distance, strafes, and fires inside a 6 degree cone (semi-auto
+  weapons release the trigger between shots). With nothing in sight it roams
+  between control points, hopping low obstacles and turning away from walls and
+  ledges. A dead bot presses fire to respawn.
+- **Networked servers.** `build-lean-iso.sh --listen` with `--net` or
+  `--headless` writes `dod_bots 0`, so the second slot stays free for the peer.
+
+Not verified in Dolphin: fake client creation, the AI, respawn and kick. The
+count, team and class selection, turning, aim error and the move decision have
+host tests.
+
 ## Grenades
 
 `dod_grenade.cpp` puts the DoD hand grenade on top of the HL1 `CHandGrenade` /
