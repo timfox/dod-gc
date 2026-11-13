@@ -15,17 +15,21 @@
 #include <math.h>
 #include <string.h>
 
-/* dod_bots: bots on top of the humans (0 = none). dod_bot_skill: aim 0-3. */
-static cvar_t dod_bots = { "dod_bots", "1", FCVAR_SERVER };
-static cvar_t dod_bot_skill = { "dod_bot_skill", "1", FCVAR_SERVER };
-
-/* The GameCube listen server has two client slots (a 178 KiB BSS table), so
- * its ceiling is one bot next to one human. */
+/* dod_bots: bots on top of the humans, filling free slots (0 = none). On
+ * GameCube the engine decides how many slots there are (sv_gc_slots, 2 by
+ * default), so 3 means "fill the server" without ever asking for more than the
+ * slots allow. dod_bot_skill: aim 0-3. dod_bots_online: allow bots while the
+ * network link is up (otherwise the free slot is kept for the peer). */
 #if defined( __GAMECUBE__ )
-#define DOD_BOT_HARD_CAP 1
+static cvar_t dod_bots = { "dod_bots", "3", FCVAR_SERVER };
 #else
-#define DOD_BOT_HARD_CAP 8
+static cvar_t dod_bots = { "dod_bots", "1", FCVAR_SERVER };
 #endif
+static cvar_t dod_bot_skill = { "dod_bot_skill", "1", FCVAR_SERVER };
+static cvar_t dod_bots_online = { "dod_bots_online", "0", FCVAR_SERVER };
+
+/* The most bots ever; the free slots are the real limit. */
+#define DOD_BOT_HARD_CAP 7
 
 #define DOD_BOT_MAX_SLOTS 32
 
@@ -63,6 +67,7 @@ void DodBots_Init( void )
 	{
 		CVAR_REGISTER( &dod_bots );
 		CVAR_REGISTER( &dod_bot_skill );
+		CVAR_REGISTER( &dod_bots_online );
 		g_registered = TRUE;
 	}
 	memset( g_bot, 0, sizeof( g_bot ) );
@@ -163,6 +168,14 @@ static void KickOneBot( void )
 	}
 }
 
+/* The GameCube network stack publishes its address in gc_net_status once the
+ * link is up ("not started" / "no link ..." before). */
+static BOOL NetworkUp( void )
+{
+	const char *status = CVAR_GET_STRING( "gc_net_status" );
+	return status && status[0] >= '0' && status[0] <= '9';
+}
+
 static void PlanBots( void )
 {
 	int humans, bots, team_counts[4], special_counts[4][DOD_CLASS_COUNT], target;
@@ -175,7 +188,9 @@ static void PlanBots( void )
 		g_first_human_time = 0.0f;
 		return;	/* no bots on an empty server */
 	}
-	target = Dod_BotTargetCount( (int)CVAR_GET_FLOAT( "dod_bots" ), gpGlobals->maxClients, humans, DOD_BOT_HARD_CAP );
+	target = Dod_BotTargetCount(
+		Dod_BotRequestedCount( (int)CVAR_GET_FLOAT( "dod_bots" ), NetworkUp(), CVAR_GET_FLOAT( "dod_bots_online" ) != 0.0f ),
+		gpGlobals->maxClients, humans, DOD_BOT_HARD_CAP );
 	if( bots > target )
 		KickOneBot();
 	else if( bots < target && gpGlobals->time - g_first_human_time > 3.0f )

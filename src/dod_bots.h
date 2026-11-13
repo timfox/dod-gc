@@ -20,6 +20,10 @@ extern "C" {
  * than the free client slots, never more than the cap. */
 int Dod_BotTargetCount(int requested, int max_clients, int humans, int hard_cap);
 
+/* The bot count to ask for. A networked listen server (the link is up) keeps
+ * its free slot for the peer unless bots are explicitly allowed online. */
+int Dod_BotRequestedCount(int requested, int network_up, int allowed_online);
+
 /* The team a new bot joins: the smaller one, so bots fill the side the
  * humans are not on. A tie goes to Axis. */
 DodTeam Dod_BotPickTeam(int allies, int axis);

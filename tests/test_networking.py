@@ -72,17 +72,6 @@ pathlib.Path(args[args.index("--output")+1]).write_bytes(cfg.read_bytes())
         self.assertNotIn("netstatic", cfg)
         self.assertNotIn("headless", cfg)
 
-    def test_networked_host_leaves_the_second_slot_to_the_peer(self):
-        for extra in (("--net",), ("--net-ip", "192.168.7.42", "--headless")):
-            result, cfg = self.package("--listen", "dod_flash", *extra)
-            self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertIn("\ndod_bots 0\n", cfg)
-
-    def test_solo_listen_keeps_the_default_bot(self):
-        result, cfg = self.package("--listen", "dod_flash")
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertNotIn("dod_bots", cfg)
-
     def test_client_dhcp(self):
         result, cfg = self.package("--connect", "203.0.113.10:27015", "--net", "--map", "dod_flash")
         self.assertEqual(result.returncode, 0, result.stderr)

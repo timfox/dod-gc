@@ -21,6 +21,13 @@ int Dod_BotTargetCount(int requested, int max_clients, int humans, int hard_cap)
 	return count;
 }
 
+int Dod_BotRequestedCount(int requested, int network_up, int allowed_online)
+{
+	if (requested <= 0)
+		return 0;
+	return network_up && !allowed_online ? 0 : requested;
+}
+
 DodTeam Dod_BotPickTeam(int allies, int axis)
 {
 	return allies < axis ? DOD_TEAM_ALLIES : DOD_TEAM_AXIS;

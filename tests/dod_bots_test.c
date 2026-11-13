@@ -23,6 +23,16 @@ static void test_target_count(void)
 	assert(Dod_BotTargetCount(3, 4, -2, 8) == 3);		/* bad human count is clamped */
 }
 
+static void test_requested_count(void)
+{
+	assert(Dod_BotRequestedCount(3, 0, 0) == 3);	/* offline: as asked */
+	assert(Dod_BotRequestedCount(3, 1, 0) == 0);	/* networked: the slot is for the peer */
+	assert(Dod_BotRequestedCount(3, 1, 1) == 3);	/* unless bots are allowed online */
+	assert(Dod_BotRequestedCount(0, 0, 0) == 0);
+	assert(Dod_BotRequestedCount(-1, 0, 1) == 0);
+	assert(Dod_BotRequestedCount(2, 0, 1) == 2);
+}
+
 static void test_team_pick(void)
 {
 	assert(Dod_BotPickTeam(0, 1) == DOD_TEAM_ALLIES);	/* human on Axis: bot joins Allies */
@@ -30,6 +40,16 @@ static void test_team_pick(void)
 	assert(Dod_BotPickTeam(2, 2) == DOD_TEAM_AXIS);		/* tie */
 	assert(Dod_BotPickTeam(0, 0) == DOD_TEAM_AXIS);
 	assert(Dod_BotPickTeam(3, 5) == DOD_TEAM_ALLIES);
+	{	/* one human on Allies plus three bots fills out to two a side */
+		int allies = 1, axis = 0, i;
+		for (i = 0; i < 3; i++) {
+			if (Dod_BotPickTeam(allies, axis) == DOD_TEAM_ALLIES)
+				allies++;
+			else
+				axis++;
+		}
+		assert(allies == 2 && axis == 2);
+	}
 }
 
 static void test_class_pick(void)
@@ -148,6 +168,7 @@ static void test_decide(void)
 int main(void)
 {
 	test_target_count();
+	test_requested_count();
 	test_team_pick();
 	test_class_pick();
 	test_angles();
