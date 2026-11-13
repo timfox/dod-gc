@@ -224,7 +224,8 @@ def main() -> int:
 
 	for name in ("dod_game.c", "dod_game.h", "dod_runtime.cpp", "dod_runtime.h",
 				 "dod_grenade.cpp", "dod_grenade.h", "dod_weapons.c", "dod_weapons.h",
-				 "dod_weapon.cpp", "dod_weapon.h"):
+				 "dod_weapon.cpp", "dod_weapon.h", "dod_bots.c", "dod_bots.h",
+				 "dod_bot.cpp", "dod_bot.h"):
 		shutil.copy2(root / "src" / name, dlls / name)
 
 	if args.engine_dir:
@@ -352,14 +353,15 @@ def main() -> int:
 	replace_once(
 		dlls / "CMakeLists.txt",
 		"\tmultiplay_gamerules.cpp\n",
-		"\tmultiplay_gamerules.cpp\n\tdod_game.c\n\tdod_weapons.c\n\tdod_runtime.cpp\n\tdod_grenade.cpp\n\tdod_weapon.cpp\n",
+		"\tmultiplay_gamerules.cpp\n\tdod_game.c\n\tdod_weapons.c\n\tdod_runtime.cpp\n\tdod_grenade.cpp\n\tdod_weapon.cpp\n\tdod_bots.c\n\tdod_bot.cpp\n",
 	)
 	replace_once(
 		dlls / "wscript",
 		"\tsource = bld.path.ant_glob('**/*.cpp', excl=excluded_files)\n",
 		"\tsource = bld.path.ant_glob('**/*.cpp', excl=excluded_files)\n"
 		"\tsource += bld.path.ant_glob('dod_game.c')\n"
-		"\tsource += bld.path.ant_glob('dod_weapons.c')\n",
+		"\tsource += bld.path.ant_glob('dod_weapons.c')\n"
+		"\tsource += bld.path.ant_glob('dod_bots.c')\n",
 	)
 	replace_once(
 		dlls / "gamerules.cpp",
