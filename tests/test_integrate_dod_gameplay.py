@@ -220,10 +220,13 @@ class WeaponHookIntegrationTest(unittest.TestCase):
 
 	def test_new_sources_are_copied_and_built(self):
 		source = SCRIPT.read_text()
-		for name in ("dod_weapons.c", "dod_weapons.h", "dod_weapon.cpp", "dod_weapon.h"):
+		for name in ("dod_weapons.c", "dod_weapons.h", "dod_weapon.cpp", "dod_weapon.h",
+				"dod_bots.c", "dod_bots.h", "dod_bot.cpp", "dod_bot.h"):
 			self.assertIn(f'"{name}"', source)
 		self.assertIn("dod_weapon.cpp", source.split("CMakeLists.txt")[1])
 		self.assertIn("ant_glob('dod_weapons.c')", source)
+		self.assertIn("ant_glob('dod_bots.c')", source)
+		self.assertIn("\\tdod_bots.c\\n\\tdod_bot.cpp\\n", source)
 
 
 class HudIntegrationTest(unittest.TestCase):
@@ -312,13 +315,13 @@ class SourceSyncTest(unittest.TestCase):
 			for name in INTEGRATOR.DOD_DLL_SOURCES:
 				(src / name).write_text("new " + name)
 				(dlls / name).write_text("old " + name)
-			(dlls / "dod_bot.cpp").write_text("from another branch")
-			(dlls / "dod_bots.h").write_text("from another branch")
+			(dlls / "dod_old_bot.cpp").write_text("from another branch")
+			(dlls / "dod_old_bots.h").write_text("from another branch")
 			(dlls / "weapons.cpp").write_text("upstream")
 			(dlls / "dod_notes.txt").write_text("not a source")
 			removed = INTEGRATOR.sync_dod_sources(src, dlls)
-			self.assertEqual(removed, ["dod_bot.cpp", "dod_bots.h"])
-			self.assertFalse((dlls / "dod_bot.cpp").exists())
+			self.assertEqual(removed, ["dod_old_bot.cpp", "dod_old_bots.h"])
+			self.assertFalse((dlls / "dod_old_bot.cpp").exists())
 			self.assertTrue((dlls / "weapons.cpp").exists(), "upstream files are never touched")
 			self.assertTrue((dlls / "dod_notes.txt").exists(), "only C/C++ sources are removed")
 			for name in INTEGRATOR.DOD_DLL_SOURCES:

@@ -21,10 +21,21 @@ checkout() {
 checkout https://github.com/extremscorner/libogc2.git "$DEST/sources/libogc2" "$OGC_REV"
 checkout https://github.com/extremscorner/libfat.git "$DEST/sources/libfat" "$FAT_REV"
 export DEVKITPRO="$DEST/devkitpro" DEVKITPPC="$BASE/devkitPPC"
+# Lean lwIP pools (PBUF_POOL_SIZE 24, MEM_SIZE 64K): the stock desktop-sized pools cost
+# ~420 KiB of MEM1 .bss and starve the engine heap on BBA-linked builds. Idempotent.
+LWIP_PATCH="$ROOT/scripts/patches/libogc2-lwip-lean.patch"
+if git -C "$DEST/sources/libogc2" apply --check "$LWIP_PATCH" 2>/dev/null; then
+	git -C "$DEST/sources/libogc2" apply "$LWIP_PATCH"
+	LWIP_CHANGED=1
+elif ! git -C "$DEST/sources/libogc2" apply --check --reverse "$LWIP_PATCH" 2>/dev/null; then
+	echo "error: lean lwIP patch neither applies nor is already applied" >&2
+	exit 1
+fi
 export PATH="$BASE/tools/bin:$DEVKITPPC/bin:$PATH"
 # libogc2's unused MP3 player wrappers need the libmad declarations to build.
 # They are not linked by this port. libmad itself must match libogc2 if used.
 export C_INCLUDE_PATH="${DODGC_LIBMAD_INCLUDE:-$BASE/libogc/include}${C_INCLUDE_PATH:+:$C_INCLUDE_PATH}"
+[[ -z "${LWIP_CHANGED:-}" ]] || make -C "$DEST/sources/libogc2" clean
 make -C "$DEST/sources/libogc2" cube -j"${DODGC_BUILD_JOBS:-4}"
 cp -a "$DEST/sources/libogc2/include/." "$DEVKITPRO/libogc2/gamecube/include/"
 cp "$DEST/sources/libogc2/lib/cube/"*.a "$DEVKITPRO/libogc2/gamecube/lib/"
