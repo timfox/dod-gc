@@ -211,6 +211,31 @@ def integrate_grenades(dlls: Path) -> None:
 		'\t\treturn;\n')
 
 
+# Every game DLL source this repo owns. src/ holds nothing else named dod_*.
+DOD_DLL_SOURCES = (
+	"dod_game.c", "dod_game.h", "dod_runtime.cpp", "dod_runtime.h",
+	"dod_grenade.cpp", "dod_grenade.h", "dod_weapons.c", "dod_weapons.h",
+	"dod_weapon.cpp", "dod_weapon.h",
+)
+
+
+def sync_dod_sources(src: Path, dlls: Path) -> list[str]:
+	"""Copy our sources into the HLSDK tree and delete the ones we no longer own.
+
+	The tree is shared between branches and the overlay only ever added files, so
+	a source from another branch (a bots file, say) lingered and broke the build
+	of a branch that does not have it. Returns the names that were removed.
+	"""
+	removed = []
+	for stale in sorted(dlls.glob("dod_*")):
+		if stale.is_file() and stale.suffix in (".c", ".cpp", ".h") and stale.name not in DOD_DLL_SOURCES:
+			stale.unlink()
+			removed.append(stale.name)
+	for name in DOD_DLL_SOURCES:
+		shutil.copy2(src / name, dlls / name)
+	return removed
+
+
 def main() -> int:
 	parser = argparse.ArgumentParser()
 	parser.add_argument("--hlsdk-dir", required=True, type=Path)
@@ -222,10 +247,9 @@ def main() -> int:
 	if not (dlls / "CMakeLists.txt").is_file() or not (client / "hud.cpp").is_file():
 		raise SystemExit(f"not an hlsdk-portable source tree: {args.hlsdk_dir}")
 
-	for name in ("dod_game.c", "dod_game.h", "dod_runtime.cpp", "dod_runtime.h",
-				 "dod_grenade.cpp", "dod_grenade.h", "dod_weapons.c", "dod_weapons.h",
-				 "dod_weapon.cpp", "dod_weapon.h"):
-		shutil.copy2(root / "src" / name, dlls / name)
+	removed = sync_dod_sources(root / "src", dlls)
+	if removed:
+		print("removed stale DoD sources from the HLSDK tree: " + ", ".join(removed))
 
 	if args.engine_dir:
 		main_menu = args.engine_dir / "3rdparty/mainui/menus/Main.cpp"

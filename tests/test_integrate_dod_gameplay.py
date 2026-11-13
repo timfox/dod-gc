@@ -226,5 +226,35 @@ class WeaponHookIntegrationTest(unittest.TestCase):
 		self.assertIn("ant_glob('dod_weapons.c')", source)
 
 
+class SourceSyncTest(unittest.TestCase):
+	def test_list_covers_every_dod_source_in_src(self):
+		src = Path(__file__).resolve().parents[1] / "src"
+		on_disk = {p.name for p in src.glob("dod_*") if p.suffix in (".c", ".cpp", ".h")}
+		self.assertEqual(on_disk, set(INTEGRATOR.DOD_DLL_SOURCES),
+			"a new src/dod_* file must be added to DOD_DLL_SOURCES (and built)")
+
+	def test_stale_sources_are_removed_and_current_ones_copied(self):
+		with tempfile.TemporaryDirectory() as directory:
+			root = Path(directory)
+			src, dlls = root / "src", root / "dlls"
+			src.mkdir()
+			dlls.mkdir()
+			for name in INTEGRATOR.DOD_DLL_SOURCES:
+				(src / name).write_text("new " + name)
+				(dlls / name).write_text("old " + name)
+			(dlls / "dod_bot.cpp").write_text("from another branch")
+			(dlls / "dod_bots.h").write_text("from another branch")
+			(dlls / "weapons.cpp").write_text("upstream")
+			(dlls / "dod_notes.txt").write_text("not a source")
+			removed = INTEGRATOR.sync_dod_sources(src, dlls)
+			self.assertEqual(removed, ["dod_bot.cpp", "dod_bots.h"])
+			self.assertFalse((dlls / "dod_bot.cpp").exists())
+			self.assertTrue((dlls / "weapons.cpp").exists(), "upstream files are never touched")
+			self.assertTrue((dlls / "dod_notes.txt").exists(), "only C/C++ sources are removed")
+			for name in INTEGRATOR.DOD_DLL_SOURCES:
+				self.assertEqual((dlls / name).read_text(), "new " + name)
+			self.assertEqual(INTEGRATOR.sync_dod_sources(src, dlls), [], "a second run removes nothing")
+
+
 if __name__ == "__main__":
 	unittest.main()
