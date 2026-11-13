@@ -100,6 +100,16 @@ static void test_status_line(void)
 	Dod_StartRound(0.0f);
 	Dod_FormatStatus(line, sizeof(line));
 	assert(strcmp(line, "Allies 0  Axis 0 | Points 0-0") == 0);
+	/* a match tally adds the round and the rounds won */
+	Dod_GameInit();
+	Dod_SetRoundsToWin(2);
+	Dod_StartRound(125.0f);
+	Dod_FormatStatus(line, sizeof(line));
+	assert(strcmp(line, "Allies 0  Axis 0 | Points 0-0 | 2:05 | Round 1 (0-0)") == 0);
+	Dod_EndRound(DOD_TEAM_AXIS);
+	Dod_FormatStatus(line, sizeof(line));
+	assert(strcmp(line, "Allies 0  Axis 0 | Points 0-0 | Round 1 (0-1)") == 0);
+	assert(Dod_FormatStatus(tiny, sizeof(tiny)) == 7);
 	Dod_GameShutdown();
 }
 
@@ -407,6 +417,116 @@ static void test_weapon_table(void)
 	assert(!Dod_WeaponMayFire(0, 0));
 }
 
+static void tick_to_capture(int id, DodTeam team)
+{
+	/* hold a point with one player until it flips */
+	int guard = 0;
+	while (!Dod_TickObjective(id, team == DOD_TEAM_ALLIES, team == DOD_TEAM_AXIS, 1.0f) && ++guard < 100)
+		;
+	assert(guard < 100);
+}
+
+static void test_match_loop(void)
+{
+	const DodGameRulesState *state;
+	const DodPlayerState *player;
+	int serial, i;
+
+	Dod_GameInit();
+	assert(Dod_PlayerConnect(1) && Dod_PlayerConnect(2));
+	assert(Dod_AssignPlayerTeam(1, DOD_TEAM_ALLIES) && Dod_AssignPlayerTeam(2, DOD_TEAM_AXIS));
+	assert(Dod_SelectPlayerClass(1, DOD_CLASS_SNIPER));
+	/* Axis start with both points; Allies must take them. */
+	assert(Dod_RegisterObjective(0, DOD_OBJ_CAPTURE_POINT, DOD_TEAM_AXIS, 2.0f, 60.0f));
+	assert(Dod_RegisterObjective(1, DOD_OBJ_CAPTURE_POINT, DOD_TEAM_AXIS, 2.0f, 0.0f));
+	Dod_SetRoundsToWin(2);
+	Dod_StartRound(300.0f);
+	state = Dod_GetState();
+	assert(state->round_number == 1 && state->rounds_to_win == 2);
+	assert(state->phase == DOD_ROUND_ACTIVE && state->restart_serial == 0);
+	assert(Dod_GetObjective(0)->default_owner == DOD_TEAM_AXIS);
+
+	/* Owning every point at the start is not a win: only a capture ends the round. */
+	Dod_Think(1.0f);
+	assert(state->phase == DOD_ROUND_ACTIVE);
+
+	/* Allies take both points: round one goes to Allies. */
+	Dod_RecordKill(1, 2);
+	assert(state->allies_score >= 1);
+	tick_to_capture(0, DOD_TEAM_ALLIES);
+	assert(state->phase == DOD_ROUND_ACTIVE && state->controlled_objectives[DOD_TEAM_ALLIES] == 1);
+	tick_to_capture(1, DOD_TEAM_ALLIES);
+	assert(state->phase == DOD_ROUND_INTERMISSION && state->winner == DOD_TEAM_ALLIES);
+	assert(state->rounds_won[DOD_TEAM_ALLIES] == 1 && state->rounds_won[DOD_TEAM_AXIS] == 0);
+
+	/* Nothing scores between rounds (kills are still recorded). */
+	{
+		const int score = state->allies_score;
+		Dod_RecordKill(1, 2);
+		Dod_Think(0.5f);
+		assert(state->allies_score == score);
+		assert(Dod_GetPlayer(1)->kills == 2);
+	}
+	/* A tick on a point during the intermission does nothing. */
+	assert(!Dod_TickObjective(0, 0, 1, 100.0f));
+
+	/* The intermission runs out and the next round starts by itself. */
+	serial = state->restart_serial;
+	Dod_Think(DOD_INTERMISSION_SECONDS);
+	assert(state->phase == DOD_ROUND_ACTIVE && state->round_active);
+	assert(state->restart_serial == serial + 1);
+	assert(state->round_number == 2);
+	assert(state->winner == DOD_TEAM_UNASSIGNED);
+	assert(state->allies_score == 0 && state->axis_score == 0);	/* round scores reset */
+	assert(state->round_time_remaining == 300.0f);
+	assert(Dod_GetObjective(0)->owner == DOD_TEAM_AXIS && Dod_GetObjective(1)->owner == DOD_TEAM_AXIS);
+	assert(state->controlled_objectives[DOD_TEAM_AXIS] == 2 && state->controlled_objectives[DOD_TEAM_ALLIES] == 0);
+	assert(state->rounds_won[DOD_TEAM_ALLIES] == 1);		/* the tally carries over */
+	player = Dod_GetPlayer(1);
+	assert(player->connected && player->team == DOD_TEAM_ALLIES && player->player_class == DOD_CLASS_SNIPER);
+	assert(state->match_serial == 0);
+
+	/* A timed-out round with a lead goes to the leader; a second win ends the match. */
+	Dod_RecordKill(1, 2);
+	Dod_Think(300.0f);
+	assert(state->phase == DOD_ROUND_INTERMISSION && state->winner == DOD_TEAM_ALLIES);
+	assert(state->rounds_won[DOD_TEAM_ALLIES] == 2);
+	serial = state->restart_serial;
+	Dod_Think(DOD_INTERMISSION_SECONDS);
+	assert(state->match_serial == 1 && state->match_winner == DOD_TEAM_ALLIES);
+	assert(state->rounds_won[DOD_TEAM_ALLIES] == 0 && state->rounds_won[DOD_TEAM_AXIS] == 0);
+	assert(state->round_number == 1);			/* a fresh match starts at round one */
+	assert(state->restart_serial == serial + 1 && state->phase == DOD_ROUND_ACTIVE);
+	player = Dod_GetPlayer(1);
+	assert(player->kills == 0 && player->deaths == 0 && player->objective_score == 0);
+	assert(player->team == DOD_TEAM_ALLIES && player->player_class == DOD_CLASS_SNIPER);
+
+	/* A drawn round awards nobody and the loop keeps going. */
+	Dod_Think(300.0f);
+	assert(state->phase == DOD_ROUND_INTERMISSION && state->winner == DOD_TEAM_UNASSIGNED);
+	assert(state->rounds_won[DOD_TEAM_ALLIES] == 0 && state->rounds_won[DOD_TEAM_AXIS] == 0);
+	Dod_Think(DOD_INTERMISSION_SECONDS);
+	assert(state->phase == DOD_ROUND_ACTIVE && state->match_serial == 1);
+
+	/* Rounds repeat forever with no match limit, and a zero-length clock never times out. */
+	Dod_GameInit();
+	assert(Dod_RegisterObjective(0, DOD_OBJ_CAPTURE_POINT, DOD_TEAM_UNASSIGNED, 1.0f, 0.0f));
+	Dod_StartRound(0.0f);
+	for (i = 0; i < 100; i++)
+		Dod_Think(60.0f);
+	assert(state->phase == DOD_ROUND_ACTIVE);
+	Dod_EndRound(DOD_TEAM_ALLIES);
+	for (i = 0; i < 5; i++) {
+		Dod_Think(DOD_INTERMISSION_SECONDS);
+		assert(state->phase == DOD_ROUND_ACTIVE);
+		Dod_EndRound(DOD_TEAM_AXIS);
+	}
+	assert(state->match_serial == 0 && state->rounds_won[DOD_TEAM_AXIS] == 5);
+	Dod_SetRoundsToWin(-4);
+	assert(state->rounds_to_win == 0);
+	Dod_GameInit();
+}
+
 int main(void)
 {
 	test_players_and_weapon_models();
@@ -418,5 +538,6 @@ int main(void)
 	test_kill_scoring_and_timed_tie();
 	test_grenades();
 	test_weapon_table();
+	test_match_loop();
 	return 0;
 }

@@ -100,6 +100,33 @@ Not verified in Dolphin: any of the gun behaviour above. The table, loadouts,
 spread and reload maths, integration anchors, audio staging, manifest and the
 engine animation remap have host tests.
 
+## Match loop
+
+Rounds repeat by themselves, so a Create Game match plays on without anyone
+touching the console. The state machine is in `dod_game.c` and is host-tested.
+
+- **Round end.** A round ends when one team captures the last point it did not
+  own (owning every point at the start is not a win), or when the clock runs
+  out. A timed-out round goes to the team with more points, or is a draw.
+  `dod_roundtime` (default 600 s) is the length when `mp_timelimit` is 0.
+- **Intermission and restart.** Eight seconds after a round ends the next one
+  starts: scores zero, every control point returns to its starting owner, the
+  clock resets, and the game DLL respawns everyone (bots included) with a fresh
+  loadout. Teams and classes are kept. Nothing scores between rounds, though
+  kills are still recorded.
+- **Match.** Each round win is tallied. The first team to `dod_rounds` (default
+  2, 0 for endless rounds) wins the match: the tally and everyone's kills,
+  deaths and objective score reset and a new match starts at round one.
+- **Scoring.** A kill is 1 point, a capture 5, and every held point earns 2 a
+  minute (control points used to score nothing in game).
+- **HUD.** The status strip shows the round and the tally next to the score,
+  held points and clock, e.g. `Allies 5  Axis 3 | Points 2-1 | 4:10 | Round 2
+  (1-0)`. The round end and restart messages show on the centre of the screen.
+
+Not done: flag models on the control points (three small models would each
+spend studio arena memory), a retail-style graphical HUD, and a map change after
+a match. Not verified in Dolphin: the respawn on restart.
+
 ## Grenades
 
 `dod_grenade.cpp` puts the DoD hand grenade on top of the HL1 `CHandGrenade` /
