@@ -1,4 +1,5 @@
 /* Day of Defeat bots (fake clients); see dod_bot.h and dod_bots.c. */
+#include <stdlib.h>
 #include "extdll.h"
 #include "util.h"
 #include "cbase.h"
@@ -31,7 +32,11 @@ static cvar_t dod_bots_online = { "dod_bots_online", "0", FCVAR_SERVER };
 /* The most bots ever; the free slots are the real limit. */
 #define DOD_BOT_HARD_CAP 7
 
+#if defined( __GAMECUBE__ )
+#define DOD_BOT_MAX_SLOTS 4	/* the listen server has 2 client slots */
+#else
 #define DOD_BOT_MAX_SLOTS 32
+#endif
 
 typedef struct DodBotState {
 	float yaw, pitch;		/* current view */
@@ -48,7 +53,51 @@ typedef struct DodBotState {
 	DodBotStuck stuck;
 } DodBotState;
 
-static DodBotState g_bot[DOD_BOT_MAX_SLOTS + 1];
+/* Per-bot state is heap allocated only while bots exist (the BSS it used to
+ * take is MEM1 the menu and map load want). Bounded by a byte budget, freed on
+ * map change and when the last bot leaves; if the heap cannot give it, no bot
+ * is added rather than failing later. */
+#define DOD_BOT_MEM_BUDGET 1024
+static DodBotState *g_bot;
+static int g_bot_slots;		/* entries allocated, indexed by entity index */
+
+static DodBotState *BotState( int index )
+{
+	return g_bot && index >= 0 && index < g_bot_slots ? &g_bot[index] : NULL;
+}
+
+static void FreeBotState( void )
+{
+	if( g_bot )
+		free( g_bot );
+	g_bot = NULL;
+	g_bot_slots = 0;
+}
+
+/* Bytes the bot state holds right now (for budget reporting). */
+int DodBots_MemoryBytes( void )
+{
+	return g_bot_slots * (int)sizeof( DodBotState );
+}
+
+static BOOL EnsureBotState( void )
+{
+	int slots = gpGlobals->maxClients + 1;
+	if( g_bot )
+		return TRUE;
+	if( slots > DOD_BOT_MAX_SLOTS + 1 )
+		slots = DOD_BOT_MAX_SLOTS + 1;
+	if( slots * (int)sizeof( DodBotState ) > DOD_BOT_MEM_BUDGET )
+		slots = DOD_BOT_MEM_BUDGET / (int)sizeof( DodBotState );
+	if( slots < 2 )
+		return FALSE;
+	g_bot = (DodBotState *)calloc( slots, sizeof( DodBotState ) );
+	if( !g_bot )
+		return FALSE;
+	g_bot_slots = slots;
+	ALERT( at_console, "DoD bots: state %d bytes (%d slots, budget %d)\n", DodBots_MemoryBytes(), slots, DOD_BOT_MEM_BUDGET );
+	return TRUE;
+}
 static BOOL g_registered;
 static BOOL g_granting;
 static float g_next_plan;
@@ -71,7 +120,7 @@ void DodBots_Init( void )
 		CVAR_REGISTER( &dod_bots_online );
 		g_registered = TRUE;
 	}
-	memset( g_bot, 0, sizeof( g_bot ) );
+	FreeBotState();
 	g_next_plan = 0.0f;
 	g_first_human_time = 0.0f;
 }
@@ -134,6 +183,8 @@ static void AddBot( int team_counts[4], int special_counts[4][DOD_CLASS_COUNT] )
 	DodTeam team;
 	DodClass player_class;
 
+	if( !EnsureBotState() )
+		return;	/* out of memory or budget: no bot */
 	pEdict = ( *g_engfuncs.pfnCreateFakeClient )( name );
 	if( FNullEnt( pEdict ) )
 		return;	/* no free client slot after all */
@@ -146,8 +197,14 @@ static void AddBot( int team_counts[4], int special_counts[4][DOD_CLASS_COUNT] )
 		return;
 	team = Dod_BotPickTeam( team_counts[DOD_TEAM_ALLIES], team_counts[DOD_TEAM_AXIS] );
 	player_class = Dod_BotPickClass( RANDOM_LONG( 0, 1000 ), special_counts[team] );
-	memset( &g_bot[ENTINDEX( pEdict )], 0, sizeof( DodBotState ) );
-	g_bot[ENTINDEX( pEdict )].active = 1;
+	{
+		DodBotState *state = BotState( ENTINDEX( pEdict ) );
+		if( state )
+		{
+			memset( state, 0, sizeof( DodBotState ) );
+			state->active = 1;
+		}
+	}
 	DodGC_BotJoin( pBot, team, player_class );
 	team_counts[team]++;
 	special_counts[team][player_class]++;
@@ -163,7 +220,8 @@ static void KickOneBot( void )
 		if( pPlayer && DodBots_IsBot( pPlayer ) )
 		{
 			SERVER_COMMAND( UTIL_VarArgs( "kick \"%s\"\n", STRING( pPlayer->pev->netname ) ) );
-			g_bot[i].active = 0;
+			if( BotState( i ) )
+				BotState( i )->active = 0;
 			return;
 		}
 	}
@@ -192,6 +250,8 @@ static void PlanBots( void )
 	target = Dod_BotTargetCount(
 		Dod_BotRequestedCount( (int)CVAR_GET_FLOAT( "dod_bots" ), NetworkUp(), CVAR_GET_FLOAT( "dod_bots_online" ) != 0.0f ),
 		gpGlobals->maxClients, humans, DOD_BOT_HARD_CAP );
+	if( bots == 0 && target == 0 )
+		FreeBotState();
 	if( bots > target )
 		KickOneBot();
 	else if( bots < target && gpGlobals->time - g_first_human_time > 3.0f )
@@ -274,7 +334,9 @@ static float PitchTo( const Vector &from, const Vector &to )
 
 static void RunBot( int index, CBasePlayer *pBot )
 {
-	DodBotState *state = &g_bot[index];
+	DodBotState *state = BotState( index );
+	if( !state )
+		return;
 	const float dt = gpGlobals->frametime > 0.0f ? gpGlobals->frametime : 0.016f;
 	int msec_value = (int)( dt * 1000.0f );
 	if( msec_value < 1 ) msec_value = 1;
