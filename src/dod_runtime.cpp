@@ -187,6 +187,10 @@ void DodGC_BotJoin( CBasePlayer *pPlayer, DodTeam team, DodClass player_class )
 	if( g_pGameRules && stricmp( pPlayer->m_szTeamName, Dod_TeamName( team ) ) )
 		( (CHalfLifeDoD *)g_pGameRules )->ChangePlayerTeam( pPlayer, Dod_TeamName( team ), TRUE, FALSE );
 	Dod_AssignPlayerTeam( index, team );
+	/* ClientPutInServer spawned the bot before it had a team (default spot, no kit): spawn
+	 * again now so it uses its own team's info_player_* spawn points. */
+	pPlayer->Spawn();
+	Dod_AssignPlayerTeam( index, team );	/* Spawn() resets the DoD team record */
 	DodGC_ApplyClass( pPlayer, player_class );
 }
 
