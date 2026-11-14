@@ -14,5 +14,7 @@ void DodBots_Think( void );
 void DodBots_SetGranting( BOOL granting );
 BOOL DodBots_Granting( void );
 BOOL DodBots_IsBot( CBasePlayer *pPlayer );
+/* Bytes of heap the bot state holds right now (0 with no bots). */
+int DodBots_MemoryBytes( void );
 
 #endif

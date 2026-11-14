@@ -235,6 +235,10 @@ pack() {
 		fi
 		{
 			echo "video prog"
+			# worldrender listen skips game.cfg, so select the DoD rules here
+			# (InstallGameRules reads mp_teamplay); otherwise no DoD rules, no bots.
+			echo "mp_teamplay 1"
+			echo "mp_teamlist \"Allies;Axis\""
 			echo "listenserver $LISTEN"
 			(( WANT_NET )) && write_net_config
 			(( HEADLESS )) && echo headless
@@ -245,6 +249,8 @@ pack() {
 			# PVS/frustum CapFaces path does not need a static DL.
 			# Solo listen needs pad → engfuncs; without this CapFaces is view-only.
 			echo "gcplayerinput"
+			# Extra gamecube.cfg lines, e.g. DODGC_EXTRA_CFG="retailnewgame" (real play route).
+			[[ -n "${DODGC_EXTRA_CFG:-}" ]] && printf '%b\n' "$DODGC_EXTRA_CFG"
 			(( DUMPFRAMES )) && echo "dumpframes"
 			[[ -n "$DUMPEYE" ]] && echo "dumpeye $DUMPEYE"
 			[[ -n "$TAS" ]] && echo "tas $TAS"
