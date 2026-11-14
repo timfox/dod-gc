@@ -284,9 +284,12 @@ PY
 	# Full BSP PVS cluster display lists (media/wd_<map>.gcd) — preferred over
 	# CapFaces lean densify when present (ref/gx/r_gx_worlddl.c). Opt-in: the
 	# file is large and interactive menu discs should stay CapFaces-only until
-	# a listen/worlddl probe sets DODGC_STAGE_WORLDDL=1.
+	# Staged by default for any disc with a map: the engine decides to skip the
+	# CapFaces densify when the pack is merely *listed* (mod_bmodel.c, "world DL
+	# pack hit"); without the file on the disc the world then draws zero faces.
+	# Set DODGC_STAGE_WORLDDL=0 to leave it out.
 	rm -f "$LEAN/media/wd_${stem}.gcd"
-	if [[ "${DODGC_STAGE_WORLDDL:-0}" == "1" ]]; then
+	if [[ "${DODGC_STAGE_WORLDDL:-1}" == "1" ]]; then
 		wd_src=""
 		for cand in \
 			"$SRC/media/wd_${stem}.gcd" \
@@ -305,7 +308,7 @@ PY
 			echo "world DL: no media/wd_${stem}.gcd (CapFaces/live BSP fallback)"
 		fi
 	else
-		echo "world DL: skipped (set DODGC_STAGE_WORLDDL=1 for listen/worlddl discs)"
+		echo "world DL: skipped (DODGC_STAGE_WORLDDL=0)"
 	fi
 
 	# World CMPR texture pack (media/wt_<map>.gct) — WorldDL / CapFaces resolve
