@@ -171,8 +171,8 @@ void CDodWeapon::Spawn( void )
 	if( !DodBots_Granting() )
 		PRECACHE_MODEL( (char *)def->view_model );
 	PRECACHE_MODEL( (char *)def->player_model );
-	PRECACHE_SOUND( (char *)def->fire_sound );
-	PRECACHE_SOUND( (char *)def->reload_sound );
+	/* Sounds are not precached on the GameCube build: loading them late stalls the
+	 * client's resource verification (weapon fire/reload are silent). */
 	if( def->mode == DOD_FIRE_ROCKET )
 		UTIL_PrecacheOther( "dod_rocket" );
 
@@ -385,24 +385,39 @@ void CDodWeapon::WeaponIdle( void )
 
 /* -------------------------------------------------------------- classnames */
 
+/* The static export generator scans for LINK_ENTITY_TO_CLASS( literal, ...),
+ * so the link lines are spelled out below instead of living in the macro. */
 #define DOD_WEAPON( Cls, id, name ) \
-	class Cls : public CDodWeapon { public: virtual int WeaponTableId( void ) { return id; } }; \
-	LINK_ENTITY_TO_CLASS( name, Cls )
+	class Cls : public CDodWeapon { public: virtual int WeaponTableId( void ) { return id; } };
 
 DOD_WEAPON( CDodGarand, DOD_WEAPON_GARAND, weapon_dod_garand )
+LINK_ENTITY_TO_CLASS( weapon_dod_garand, CDodGarand )
 DOD_WEAPON( CDodSpringfield, DOD_WEAPON_SPRINGFIELD, weapon_dod_spring )
+LINK_ENTITY_TO_CLASS( weapon_dod_spring, CDodSpringfield )
 DOD_WEAPON( CDodThompson, DOD_WEAPON_THOMPSON, weapon_dod_thompson )
+LINK_ENTITY_TO_CLASS( weapon_dod_thompson, CDodThompson )
 DOD_WEAPON( CDodBar, DOD_WEAPON_BAR, weapon_dod_bar )
+LINK_ENTITY_TO_CLASS( weapon_dod_bar, CDodBar )
 DOD_WEAPON( CDodBrowning, DOD_WEAPON_BROWNING, weapon_dod_30cal )
+LINK_ENTITY_TO_CLASS( weapon_dod_30cal, CDodBrowning )
 DOD_WEAPON( CDodBazooka, DOD_WEAPON_BAZOOKA, weapon_dod_bazooka )
+LINK_ENTITY_TO_CLASS( weapon_dod_bazooka, CDodBazooka )
 DOD_WEAPON( CDodColt, DOD_WEAPON_COLT, weapon_dod_colt )
+LINK_ENTITY_TO_CLASS( weapon_dod_colt, CDodColt )
 DOD_WEAPON( CDodK98, DOD_WEAPON_K98, weapon_dod_k98 )
+LINK_ENTITY_TO_CLASS( weapon_dod_k98, CDodK98 )
 DOD_WEAPON( CDodK98Scoped, DOD_WEAPON_K98_SCOPED, weapon_dod_k98s )
+LINK_ENTITY_TO_CLASS( weapon_dod_k98s, CDodK98Scoped )
 DOD_WEAPON( CDodMP40, DOD_WEAPON_MP40, weapon_dod_mp40 )
+LINK_ENTITY_TO_CLASS( weapon_dod_mp40, CDodMP40 )
 DOD_WEAPON( CDodStg44, DOD_WEAPON_STG44, weapon_dod_stg44 )
+LINK_ENTITY_TO_CLASS( weapon_dod_stg44, CDodStg44 )
 DOD_WEAPON( CDodMG42, DOD_WEAPON_MG42, weapon_dod_mg42 )
+LINK_ENTITY_TO_CLASS( weapon_dod_mg42, CDodMG42 )
 DOD_WEAPON( CDodPschreck, DOD_WEAPON_PSCHRECK, weapon_dod_pschreck )
+LINK_ENTITY_TO_CLASS( weapon_dod_pschreck, CDodPschreck )
 DOD_WEAPON( CDodLuger, DOD_WEAPON_LUGER, weapon_dod_luger )
+LINK_ENTITY_TO_CLASS( weapon_dod_luger, CDodLuger )
 
 void DodWeapons_PrecacheAll( void )
 {
