@@ -45,6 +45,7 @@ typedef struct DodBotState {
 	int fire_phase;
 	float next_respawn_press;
 	int active;
+	DodBotStuck stuck;
 } DodBotState;
 
 static DodBotState g_bot[DOD_BOT_MAX_SLOTS + 1];
@@ -329,6 +330,20 @@ static void RunBot( int index, CBasePlayer *pBot )
 	}
 
 	enemy = FindEnemy( pBot, &enemy_distance );
+	{
+		/* No path graph: if the bot is walking but going nowhere, break the
+		 * straight-line loop with a growing detour. */
+		const DodBotEscape esc = Dod_BotStuckUpdate( &state->stuck, pBot->pev->origin.x, pBot->pev->origin.y,
+			gpGlobals->time, enemy == NULL, RANDOM_FLOAT( 0.0f, 1.0f ) );
+		if( esc.stuck )
+		{
+			state->heading = Dod_BotAngleDelta( 0.0f, state->yaw + esc.turn );
+			state->yaw = state->heading;
+			state->hold_heading_until = gpGlobals->time + esc.hold;
+			if( esc.jump )
+				buttons |= IN_JUMP;
+		}
+	}
 	{
 		CBasePlayerItem *item = pBot->m_pActiveItem;
 		CBasePlayerWeapon *weapon = item ? (CBasePlayerWeapon *)item->GetWeaponPtr() : NULL;

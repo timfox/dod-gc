@@ -105,7 +105,11 @@ DodBotMove Dod_BotDecide(const DodBotInput *in)
 	DodBotMove move = { 0.0f, 0.0f, 0, 0, 0, 0 };
 	if (!in)
 		return move;
-	if (in->blocked || in->ledge) {
+	/* Standing off against an enemy beside a wall must still shoot: only a
+	 * ledge pre-empts the fight; a low obstacle just gets a hop. */
+	if (in->has_target && in->blocked && !in->ledge) {
+		move.jump = 1;
+	} else if (in->blocked || in->ledge) {
 		move.turn_away = 1;
 		move.jump = in->blocked && !in->ledge;	/* hop low obstacles, never off a ledge */
 		move.forward = in->ledge ? 0.0f : 0.5f;
@@ -130,4 +134,42 @@ DodBotMove Dod_BotDecide(const DodBotInput *in)
 		move.fire = in->semi_auto ? (in->fire_phase & 1) : 1;
 	}
 	return move;
+}
+
+DodBotEscape Dod_BotStuckUpdate(DodBotStuck *s, float x, float y, float time, int wants_move, float roll)
+{
+	DodBotEscape esc = { 0, 0.0f, 0.0f, 0 };
+	float dx, dy;
+	if (!s)
+		return esc;
+	if (!s->primed || time < s->next_check - 10.0f * DOD_BOT_STUCK_WINDOW) {
+		/* first sample, or the level time restarted */
+		s->primed = 1;
+		s->x = x;
+		s->y = y;
+		s->next_check = time + DOD_BOT_STUCK_WINDOW;
+		s->failures = 0;
+		return esc;
+	}
+	if (time < s->next_check)
+		return esc;
+	dx = x - s->x;
+	dy = y - s->y;
+	s->x = x;
+	s->y = y;
+	s->next_check = time + DOD_BOT_STUCK_WINDOW;
+	if (!wants_move || dx * dx + dy * dy >= DOD_BOT_STUCK_MIN * DOD_BOT_STUCK_MIN) {
+		s->failures = 0;
+		return esc;
+	}
+	if (s->failures < 6)
+		s->failures++;
+	esc.stuck = 1;
+	/* 90, 135, 180 degrees and on: first try a side step, then turn around. */
+	esc.turn = (60.0f + 30.0f * (float)s->failures) * (roll < 0.5f ? 1.0f : -1.0f);
+	if (esc.turn > 180.0f) esc.turn = 180.0f;
+	if (esc.turn < -180.0f) esc.turn = -180.0f;
+	esc.hold = 0.8f + 0.4f * (float)s->failures;
+	esc.jump = (s->failures & 1);
+	return esc;
 }
