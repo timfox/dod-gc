@@ -155,7 +155,6 @@ static void DodGC_ApplyClass( CBasePlayer *pPlayer, DodClass player_class )
 CHalfLifeDoD::CHalfLifeDoD()
 {
 	DodBots_Init();
-	ALERT( at_console, "BOTINIT CHalfLifeDoD constructed\n" );
 	float round_seconds;
 	if( !g_dod_cvars_registered ) {
 		CVAR_REGISTER( &dod_roundtime );

@@ -366,7 +366,6 @@ static void RunBot( int index, CBasePlayer *pBot )
 		state->yaw = pBot->pev->v_angle.y;
 		state->pitch = pBot->pev->v_angle.x;
 		state->has_goal = 0;
-		{ static float nd = 0.0f; if( gpGlobals->time >= nd ) { nd = gpGlobals->time + 1.0f; ALERT( at_console, "BOTPROBE t=%.1f dead/waiting hp=%.0f\n", gpGlobals->time, pBot->pev->health ); } }
 		return;
 	}
 	if( state->yaw == 0.0f && state->pitch == 0.0f )
@@ -447,16 +446,6 @@ static void RunBot( int index, CBasePlayer *pBot )
 	}
 
 	move = Dod_BotDecide( &in );
-	{	/* local probe (not for merge): once a second per bot */
-		static float next_probe = 0.0f;
-		if( gpGlobals->time >= next_probe )
-		{
-			next_probe = gpGlobals->time + 1.0f;
-			ALERT( at_console, "BOTPROBE t=%.1f pos=%.0f,%.0f,%.0f hp=%.0f enemy=%d dist=%.0f fwd=%.1f fire=%d jump=%d blocked=%d\n",
-				gpGlobals->time, pBot->pev->origin.x, pBot->pev->origin.y, pBot->pev->origin.z, pBot->pev->health,
-				enemy != NULL, enemy ? enemy_distance : 0.0f, move.forward, move.fire, move.jump, in.blocked );
-		}
-	}
 	if( move.turn_away && gpGlobals->time >= state->hold_heading_until )
 	{
 		const float turn = RANDOM_FLOAT( 70.0f, 140.0f ) * ( RANDOM_LONG( 0, 1 ) ? 1.0f : -1.0f );
@@ -480,11 +469,6 @@ static void RunBot( int index, CBasePlayer *pBot )
 void DodBots_Think( void )
 {
 	int i;
-	{	/* local probe: is Think running at all */
-		static int calls = 0;
-		if( ++calls % 40 == 1 )
-			ALERT( at_console, "BOTCALLS n=%d t=%.3f frametime=%.4f\n", calls, gpGlobals->time, gpGlobals->frametime );
-	}
 	if( !g_registered )
 		return;
 	if( gpGlobals->time >= g_next_plan )

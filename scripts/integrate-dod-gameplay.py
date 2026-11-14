@@ -456,12 +456,12 @@ def main() -> int:
 		'\t\t\t\treturn new CHalfLifeDoD;\n'
 		'\t\t\treturn new CHalfLifeTeamplay;\n',
 	)
+	# The worldrender listen route skips game.cfg, so mp_teamplay stays 0 and the
+	# game would build vanilla deathmatch rules (no CHalfLifeDoD, no bots).
 	replace_once(
 		dlls / "gamerules.cpp",
 		'\tif( !gpGlobals->deathmatch )\n\t{\n\t\t// generic half-life\n',
-		'\tALERT( at_console, "BOTRULES deathmatch=%d teamplay=%d leaf=%s\\n", (int)gpGlobals->deathmatch, (int)teamplay.value, gameleaf );\n'
 		'\tif( !stricmp( gameleaf, "dod" ) && gpGlobals->deathmatch )\n\t\tCVAR_SET_FLOAT( "mp_teamplay", 1 );\n'
-		'\tALERT( at_console, "BOTRULES2 deathmatch=%d teamplay=%d\\n", (int)gpGlobals->deathmatch, (int)teamplay.value );\n'
 		'\tif( !gpGlobals->deathmatch )\n\t{\n\t\t// generic half-life\n',
 	)
 	replace_once(
