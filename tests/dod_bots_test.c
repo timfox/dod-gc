@@ -165,8 +165,55 @@ static void test_decide(void)
 	assert(fabsf(m.side) <= 1.0f);
 }
 
+static void test_engage_at_wall(void)
+{
+	DodBotInput in;
+	DodBotMove m;
+	memset(&in, 0, sizeof(in));
+	in.has_target = 1;
+	in.target_distance = 400.0f;
+	in.aim_error = 1.0f;
+	in.blocked = 1;
+	m = Dod_BotDecide(&in);
+	assert(!m.turn_away && m.jump && m.fire);	/* fights on, hops the obstacle */
+	in.ledge = 1;
+	m = Dod_BotDecide(&in);
+	assert(m.turn_away && !m.jump && !m.fire);	/* a ledge still wins */
+}
+
+static void test_stuck(void)
+{
+	DodBotStuck s;
+	DodBotEscape e;
+	float t;
+	memset(&s, 0, sizeof(s));
+	e = Dod_BotStuckUpdate(&s, 0, 0, 10.0f, 1, 0.1f);	/* primes */
+	assert(!e.stuck);
+	e = Dod_BotStuckUpdate(&s, 1, 1, 10.5f, 1, 0.1f);	/* too early */
+	assert(!e.stuck);
+	e = Dod_BotStuckUpdate(&s, 2, 0, 11.1f, 1, 0.1f);	/* barely moved */
+	assert(e.stuck && e.turn > 0.0f && e.hold > 0.0f);
+	t = e.turn;
+	e = Dod_BotStuckUpdate(&s, 2, 0, 12.2f, 1, 0.9f);	/* still stuck, other side, wider */
+	assert(e.stuck && e.turn < 0.0f && fabsf(e.turn) > t);
+	e = Dod_BotStuckUpdate(&s, 200, 0, 13.3f, 1, 0.1f);	/* moved: reset */
+	assert(!e.stuck);
+	e = Dod_BotStuckUpdate(&s, 200, 0, 14.4f, 0, 0.1f);	/* standing to fight is not stuck */
+	assert(!e.stuck);
+	e = Dod_BotStuckUpdate(&s, 200, 0, 15.5f, 1, 0.1f);
+	assert(e.stuck && fabsf(e.turn) < t + 1.0f);	/* failure count restarted */
+	for (int i = 0; i < 12; i++)
+		e = Dod_BotStuckUpdate(&s, 200, 0, 16.6f + 1.1f * i, 1, 0.1f);
+	assert(e.turn <= 180.0f && e.hold < 4.0f);	/* bounded */
+	e = Dod_BotStuckUpdate(&s, 200, 0, 1.0f, 1, 0.1f);	/* level restarted: re-prime */
+	assert(!e.stuck);
+	assert(!Dod_BotStuckUpdate(NULL, 0, 0, 0, 1, 0).stuck);
+}
+
 int main(void)
 {
+	test_engage_at_wall();
+	test_stuck();
 	test_target_count();
 	test_requested_count();
 	test_team_pick();

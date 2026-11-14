@@ -70,6 +70,34 @@ typedef struct DodBotMove {
 
 DodBotMove Dod_BotDecide(const DodBotInput *in);
 
+/* Stuck detection. The bot heads straight for its goal with no path graph, so
+ * a wall between the two would trap it in a turn-away / re-aim loop. Every
+ * DOD_BOT_STUCK_WINDOW seconds the tracker compares the position with the last
+ * sample; when a bot that was trying to move covered less than
+ * DOD_BOT_STUCK_MIN units it asks for an escape: a heading change that grows
+ * with each consecutive failure, and a longer hold before re-aiming. */
+#define DOD_BOT_STUCK_WINDOW 1.0f
+#define DOD_BOT_STUCK_MIN 24.0f
+
+typedef struct DodBotStuck {
+	float x, y;
+	float next_check;
+	int failures;		/* consecutive stuck samples */
+	int primed;
+} DodBotStuck;
+
+typedef struct DodBotEscape {
+	int stuck;		/* this sample found the bot stuck */
+	float turn;		/* degrees to add to the heading */
+	float hold;		/* seconds to keep that heading before re-aiming */
+	int jump;
+} DodBotEscape;
+
+/* wants_move: the bot was trying to walk (alive, no enemy to stand and fight).
+ * Not stuck, or too early to tell, returns a zeroed escape. roll is a random
+ * draw in [0, 1) picking left or right. */
+DodBotEscape Dod_BotStuckUpdate(DodBotStuck *s, float x, float y, float time, int wants_move, float roll);
+
 #ifdef __cplusplus
 }
 #endif
