@@ -31,7 +31,11 @@ static cvar_t dod_bots_online = { "dod_bots_online", "0", FCVAR_SERVER };
 /* The most bots ever; the free slots are the real limit. */
 #define DOD_BOT_HARD_CAP 7
 
+#if defined( __GAMECUBE__ )
+#define DOD_BOT_MAX_SLOTS 4	/* the listen server has 2 client slots */
+#else
 #define DOD_BOT_MAX_SLOTS 32
+#endif
 
 typedef struct DodBotState {
 	float yaw, pitch;		/* current view */
@@ -182,15 +186,6 @@ static void PlanBots( void )
 	int humans, bots, team_counts[4], special_counts[4][DOD_CLASS_COUNT], target;
 
 	CountPlayers( &humans, &bots, team_counts, special_counts );
-	{	/* local probe: before the early return */
-		static float np0 = 0.0f;
-		if( gpGlobals->time >= np0 )
-		{
-			np0 = gpGlobals->time + 3.0f;
-			ALERT( at_console, "BOTPLAN0 t=%.1f humans=%d bots=%d maxclients=%d connected=%d\n", gpGlobals->time, humans, bots, gpGlobals->maxClients,
-				UTIL_PlayerByIndex( 1 ) != NULL );
-		}
-	}
 	if( humans > 0 && g_first_human_time == 0.0f )
 		g_first_human_time = gpGlobals->time;
 	if( humans == 0 )
@@ -201,15 +196,6 @@ static void PlanBots( void )
 	target = Dod_BotTargetCount(
 		Dod_BotRequestedCount( (int)CVAR_GET_FLOAT( "dod_bots" ), NetworkUp(), CVAR_GET_FLOAT( "dod_bots_online" ) != 0.0f ),
 		gpGlobals->maxClients, humans, DOD_BOT_HARD_CAP );
-	{	/* local probe */
-		static float np = 0.0f;
-		if( gpGlobals->time >= np )
-		{
-			np = gpGlobals->time + 2.0f;
-			ALERT( at_console, "BOTPLAN t=%.1f humans=%d bots=%d target=%d maxclients=%d dod_bots=%d net=%d first=%.1f\n",
-				gpGlobals->time, humans, bots, target, gpGlobals->maxClients, (int)CVAR_GET_FLOAT( "dod_bots" ), NetworkUp(), g_first_human_time );
-		}
-	}
 	if( bots > target )
 		KickOneBot();
 	else if( bots < target && gpGlobals->time - g_first_human_time > 3.0f )
@@ -437,12 +423,9 @@ void DodBots_Think( void )
 {
 	int i;
 	{	/* local probe: is Think running at all */
-		static float nt = 0.0f;
-		if( gpGlobals->time >= nt )
-		{
-			nt = gpGlobals->time + 3.0f;
-			ALERT( at_console, "BOTTHINK t=%.1f registered=%d maxclients=%d\n", gpGlobals->time, (int)g_registered, gpGlobals->maxClients );
-		}
+		static int calls = 0;
+		if( ++calls % 40 == 1 )
+			ALERT( at_console, "BOTCALLS n=%d t=%.3f frametime=%.4f\n", calls, gpGlobals->time, gpGlobals->frametime );
 	}
 	if( !g_registered )
 		return;

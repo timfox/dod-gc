@@ -249,6 +249,8 @@ pack() {
 			# PVS/frustum CapFaces path does not need a static DL.
 			# Solo listen needs pad → engfuncs; without this CapFaces is view-only.
 			echo "gcplayerinput"
+			# Extra gamecube.cfg lines, e.g. DODGC_EXTRA_CFG="retailnewgame" (real play route).
+			[[ -n "${DODGC_EXTRA_CFG:-}" ]] && printf '%b\n' "$DODGC_EXTRA_CFG"
 			(( DUMPFRAMES )) && echo "dumpframes"
 			[[ -n "$DUMPEYE" ]] && echo "dumpeye $DUMPEYE"
 			[[ -n "$TAS" ]] && echo "tas $TAS"
