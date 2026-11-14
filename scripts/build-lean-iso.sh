@@ -235,6 +235,10 @@ pack() {
 		fi
 		{
 			echo "video prog"
+			# worldrender listen skips game.cfg, so select the DoD rules here
+			# (InstallGameRules reads mp_teamplay); otherwise no DoD rules, no bots.
+			echo "mp_teamplay 1"
+			echo "mp_teamlist \"Allies;Axis\""
 			echo "listenserver $LISTEN"
 			(( WANT_NET )) && write_net_config
 			(( HEADLESS )) && echo headless

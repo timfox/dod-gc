@@ -182,6 +182,15 @@ static void PlanBots( void )
 	int humans, bots, team_counts[4], special_counts[4][DOD_CLASS_COUNT], target;
 
 	CountPlayers( &humans, &bots, team_counts, special_counts );
+	{	/* local probe: before the early return */
+		static float np0 = 0.0f;
+		if( gpGlobals->time >= np0 )
+		{
+			np0 = gpGlobals->time + 3.0f;
+			ALERT( at_console, "BOTPLAN0 t=%.1f humans=%d bots=%d maxclients=%d connected=%d\n", gpGlobals->time, humans, bots, gpGlobals->maxClients,
+				UTIL_PlayerByIndex( 1 ) != NULL );
+		}
+	}
 	if( humans > 0 && g_first_human_time == 0.0f )
 		g_first_human_time = gpGlobals->time;
 	if( humans == 0 )
@@ -192,6 +201,15 @@ static void PlanBots( void )
 	target = Dod_BotTargetCount(
 		Dod_BotRequestedCount( (int)CVAR_GET_FLOAT( "dod_bots" ), NetworkUp(), CVAR_GET_FLOAT( "dod_bots_online" ) != 0.0f ),
 		gpGlobals->maxClients, humans, DOD_BOT_HARD_CAP );
+	{	/* local probe */
+		static float np = 0.0f;
+		if( gpGlobals->time >= np )
+		{
+			np = gpGlobals->time + 2.0f;
+			ALERT( at_console, "BOTPLAN t=%.1f humans=%d bots=%d target=%d maxclients=%d dod_bots=%d net=%d first=%.1f\n",
+				gpGlobals->time, humans, bots, target, gpGlobals->maxClients, (int)CVAR_GET_FLOAT( "dod_bots" ), NetworkUp(), g_first_human_time );
+		}
+	}
 	if( bots > target )
 		KickOneBot();
 	else if( bots < target && gpGlobals->time - g_first_human_time > 3.0f )
@@ -304,6 +322,7 @@ static void RunBot( int index, CBasePlayer *pBot )
 		state->yaw = pBot->pev->v_angle.y;
 		state->pitch = pBot->pev->v_angle.x;
 		state->has_goal = 0;
+		{ static float nd = 0.0f; if( gpGlobals->time >= nd ) { nd = gpGlobals->time + 1.0f; ALERT( at_console, "BOTPROBE t=%.1f dead/waiting hp=%.0f\n", gpGlobals->time, pBot->pev->health ); } }
 		return;
 	}
 	if( state->yaw == 0.0f && state->pitch == 0.0f )
@@ -384,6 +403,16 @@ static void RunBot( int index, CBasePlayer *pBot )
 	}
 
 	move = Dod_BotDecide( &in );
+	{	/* local probe (not for merge): once a second per bot */
+		static float next_probe = 0.0f;
+		if( gpGlobals->time >= next_probe )
+		{
+			next_probe = gpGlobals->time + 1.0f;
+			ALERT( at_console, "BOTPROBE t=%.1f pos=%.0f,%.0f,%.0f hp=%.0f enemy=%d dist=%.0f fwd=%.1f fire=%d jump=%d blocked=%d\n",
+				gpGlobals->time, pBot->pev->origin.x, pBot->pev->origin.y, pBot->pev->origin.z, pBot->pev->health,
+				enemy != NULL, enemy ? enemy_distance : 0.0f, move.forward, move.fire, move.jump, in.blocked );
+		}
+	}
 	if( move.turn_away && gpGlobals->time >= state->hold_heading_until )
 	{
 		const float turn = RANDOM_FLOAT( 70.0f, 140.0f ) * ( RANDOM_LONG( 0, 1 ) ? 1.0f : -1.0f );
@@ -407,6 +436,14 @@ static void RunBot( int index, CBasePlayer *pBot )
 void DodBots_Think( void )
 {
 	int i;
+	{	/* local probe: is Think running at all */
+		static float nt = 0.0f;
+		if( gpGlobals->time >= nt )
+		{
+			nt = gpGlobals->time + 3.0f;
+			ALERT( at_console, "BOTTHINK t=%.1f registered=%d maxclients=%d\n", gpGlobals->time, (int)g_registered, gpGlobals->maxClients );
+		}
+	}
 	if( !g_registered )
 		return;
 	if( gpGlobals->time >= g_next_plan )

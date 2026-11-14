@@ -268,7 +268,9 @@ def integrate_dod_hud(client: Path) -> None:
 		'\tgEngfuncs.Con_Printf( "Xash3D GameCube: CHud::Init begin quality=%d\\n", quality );\n',
 		'\tgEngfuncs.Con_Printf( "Xash3D GameCube: CHud::Init begin quality=%d\\n", quality );\n'
 		'\t/* cl_dodhud and the DodHud message: needed by the lean path too. */\n'
-		'\tm_Dod.InitState();\n')
+		'\tm_Dod.InitState();\n'
+		'\t/* the lean (quality 0) path returns before hud_textmode is created; DrawHudString reads it */\n'
+		'\tif( !hud_textmode )\n\t\thud_textmode = CVAR_CREATE( "hud_textmode", "0", FCVAR_ARCHIVE );\n')
 	replace_once(hud, "\tm_Menu.Init();\n", "\tm_Menu.Init();\n\tm_Dod.Init();\n")
 	replace_once(hud, "\tm_Menu.VidInit();\n", "\tm_Menu.VidInit();\n\tm_Dod.VidInit();\n")
 	replace_once(client / "hud_redraw.cpp",
@@ -453,6 +455,14 @@ def main() -> int:
 		'\t\t\tif( !stricmp( gameleaf, "dod" ) )\n'
 		'\t\t\t\treturn new CHalfLifeDoD;\n'
 		'\t\t\treturn new CHalfLifeTeamplay;\n',
+	)
+	replace_once(
+		dlls / "gamerules.cpp",
+		'\tif( !gpGlobals->deathmatch )\n\t{\n\t\t// generic half-life\n',
+		'\tALERT( at_console, "BOTRULES deathmatch=%d teamplay=%d leaf=%s\\n", (int)gpGlobals->deathmatch, (int)teamplay.value, gameleaf );\n'
+		'\tif( !stricmp( gameleaf, "dod" ) && gpGlobals->deathmatch )\n\t\tCVAR_SET_FLOAT( "mp_teamplay", 1 );\n'
+		'\tALERT( at_console, "BOTRULES2 deathmatch=%d teamplay=%d\\n", (int)gpGlobals->deathmatch, (int)teamplay.value );\n'
+		'\tif( !gpGlobals->deathmatch )\n\t{\n\t\t// generic half-life\n',
 	)
 	replace_once(
 		dlls / "subs.cpp",
