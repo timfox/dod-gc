@@ -195,6 +195,42 @@ Not verified in Dolphin: fake client creation, the AI, respawn and kick. The
 count, the online rule, team and class selection, turning, aim error and the
 move decision have host tests.
 
+## Spectating bot matches
+
+The local human can watch the bots fight instead of playing.
+
+- **Joining.** `dod_spectate 1` makes the human spectate from the first frame
+  (no team menu). Otherwise pick `6. Spectate` on the side menu, or run
+  `spectate` / `dod_team spectator`. Picking Allies or Axis from the menu again
+  leaves spectating and spawns as an ordinary player.
+- **Slot.** GoldSrc has no slotless spectator (HLTV needs one too), so the
+  spectator is the human's own client slot. Nothing extra is allocated: a
+  spectator is not on a team, has no class, weapon, edict beyond the slot's own,
+  collision or damage, and does not count towards either side when bots pick a
+  team. The only added memory is about 100 bytes of static director state.
+- **Bots to watch.** Bots fill the *remaining* slots, so the default two-slot
+  listen server gives a single bot, which is nothing to watch. For Axis against
+  Allies use a slim-slot engine build (`XASH_GC_SLIM_CLIENTS=1
+  XASH_GC_MAX_SLOTS=4`, `sv_gc_slots 4`): spectator plus three bots is Axis,
+  Allies, Axis. The heap caveats under Bots apply.
+- **Cameras.** The HLSDK observer code runs them, with the retail spectator
+  controls: Fire = next player, Alt-fire = previous, Jump = cycle the camera
+  (chase, in-eye, free-fly). The two overview-map modes are skipped (they need
+  map overview data the GameCube build does not ship). With nobody to follow the
+  camera free-flies and returns to the chosen camera as soon as a bot spawns.
+- **Director.** `dod_spec_auto` (default 1) moves the follow camera by itself
+  to the bot in the closest fight, staying at least 4 s and at most 14 s on one
+  target, and straight away when the followed bot dies. Any Fire, Alt-fire or
+  Jump press pauses it for 20 s; `dod_spec_auto 0` turns it off.
+- **Not retail.** Retail DoD also has an overview-map spectator, a team filter
+  for spectating (mp_forcechasecam / mp_fadetoblack) and a spectator count on the
+  scoreboard. None of those exist here.
+
+Not verified in Dolphin: joining, the cameras, the director and the
+leave-to-play path. The mode mapping, interest scoring, target cycling and
+director choice have host tests (`Dod_Spec*` in `dod_bots.c`). The C++ glue
+was syntax-checked against upstream hlsdk-portable only.
+
 ## Grenades
 
 `dod_grenade.cpp` puts the DoD hand grenade on top of the HL1 `CHandGrenade` /

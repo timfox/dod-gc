@@ -173,3 +173,78 @@ DodBotEscape Dod_BotStuckUpdate(DodBotStuck *s, float x, float y, float time, in
 	esc.jump = (s->failures & 1);
 	return esc;
 }
+
+int Dod_SpecSanitizeMode(int mode)
+{
+	switch (mode) {
+	case DOD_SPEC_CHASE_LOCKED:
+	case DOD_SPEC_CHASE_FREE:
+	case DOD_SPEC_ROAMING:
+	case DOD_SPEC_IN_EYE:
+		return mode;
+	case DOD_SPEC_MAP_FREE:
+	case DOD_SPEC_MAP_CHASE:
+		return DOD_SPEC_CHASE_FREE;
+	default:
+		return DOD_SPEC_IN_EYE;
+	}
+}
+
+float Dod_SpecInterest(const DodSpecCandidate *c)
+{
+	float d;
+	if (!c || !c->alive)
+		return 0.0f;
+	if (c->enemy_distance < 0.0f)
+		return 1.0f;
+	d = c->enemy_distance > 1500.0f ? 1500.0f : c->enemy_distance;
+	return 2.0f + (1500.0f - d) / 100.0f;	/* 2 .. 17 */
+}
+
+int Dod_SpecCycle(const DodSpecCandidate *list, int count, int current, int reverse)
+{
+	int start = -1, i, step;
+	if (!list || count <= 0)
+		return 0;
+	for (i = 0; i < count; i++) {
+		if (list[i].index == current) {
+			start = i;
+			break;
+		}
+	}
+	step = reverse ? -1 : 1;
+	if (start < 0)
+		start = reverse ? 0 : count - 1;	/* so the first step lands on an end */
+	for (i = 1; i <= count; i++) {
+		const int at = ((start + step * i) % count + count) % count;
+		if (list[at].alive && list[at].index != current)
+			return list[at].index;
+	}
+	return 0;
+}
+
+int Dod_SpecDirectorPick(const DodSpecCandidate *list, int count, int current, float dwell)
+{
+	int i, best = 0;
+	float best_interest = 0.0f, current_interest = 0.0f;
+	if (!list || count <= 0)
+		return 0;
+	for (i = 0; i < count; i++) {
+		const float interest = Dod_SpecInterest(&list[i]);
+		if (list[i].index == current)
+			current_interest = interest;
+		if (interest > best_interest) {
+			best_interest = interest;
+			best = list[i].index;
+		}
+	}
+	if (best == 0)
+		return 0;
+	if (current_interest <= 0.0f)
+		return best;	/* current is dead or gone */
+	if (best == current || dwell < DOD_SPEC_MIN_DWELL)
+		return current;
+	if (dwell >= DOD_SPEC_MAX_DWELL || best_interest > current_interest * 1.25f)
+		return best;
+	return current;
+}

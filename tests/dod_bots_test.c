@@ -210,8 +210,59 @@ static void test_stuck(void)
 	assert(!Dod_BotStuckUpdate(NULL, 0, 0, 0, 1, 0).stuck);
 }
 
+static void test_spectator(void)
+{
+	DodSpecCandidate c[3] = { { 2, 1, 900.0f }, { 3, 1, 200.0f }, { 4, 0, 50.0f } };
+	assert(Dod_SpecSanitizeMode(DOD_SPEC_MAP_FREE) == DOD_SPEC_CHASE_FREE);
+	assert(Dod_SpecSanitizeMode(DOD_SPEC_MAP_CHASE) == DOD_SPEC_CHASE_FREE);
+	assert(Dod_SpecSanitizeMode(DOD_SPEC_IN_EYE) == DOD_SPEC_IN_EYE);
+	assert(Dod_SpecSanitizeMode(DOD_SPEC_ROAMING) == DOD_SPEC_ROAMING);
+	assert(Dod_SpecSanitizeMode(0) == DOD_SPEC_IN_EYE);
+	assert(Dod_SpecSanitizeMode(99) == DOD_SPEC_IN_EYE);
+
+	assert(Dod_SpecInterest(&c[2]) == 0.0f);			/* dead */
+	assert(Dod_SpecInterest(&c[1]) > Dod_SpecInterest(&c[0]));	/* nearer a fight */
+	{
+		DodSpecCandidate lone = { 5, 1, -1.0f };
+		assert(Dod_SpecInterest(&lone) > 0.0f);
+		assert(Dod_SpecInterest(&lone) < Dod_SpecInterest(&c[0]));
+	}
+	assert(Dod_SpecInterest(NULL) == 0.0f);
+
+	/* cycling skips the dead and wraps */
+	assert(Dod_SpecCycle(c, 3, 2, 0) == 3);
+	assert(Dod_SpecCycle(c, 3, 3, 0) == 2);		/* skips dead 4, wraps */
+	assert(Dod_SpecCycle(c, 3, 2, 1) == 3);		/* reverse wraps past dead 4 */
+	assert(Dod_SpecCycle(c, 3, 0, 0) == 2);		/* no current: first living */
+	assert(Dod_SpecCycle(c, 3, 0, 1) == 3);		/* no current, reverse: last living */
+	assert(Dod_SpecCycle(c, 0, 2, 0) == 0);
+	assert(Dod_SpecCycle(NULL, 3, 2, 0) == 0);
+	{
+		DodSpecCandidate only[1] = { { 2, 1, 100.0f } };
+		assert(Dod_SpecCycle(only, 1, 2, 0) == 0);	/* nothing else to cycle to */
+		assert(Dod_SpecCycle(only, 1, 0, 0) == 2);
+	}
+
+	/* director: stays put early, switches to the better fight later */
+	assert(Dod_SpecDirectorPick(c, 3, 2, 1.0f) == 2);		/* too soon */
+	assert(Dod_SpecDirectorPick(c, 3, 2, 5.0f) == 3);		/* 3 is in a much closer fight */
+	assert(Dod_SpecDirectorPick(c, 3, 3, 5.0f) == 3);		/* already the best */
+	assert(Dod_SpecDirectorPick(c, 3, 4, 0.0f) == 3);		/* current dead: switch at once */
+	assert(Dod_SpecDirectorPick(c, 3, 0, 0.0f) == 3);		/* none yet */
+	{
+		DodSpecCandidate near[2] = { { 2, 1, 500.0f }, { 3, 1, 480.0f } };
+		assert(Dod_SpecDirectorPick(near, 2, 2, 6.0f) == 2);	/* not clearly duller */
+		assert(Dod_SpecDirectorPick(near, 2, 2, 15.0f) == 3);	/* max dwell */
+	}
+	{
+		DodSpecCandidate dead[1] = { { 2, 0, 10.0f } };
+		assert(Dod_SpecDirectorPick(dead, 1, 2, 30.0f) == 0);
+	}
+}
+
 int main(void)
 {
+	test_spectator();
 	test_engage_at_wall();
 	test_stuck();
 	test_target_count();

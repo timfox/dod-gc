@@ -11,6 +11,7 @@
 #include "dod_game.h"
 #include "dod_weapons.h"
 #include "dod_bot.h"
+#include "dod_bots.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -18,7 +19,17 @@
 /* Round length when mp_timelimit is 0, and how many rounds win a match. */
 static cvar_t dod_roundtime = { "dod_roundtime", "600", FCVAR_SERVER };
 static cvar_t dod_rounds = { "dod_rounds", "2", FCVAR_SERVER };
+/* dod_spectate 1: the local human joins as a spectator instead of picking a side,
+ * to watch the bots fight. dod_spec_auto 1: a director moves the camera between
+ * the bots by itself (any manual target pick pauses it for a while). */
+static cvar_t dod_spectate = { "dod_spectate", "0", FCVAR_SERVER };
+static cvar_t dod_spec_auto = { "dod_spec_auto", "1", FCVAR_SERVER };
 static BOOL g_dod_cvars_registered;
+#define DOD_SPEC_SLOTS 8	/* spectator director state for client slots 1..8 */
+static float g_spec_hold_until[DOD_SPEC_SLOTS + 1];
+static float g_spec_target_since[DOD_SPEC_SLOTS + 1];
+static int g_spec_last_target[DOD_SPEC_SLOTS + 1];
+static float g_spec_next_think;
 static int gmsgDodHud;
 static float g_dod_next_hud;
 static int g_dod_seen_restart;
@@ -57,9 +68,9 @@ static void DodGC_ShowTeamMenu( CBasePlayer *pPlayer )
 	const int index = DodGC_PlayerIndex( pPlayer );
 	if( index > 0 && index <= DOD_MAX_PLAYERS )
 		g_dod_menu_state[index] = 1;
-	DodGC_SendMenu( pPlayer, 0x0003,
+	DodGC_SendMenu( pPlayer, 0x0023,
 		"\\yDAY OF DEFEAT - CHOOSE A SIDE\n\\w\n"
-		"1. Allies\n2. Axis\n\n"
+		"1. Allies\n2. Axis\n6. Spectate\n\n"
 		"Choose a side to continue.\n" );
 }
 
@@ -93,6 +104,9 @@ static DodTeam DodGC_TeamForPlayer( CBasePlayer *pPlayer )
 {
 	if( !pPlayer )
 		return DOD_TEAM_UNASSIGNED;
+	/* StartObserver blanks the HLSDK team name, so a spectator is read from the flag. */
+	if( pPlayer->IsObserver() )
+		return DOD_TEAM_SPECTATOR;
 	return (DodTeam)Dod_TeamFromName( pPlayer->m_szTeamName );
 }
 
@@ -108,8 +122,35 @@ static void DodGC_EnsurePlayer( CBasePlayer *pPlayer )
 	Dod_AssignPlayerTeam( index, DodGC_TeamForPlayer( pPlayer ) );
 }
 
+/* Become a spectator: no class, no gun, no spawn, no collision. Only the local
+ * human does this (a bot never watches), and no death or frag is recorded. */
+static void DodGC_JoinSpectator( CBasePlayer *pPlayer )
+{
+	if( !pPlayer || DodBots_IsBot( pPlayer ) )
+		return;
+	DodGC_ClearMenu( pPlayer );
+	if( !pPlayer->IsObserver() ) {
+		pPlayer->StartObserver( pPlayer->pev->origin, pPlayer->pev->v_angle );
+		pPlayer->pev->iuser1 = 0;	/* force Observer_SetMode to pick the mode and a target */
+		pPlayer->Observer_SetMode( DOD_SPEC_CHASE_FREE );
+	}
+	DodGC_EnsurePlayer( pPlayer );
+	ClientPrint( pPlayer->pev, HUD_PRINTTALK, "You are spectating. Fire/Aim: next/previous player, Jump: camera mode.\n" );
+}
+
+/* Leave spectating to play: the HLSDK respawns the player as an ordinary one. */
+static void DodGC_LeaveSpectator( CBasePlayer *pPlayer )
+{
+	if( pPlayer && pPlayer->IsObserver() ) {
+		pPlayer->StopObserver();
+		pPlayer->pev->iuser1 = pPlayer->pev->iuser2 = 0;
+	}
+}
+
 static void DodGC_ApplyClass( CBasePlayer *pPlayer, DodClass player_class )
 {
+	if( pPlayer && pPlayer->IsObserver() )
+		return;	/* a spectator has no class */
 	int index = DodGC_PlayerIndex( pPlayer );
 	if( !pPlayer || index < 1 || index > DOD_MAX_PLAYERS )
 		return;
@@ -159,6 +200,8 @@ CHalfLifeDoD::CHalfLifeDoD()
 	if( !g_dod_cvars_registered ) {
 		CVAR_REGISTER( &dod_roundtime );
 		CVAR_REGISTER( &dod_rounds );
+		CVAR_REGISTER( &dod_spectate );
+		CVAR_REGISTER( &dod_spec_auto );
 		g_dod_cvars_registered = TRUE;
 	}
 	Dod_GameInit();
@@ -176,6 +219,10 @@ CHalfLifeDoD::CHalfLifeDoD()
 	memset( g_dod_menu_state, 0, sizeof( g_dod_menu_state ) );
 	g_dod_winner_announced = 0;
 	g_dod_next_status = 0.0f;
+	memset( g_spec_hold_until, 0, sizeof( g_spec_hold_until ) );
+	memset( g_spec_target_since, 0, sizeof( g_spec_target_since ) );
+	memset( g_spec_last_target, 0, sizeof( g_spec_last_target ) );
+	g_spec_next_think = 0.0f;
 }
 
 void DodGC_BotJoin( CBasePlayer *pPlayer, DodTeam team, DodClass player_class )
@@ -199,12 +246,21 @@ BOOL CHalfLifeDoD::ClientCommand( CBasePlayer *pPlayer, const char *pcmd )
 	const int index = DodGC_PlayerIndex( pPlayer );
 	if( FStrEq( pcmd, "dod_team" ) ) {
 		const DodTeam team = (DodTeam)Dod_TeamFromName( CMD_ARGV( 1 ) );
+		if( team == DOD_TEAM_SPECTATOR ) {
+			DodGC_JoinSpectator( pPlayer );
+			return TRUE;
+		}
 		if( team == DOD_TEAM_ALLIES || team == DOD_TEAM_AXIS ) {
+			DodGC_LeaveSpectator( pPlayer );
 			if( stricmp( pPlayer->m_szTeamName, Dod_TeamName( team ) ) )
 				ChangePlayerTeam( pPlayer, Dod_TeamName( team ), TRUE, FALSE );
 			Dod_AssignPlayerTeam( index, team );
 			DodGC_ShowClassMenu( pPlayer );
 		}
+		return TRUE;
+	}
+	if( FStrEq( pcmd, "spectate" ) ) {
+		DodGC_JoinSpectator( pPlayer );
 		return TRUE;
 	}
 	if( FStrEq( pcmd, "dod_score" ) ) {
@@ -247,8 +303,13 @@ BOOL CHalfLifeDoD::ClientCommand( CBasePlayer *pPlayer, const char *pcmd )
 			return TRUE;
 		const int slot = atoi( CMD_ARGV( 1 ) );
 		if( g_dod_menu_state[index] == 1 ) {
+			if( slot == 6 ) {
+				DodGC_JoinSpectator( pPlayer );
+				return TRUE;
+			}
 			if( slot == 1 || slot == 2 ) {
 				const DodTeam team = slot == 1 ? DOD_TEAM_ALLIES : DOD_TEAM_AXIS;
+				DodGC_LeaveSpectator( pPlayer );
 				if( stricmp( pPlayer->m_szTeamName, Dod_TeamName( team ) ) )
 					ChangePlayerTeam( pPlayer, Dod_TeamName( team ), TRUE, FALSE );
 				Dod_AssignPlayerTeam( index, team );
@@ -268,6 +329,12 @@ void CHalfLifeDoD::InitHUD( CBasePlayer *pPlayer )
 {
 	CHalfLifeTeamplay::InitHUD( pPlayer );
 	DodGC_EnsurePlayer( pPlayer );
+	if( pPlayer->IsObserver() )
+		return;	/* still spectating: nothing to choose */
+	if( !DodBots_IsBot( pPlayer ) && CVAR_GET_FLOAT( "dod_spectate" ) != 0.0f ) {
+		DodGC_JoinSpectator( pPlayer );
+		return;
+	}
 	DodGC_ShowTeamMenu( pPlayer );
 }
 
@@ -275,6 +342,8 @@ void CHalfLifeDoD::PlayerSpawn( CBasePlayer *pPlayer )
 {
 	CHalfLifeTeamplay::PlayerSpawn( pPlayer );
 	DodGC_EnsurePlayer( pPlayer );
+	if( pPlayer->IsObserver() )
+		return;
 	const int index = DodGC_PlayerIndex( pPlayer );
 	const DodPlayerState *state = Dod_GetPlayer( index );
 	if( state && state->player_class != DOD_CLASS_NONE )
@@ -367,11 +436,111 @@ static void DodGC_SendHud( void )
 	}
 }
 
+/* ------------------------------------------------------------- spectators
+ * The HLSDK observer code (observer.cpp) already runs the cameras and the
+ * buttons; this adds what a bot match needs on top: no overview-map modes
+ * (the GameCube build has no overview data), pick a target as soon as bots
+ * exist, and an optional director that follows the action. */
+static BOOL DodGC_SpecCandidates( CBasePlayer *pSpec, DodSpecCandidate *list, int max, int *count )
+{
+	int n = 0;
+	for( int i = 1; i <= gpGlobals->maxClients && n < max; i++ ) {
+		CBasePlayer *p = (CBasePlayer *)UTIL_PlayerByIndex( i );
+		DodTeam team;
+		float nearest = -1.0f;
+		if( !p || p == pSpec || !p->IsPlayer() || p->IsObserver() || ( p->pev->effects & EF_NODRAW ) )
+			continue;
+		team = DodGC_TeamForPlayer( p );
+		if( team == DOD_TEAM_ALLIES || team == DOD_TEAM_AXIS ) {
+			for( int j = 1; j <= gpGlobals->maxClients; j++ ) {
+				CBasePlayer *e = (CBasePlayer *)UTIL_PlayerByIndex( j );
+				float d;
+				if( !e || e == p || !e->IsPlayer() || e->IsObserver() || !e->IsAlive() )
+					continue;
+				if( DodGC_TeamForPlayer( e ) == team || DodGC_TeamForPlayer( e ) == DOD_TEAM_UNASSIGNED )
+					continue;
+				d = ( e->pev->origin - p->pev->origin ).Length();
+				if( nearest < 0.0f || d < nearest )
+					nearest = d;
+			}
+		}
+		list[n].index = i;
+		list[n].alive = p->IsAlive();
+		list[n].enemy_distance = nearest;
+		n++;
+	}
+	*count = n;
+	return n > 0;
+}
+
+static void DodGC_FollowTarget( CBasePlayer *pSpec, int index )
+{
+	CBaseEntity *target = UTIL_PlayerByIndex( index );
+	if( !target )
+		return;
+	pSpec->m_hObserverTarget = target;
+	pSpec->pev->iuser2 = index;
+	UTIL_SetOrigin( pSpec->pev, target->pev->origin );
+}
+
+static void DodGC_SpectatorThink( void )
+{
+	const BOOL tick = gpGlobals->time >= g_spec_next_think;
+	DodSpecCandidate list[DOD_MAX_PLAYERS];
+	if( tick )
+		g_spec_next_think = gpGlobals->time + 0.5f;
+	for( int i = 1; i <= gpGlobals->maxClients; i++ ) {
+		CBasePlayer *pSpec = (CBasePlayer *)UTIL_PlayerByIndex( i );
+		const int slot = i <= DOD_SPEC_SLOTS ? i : 0;
+		int count, mode, pick;
+		if( !pSpec || !pSpec->IsPlayer() || !pSpec->IsObserver() || DodBots_IsBot( pSpec ) )
+			continue;
+		if( slot && ( pSpec->pev->button & ( IN_ATTACK | IN_ATTACK2 | IN_JUMP ) ) )
+			g_spec_hold_until[slot] = gpGlobals->time + DOD_SPEC_MANUAL_HOLD;
+		mode = pSpec->pev->iuser1;
+		if( mode != Dod_SpecSanitizeMode( mode ) ) {
+			pSpec->Observer_SetMode( Dod_SpecSanitizeMode( mode ) );
+			mode = pSpec->pev->iuser1;
+		}
+		if( !tick || !DodGC_SpecCandidates( pSpec, list, DOD_MAX_PLAYERS, &count ) )
+			continue;
+		if( mode == DOD_SPEC_ROAMING && pSpec->m_iObserverLastMode != DOD_SPEC_ROAMING ) {
+			/* Forced into roaming for lack of anyone to watch (the bots had not
+			 * joined yet): go back to the camera the spectator chose. */
+			pSpec->Observer_SetMode( Dod_SpecSanitizeMode( pSpec->m_iObserverLastMode ) );
+			mode = pSpec->pev->iuser1;
+		}
+		if( mode == DOD_SPEC_ROAMING || mode == 0 || !slot || CVAR_GET_FLOAT( "dod_spec_auto" ) == 0.0f
+			|| gpGlobals->time < g_spec_hold_until[slot] )
+			continue;
+		{
+			const int current = pSpec->m_hObserverTarget ? ENTINDEX( pSpec->m_hObserverTarget->edict() ) : 0;
+			if( current != g_spec_last_target[slot] )
+				g_spec_target_since[slot] = gpGlobals->time;
+			pick = Dod_SpecDirectorPick( list, count, current, gpGlobals->time - g_spec_target_since[slot] );
+			if( pick && pick != current ) {
+				DodGC_FollowTarget( pSpec, pick );
+				g_spec_target_since[slot] = gpGlobals->time;
+			}
+			g_spec_last_target[slot] = pick ? pick : current;
+		}
+	}
+}
+
+void CHalfLifeDoD::ClientUserInfoChanged( CBasePlayer *pPlayer, char *infobuffer )
+{
+	/* Teamplay turns a changed model into a team change; a spectator has no team. */
+	if( pPlayer && pPlayer->IsObserver() )
+		return;
+	CHalfLifeTeamplay::ClientUserInfoChanged( pPlayer, infobuffer );
+}
+
 void CHalfLifeDoD::Think( void )
 {
 	CHalfLifeTeamplay::Think();
 	Dod_Think( gpGlobals->frametime );
 	DodBots_Think();
+	DodGC_SpectatorThink();
 	const DodGameRulesState *state = Dod_GetState();
 	if( state && state->phase == DOD_ROUND_INTERMISSION && !g_dod_winner_announced ) {
 		const char *winner = state->winner == DOD_TEAM_ALLIES ? "Allies win the round" :
