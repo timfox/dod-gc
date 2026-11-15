@@ -361,7 +361,11 @@ static void RunBot( int index, CBasePlayer *pBot )
 	if( msec_value < 1 ) msec_value = 1;
 	if( msec_value > 100 ) msec_value = 100;
 	const byte msec = (byte)msec_value;
-	const float speed = pBot->pev->maxspeed > 0.0f ? pBot->pev->maxspeed : 220.0f;
+	/* pmove clamps to pev->maxspeed; the engine leaves it 0 on some builds, which froze the bots
+	 * in place (fwd=220 commanded, velocity 0). Give the bot a walking speed of its own. */
+	if( pBot->pev->maxspeed <= 0.0f )
+		pBot->pev->maxspeed = 220.0f;
+	const float speed = pBot->pev->maxspeed;
 	float viewangles[3], aim_error = 0.0f, enemy_distance = 0.0f;
 	unsigned short buttons = 0;
 	CBasePlayer *enemy;
@@ -408,6 +412,15 @@ static void RunBot( int index, CBasePlayer *pBot )
 		floor_end = ahead - Vector( 0, 0, 100 );
 		UTIL_TraceLine( ahead, floor_end, ignore_monsters, pBot->edict(), &tr );
 		in.ledge = tr.flFraction >= 1.0f;
+		{
+			/* The lean GameCube server has no line-trace hull for the world: a trace straight
+			 * down from the bot's own feet misses. Then ledge/blocked mean nothing and would
+			 * pin the bot in place (forward 0 forever), so distrust them. */
+			TraceResult own;
+			UTIL_TraceLine( pBot->pev->origin, pBot->pev->origin - Vector( 0, 0, 100 ), ignore_monsters, pBot->edict(), &own );
+			if( own.flFraction >= 1.0f )
+				in.ledge = in.blocked = 0;
+		}
 	}
 
 	enemy = FindEnemy( pBot, &enemy_distance );
@@ -484,6 +497,7 @@ static void RunBot( int index, CBasePlayer *pBot )
 	viewangles[2] = 0.0f;
 	( *g_engfuncs.pfnRunPlayerMove )( pBot->edict(), viewangles, move.forward * speed, move.side * speed, 0, buttons, 0, msec );
 }
+
 
 void DodBots_Think( void )
 {
