@@ -271,6 +271,10 @@ void DodGC_BotJoin( CBasePlayer *pPlayer, DodTeam team, DodClass player_class )
 	if( g_pGameRules && stricmp( pPlayer->m_szTeamName, Dod_TeamName( team ) ) )
 		( (CHalfLifeDoD *)g_pGameRules )->ChangePlayerTeam( pPlayer, Dod_TeamName( team ), TRUE, FALSE );
 	Dod_AssignPlayerTeam( index, team );
+	/* ClientPutInServer already spawned the bot with the default kit. A second Spawn() gives
+	 * the default crowbar again; a duplicate cannot attach (AddDuplicate fails), so it was left
+	 * loose on the floor at the bot's feet. Clear the inventory first. */
+	pPlayer->RemoveAllItems( FALSE );
 	/* ClientPutInServer spawned the bot before it had a team (default spot, no kit): spawn
 	 * again now so it uses its own team's info_player_* spawn points. */
 	pPlayer->Spawn();
