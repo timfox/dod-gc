@@ -23,14 +23,19 @@ checkout https://github.com/extremscorner/libfat.git "$DEST/sources/libfat" "$FA
 export DEVKITPRO="$DEST/devkitpro" DEVKITPPC="$BASE/devkitPPC"
 # Lean lwIP pools (PBUF_POOL_SIZE 24, MEM_SIZE 64K): the stock desktop-sized pools cost
 # ~420 KiB of MEM1 .bss and starve the engine heap on BBA-linked builds. Idempotent.
-LWIP_PATCH="$ROOT/scripts/patches/libogc2-lwip-lean.patch"
-if git -C "$DEST/sources/libogc2" apply --check "$LWIP_PATCH" 2>/dev/null; then
-	git -C "$DEST/sources/libogc2" apply "$LWIP_PATCH"
-	LWIP_CHANGED=1
-elif ! git -C "$DEST/sources/libogc2" apply --check --reverse "$LWIP_PATCH" 2>/dev/null; then
-	echo "error: lean lwIP patch neither applies nor is already applied" >&2
-	exit 1
-fi
+# Second patch (applies after the lean one): the lwIP heap, memp pools and network
+# thread stack are malloc'd at net_init (net_set_budget) instead of ~150 KiB of static
+# .bss, and the compile-time pool counts match 2-4 player UDP play.
+for patch_name in libogc2-lwip-lean libogc2-lwip-dynamic; do
+	LWIP_PATCH="$ROOT/scripts/patches/$patch_name.patch"
+	if git -C "$DEST/sources/libogc2" apply --check "$LWIP_PATCH" 2>/dev/null; then
+		git -C "$DEST/sources/libogc2" apply "$LWIP_PATCH"
+		LWIP_CHANGED=1
+	elif ! git -C "$DEST/sources/libogc2" apply --check --reverse "$LWIP_PATCH" 2>/dev/null; then
+		echo "error: $patch_name patch neither applies nor is already applied" >&2
+		exit 1
+	fi
+done
 export PATH="$BASE/tools/bin:$DEVKITPPC/bin:$PATH"
 # libogc2's unused MP3 player wrappers need the libmad declarations to build.
 # They are not linked by this port. libmad itself must match libogc2 if used.

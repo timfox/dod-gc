@@ -1,0 +1,308 @@
+diff --git a/include/network.h b/include/network.h
+index 8f6a829..2c77810 100644
+--- a/include/network.h
++++ b/include/network.h
+@@ -275,6 +275,8 @@ char *if_indextoname(unsigned ifindex,char *ifname);
+ unsigned if_nametoindex(const char *ifname);
+ 
+ s32 net_init(void);
++/* Size the lwIP heap / RX pbuf pool / network thread stack (0 = default). Call before net_init(). */
++void net_set_budget(u32 mem_size, u32 pbuf_pool, u32 stack_size);
+ #ifdef HW_RVL
+ typedef s32 (*netcallback)(s32 result, void *usrdata);
+ s32 net_init_async(netcallback cb, void *usrdata);
+diff --git a/lwip/core/mem.c b/lwip/core/mem.c
+index c082589..9bdcc0f 100644
+--- a/lwip/core/mem.c
++++ b/lwip/core/mem.c
+@@ -39,6 +39,8 @@
+ #include <string.h>
+ 
+ #include "lwip/arch.h"
++#include <malloc.h>
++#include <string.h>
+ #include "lwip/opt.h"
+ #include "lwip/def.h"
+ #include "lwip/mem.h"
+@@ -66,14 +68,10 @@ struct mem {
+ };
+ 
+ static struct mem *ram_end;
+-#if 1
+-/* Adam original */
+-static u8_t ram[MEM_SIZE + sizeof(struct mem) + MEM_ALIGNMENT];
+-#else
+-/* Christiaan alignment fix */
++/* Runtime heap: allocated from the libc heap in mem_init() so the size can follow
++ * a profile (net_set_budget) instead of a worst-case static array in .bss. */
++u32_t lwip_mem_size = MEM_SIZE;
+ static u8_t *ram;
+-static struct mem ram_heap[1 + ( (MEM_SIZE + sizeof(struct mem) - 1) / sizeof(struct mem))];
+-#endif
+ 
+ #define MIN_SIZE 12
+ #if 0 /* this one does not align correctly for some, resulting in crashes */
+@@ -99,7 +97,7 @@ plug_holes(struct mem *mem)
+   LWIP_ASSERT("plug_holes: mem->used == 0", mem->used == 0);
+ 
+   /* plug hole forward */
+-  LWIP_ASSERT("plug_holes: mem->next <= MEM_SIZE", mem->next <= MEM_SIZE);
++  LWIP_ASSERT("plug_holes: mem->next <= lwip_mem_size", mem->next <= lwip_mem_size);
+ 
+   nmem = (struct mem *)&ram[mem->next];
+   if (mem != nmem && nmem->used == 0 && (u8_t *)nmem != (u8_t *)ram_end) {
+@@ -126,28 +124,29 @@ mem_init(void)
+ {
+   struct mem *mem;
+ 
+-#if 1
+-  /* Adam original */
+-#else
+-  /* Christiaan alignment fix */
+-  ram = (u8_t*)ram_heap;
+-#endif
+-  memset(ram, 0, MEM_SIZE);
++  /* Heap comes from malloc; shrink on failure rather than leave lwIP without one. */
++  while (ram == NULL && lwip_mem_size >= 4096) {
++    ram = (u8_t *)memalign(MEM_ALIGNMENT, lwip_mem_size + sizeof(struct mem) + MEM_ALIGNMENT);
++    if (ram == NULL)
++      lwip_mem_size >>= 1;
++  }
++  LWIP_ASSERT("mem_init: no memory for the lwIP heap", ram != NULL);
++  memset(ram, 0, lwip_mem_size);
+   mem = (struct mem *)ram;
+-  mem->next = MEM_SIZE;
++  mem->next = lwip_mem_size;
+   mem->prev = 0;
+   mem->used = 0;
+-  ram_end = (struct mem *)&ram[MEM_SIZE];
++  ram_end = (struct mem *)&ram[lwip_mem_size];
+   ram_end->used = 1;
+-  ram_end->next = MEM_SIZE;
+-  ram_end->prev = MEM_SIZE;
++  ram_end->next = lwip_mem_size;
++  ram_end->prev = lwip_mem_size;
+ 
+   LWP_SemInit(&mem_sem,1,1);
+ 
+   lfree = (struct mem *)ram;
+ 
+ #if MEM_STATS
+-  lwip_stats.mem.avail = MEM_SIZE;
++  lwip_stats.mem.avail = lwip_mem_size;
+ #endif /* MEM_STATS */
+ }
+ 
+@@ -205,7 +204,7 @@ mem_realloc(void *rmem, mem_size_t newsize)
+    newsize += MEM_ALIGNMENT - ((newsize + SIZEOF_STRUCT_MEM) % MEM_ALIGNMENT);
+   }
+ 
+-  if (newsize > MEM_SIZE) {
++  if (newsize > lwip_mem_size) {
+     return NULL;
+   }
+ 
+@@ -234,7 +233,7 @@ mem_realloc(void *rmem, mem_size_t newsize)
+     mem2->next = mem->next;
+     mem2->prev = ptr;
+     mem->next = ptr2;
+-    if (mem2->next != MEM_SIZE) {
++    if (mem2->next != lwip_mem_size) {
+       ((struct mem *)&ram[mem2->next])->prev = ptr2;
+     }
+ 
+@@ -265,13 +264,13 @@ mem_malloc(mem_size_t size)
+     size += MEM_ALIGNMENT - ((size + SIZEOF_STRUCT_MEM) % MEM_ALIGNMENT);
+   }
+ 
+-  if (size > MEM_SIZE) {
++  if (size > lwip_mem_size) {
+     return NULL;
+   }
+ 
+   LWP_SemWait(mem_sem);
+ 
+-  for (ptr = (u8_t *)lfree - ram; ptr < MEM_SIZE; ptr = ((struct mem *)&ram[ptr])->next) {
++  for (ptr = (u8_t *)lfree - ram; ptr < lwip_mem_size; ptr = ((struct mem *)&ram[ptr])->next) {
+     mem = (struct mem *)&ram[ptr];
+     if (!mem->used &&
+        mem->next - (ptr + SIZEOF_STRUCT_MEM) >= size + SIZEOF_STRUCT_MEM) {
+@@ -281,7 +280,7 @@ mem_malloc(mem_size_t size)
+       mem2->prev = ptr;
+       mem2->next = mem->next;
+       mem->next = ptr2;
+-      if (mem2->next != MEM_SIZE) {
++      if (mem2->next != lwip_mem_size) {
+         ((struct mem *)&ram[mem2->next])->prev = ptr2;
+       }
+ 
+@@ -339,13 +338,13 @@ mem_malloc(mem_size_t size)
+     size += MEM_ALIGNMENT - ((size + SIZEOF_STRUCT_MEM) % MEM_ALIGNMENT);
+   }
+ 
+-  if (size > MEM_SIZE) {
++  if (size > lwip_mem_size) {
+     return NULL;
+   }
+ 
+   sys_sem_wait(mem_sem);
+ 
+-  for (ptr = (u8_t *)lfree - ram; ptr < MEM_SIZE - size; ptr = ((struct mem *)&ram[ptr])->next) {
++  for (ptr = (u8_t *)lfree - ram; ptr < lwip_mem_size - size; ptr = ((struct mem *)&ram[ptr])->next) {
+     mem = (struct mem *)&ram[ptr];
+ 
+     if (!mem->used) {
+@@ -362,7 +361,7 @@ mem_malloc(mem_size_t size)
+         mem2->next = mem->next;
+         mem2->prev = ptr;
+ 
+-        if (mem2->next != MEM_SIZE) {
++        if (mem2->next != lwip_mem_size) {
+           ((struct mem *)&ram[mem2->next])->prev = ptr2;
+         }
+       }
+diff --git a/lwip/core/memp.c b/lwip/core/memp.c
+index 8d41712..cf8ca53 100644
+--- a/lwip/core/memp.c
++++ b/lwip/core/memp.c
+@@ -30,6 +30,7 @@
+  *
+  */
+ 
++#include <stdlib.h>
+ #include "lwip/opt.h"
+ 
+ #include "lwip/memp.h"
+@@ -68,7 +69,9 @@ static const u16_t memp_sizes[MEMP_MAX] = {
+   MEM_ALIGN_SIZE(sizeof(struct sys_timeo))
+ };
+ 
+-static const u16_t memp_num[MEMP_MAX] = {
++/* Runtime counts; the pbuf pool follows net_set_budget(). */
++u16_t lwip_pbuf_pool_size = PBUF_POOL_SIZE;
++static u16_t memp_num[MEMP_MAX] = {
+   MEMP_NUM_PBUF,
+   MEMP_NUM_RAW_PCB,
+   MEMP_NUM_UDP_PCB,
+@@ -86,20 +89,15 @@ static const u16_t memp_num[MEMP_MAX] = {
+ #define MEMP_TYPE_SIZE(qty, type) \
+   ((qty) * (MEMP_SIZE + MEM_ALIGN_SIZE(sizeof(type))))
+ 
+-static u8_t memp_memory[MEM_ALIGNMENT - 1 + 
+-  MEMP_TYPE_SIZE(MEMP_NUM_PBUF, struct pbuf) +
+-  MEMP_TYPE_SIZE(MEMP_NUM_RAW_PCB, struct raw_pcb) +
+-  MEMP_TYPE_SIZE(MEMP_NUM_UDP_PCB, struct udp_pcb) +
+-  MEMP_TYPE_SIZE(MEMP_NUM_TCP_PCB, struct tcp_pcb) +
+-  MEMP_TYPE_SIZE(MEMP_NUM_TCP_PCB_LISTEN, struct tcp_pcb_listen) +
+-  MEMP_TYPE_SIZE(MEMP_NUM_TCP_SEG, struct tcp_seg) +
+-  MEMP_TYPE_SIZE(MEMP_NUM_NETBUF, struct netbuf) +
+-  MEMP_TYPE_SIZE(MEMP_NUM_NETCONN, struct netconn) +
+-  MEMP_TYPE_SIZE(MEMP_NUM_API_MSG, struct api_msg) +
+-  MEMP_TYPE_SIZE(MEMP_NUM_TCPIP_MSG, struct net_msg) +
+-  MEMP_TYPE_SIZE(PBUF_POOL_SIZE, struct pbuf) +
+-                 PBUF_POOL_SIZE * MEM_ALIGN_SIZE(PBUF_POOL_BUFSIZE) +
+-  MEMP_TYPE_SIZE(MEMP_NUM_SYS_TIMEOUT, struct sys_timeo)];
++static u8_t *memp_memory; /* allocated in memp_init() from the libc heap */
++
++static u32_t memp_total_bytes(void)
++{
++  u32_t i, total = MEM_ALIGNMENT - 1;
++  for (i = 0; i < MEMP_MAX; i++)
++    total += (u32_t)memp_num[i] * (MEMP_SIZE + memp_sizes[i]);
++  return total;
++}
+ 
+ #if !SYS_LIGHTWEIGHT_PROT
+ static sys_sem mutex;
+@@ -140,6 +138,12 @@ memp_init(void)
+   }
+ #endif /* MEMP_STATS */
+ 
++  /* RX pbuf pool size is a profile knob; everything else keeps its compile-time count. */
++  memp_num[MEMP_PBUF_POOL] = lwip_pbuf_pool_size;
++  if (memp_memory == NULL) {
++    memp_memory = (u8_t *)malloc(memp_total_bytes());
++    LWIP_ASSERT("memp_init: no memory for the lwIP pools", memp_memory != NULL);
++  }
+   memp = MEM_ALIGN(memp_memory);
+   for (i = 0; i < MEMP_MAX; ++i) {
+     memp_tab[i] = NULL;
+diff --git a/lwip/include/lwip/lwipopts.h b/lwip/include/lwip/lwipopts.h
+index b4f5e76..1825823 100644
+--- a/lwip/include/lwip/lwipopts.h
++++ b/lwip/include/lwip/lwipopts.h
+@@ -53,7 +53,7 @@ a lot of data that needs to be copied, this should be set high. */
+ /* MEMP_NUM_PBUF: the number of memp struct pbufs. If the application
+    sends a lot of data out of ROM (or other static memory), this
+    should be set high. */
+-#define MEMP_NUM_PBUF           128
++#define MEMP_NUM_PBUF           64
+ /* MEMP_NUM_UDP_PCB: the number of UDP protocol control blocks. One
+    per active UDP "connection". */
+ #define MEMP_NUM_UDP_PCB        16
+@@ -65,7 +65,7 @@ a lot of data that needs to be copied, this should be set high. */
+ #define MEMP_NUM_TCP_PCB_LISTEN 8
+ /* MEMP_NUM_TCP_SEG: the number of simultaneously queued TCP
+    segments. */
+-#define MEMP_NUM_TCP_SEG        128
++#define MEMP_NUM_TCP_SEG        32
+ 
+ /* The following four are used only with the sequential API and can be
+    set to 0 if the application only will use the raw API. */
+@@ -76,11 +76,11 @@ a lot of data that needs to be copied, this should be set high. */
+ /* MEMP_NUM_APIMSG: the number of struct api_msg, used for
+    communication between the TCP/IP stack and the sequential
+    programs. */
+-#define MEMP_NUM_API_MSG        128
++#define MEMP_NUM_API_MSG        32
+ /* MEMP_NUM_TCPIPMSG: the number of struct tcpip_msg, which is used
+    for sequential API communication and incoming packets. Used in
+    src/api/tcpip.c. */
+-#define MEMP_NUM_TCPIP_MSG      128
++#define MEMP_NUM_TCPIP_MSG      32
+ /* MEMP_NUM_SYS_TIMEOUT: the number of simulateously active
+    timeouts. */
+ #define MEMP_NUM_SYS_TIMEOUT    0
+diff --git a/lwip/network.c b/lwip/network.c
+index b33d34f..295a514 100644
+--- a/lwip/network.c
++++ b/lwip/network.c
+@@ -1,3 +1,4 @@
++#include <malloc.h>
+ #include <time.h>
+ #include <errno.h>
+ #include <fcntl.h>
+@@ -108,7 +109,21 @@ static sys_sem sockselect_sem;
+ static sys_mbox netthread_mbox;
+ 
+ static sys_thread hnet_thread;
+-static u8 netthread_stack[STACKSIZE] ATTRIBUTE_ALIGN(8);
++static u8 *netthread_stack;
++static u32 netthread_stack_size = STACKSIZE;
++
++extern u32_t lwip_mem_size;
++extern u16_t lwip_pbuf_pool_size;
++
++/* Call before net_init(): sizes the lwIP heap, the RX pbuf pool and the network
++ * thread stack. 0 keeps the default for that field. Memory is taken from the libc
++ * heap at net_init() instead of being reserved in .bss. */
++void net_set_budget(u32 mem_size, u32 pbuf_pool, u32 stack_size)
++{
++	if(mem_size) lwip_mem_size = mem_size;
++	if(pbuf_pool) lwip_pbuf_pool_size = (u16_t)pbuf_pool;
++	if(stack_size) netthread_stack_size = stack_size;
++}
+ 
+ static u32 tcp_timer_active = 0;
+ 
+@@ -1652,7 +1667,9 @@ s32 net_init()
+ 		return -1;
+ 	}
+ 
+-	if(LWP_CreateThread(&hnet_thread,net_thread,(void*)sem,netthread_stack,STACKSIZE,220)!=0) {
++	if(netthread_stack==NULL) netthread_stack = (u8*)memalign(8,netthread_stack_size);
++	if(netthread_stack==NULL) return -ENOMEM;
++	if(LWP_CreateThread(&hnet_thread,net_thread,(void*)sem,netthread_stack,netthread_stack_size,220)!=0) {
+ 		LWP_SemDestroy(netsocket_sem);
+ 		LWP_SemDestroy(sockselect_sem);
+ 		LWP_SemDestroy(sem);
