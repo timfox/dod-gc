@@ -24,6 +24,10 @@ static cvar_t dod_rounds = { "dod_rounds", "2", FCVAR_SERVER };
  * the bots by itself (any manual target pick pauses it for a while). */
 static cvar_t dod_spectate = { "dod_spectate", "0", FCVAR_SERVER };
 static cvar_t dod_spec_auto = { "dod_spec_auto", "1", FCVAR_SERVER };
+/* Team body models (models/player/<name>/<name>.mdl, split onto the disc as
+ * gc_studio/<name>.mdl). A map cfg can switch to us-para/axis-para/brit-inf. */
+static cvar_t dod_allies_body = { "dod_allies_body", "us-inf", FCVAR_SERVER };
+static cvar_t dod_axis_body = { "dod_axis_body", "axis-inf", FCVAR_SERVER };
 static BOOL g_dod_cvars_registered;
 #define DOD_SPEC_SLOTS 8	/* spectator director state for client slots 1..8 */
 static float g_spec_hold_until[DOD_SPEC_SLOTS + 1];
@@ -147,6 +151,36 @@ static void DodGC_LeaveSpectator( CBasePlayer *pPlayer )
 	}
 }
 
+/* The body the engine draws for a player comes from the "model" userinfo key
+ * (models/player/<model>/<model>.mdl); the server entity stays models/player.mdl
+ * for hulls. Bots are fake clients with their own infobuffer, so this covers them. */
+static const char *DodGC_BodyForTeam( DodTeam team )
+{
+	if( team == DOD_TEAM_AXIS )
+		return CVAR_GET_STRING( "dod_axis_body" );
+	if( team == DOD_TEAM_ALLIES )
+		return CVAR_GET_STRING( "dod_allies_body" );
+	return NULL;
+}
+
+static void DodGC_ApplyBody( CBasePlayer *pPlayer )
+{
+	const char *body;
+	char *info;
+	if( !pPlayer || pPlayer->IsObserver() )
+		return;
+	body = DodGC_BodyForTeam( DodGC_TeamForPlayer( pPlayer ) );
+	if( !body || !body[0] )
+		return;
+	info = g_engfuncs.pfnGetInfoKeyBuffer( pPlayer->edict() );
+	if( !info )
+		return;
+	if( !strcmp( g_engfuncs.pfnInfoKeyValue( info, "model" ), body ) )
+		return;
+	g_engfuncs.pfnSetClientKeyValue( pPlayer->entindex(), info, "model", (char *)body );
+	ALERT( at_console, "DoD body %s -> %s\n", STRING( pPlayer->pev->netname ), body );
+}
+
 static void DodGC_ApplyClass( CBasePlayer *pPlayer, DodClass player_class )
 {
 	if( pPlayer && pPlayer->IsObserver() )
@@ -190,6 +224,7 @@ static void DodGC_ApplyClass( CBasePlayer *pPlayer, DodClass player_class )
 		}
 		DodBots_SetGranting( FALSE );
 	}
+	DodGC_ApplyBody( pPlayer );
 	DodGC_ClearMenu( pPlayer );
 }
 
@@ -202,6 +237,8 @@ CHalfLifeDoD::CHalfLifeDoD()
 		CVAR_REGISTER( &dod_rounds );
 		CVAR_REGISTER( &dod_spectate );
 		CVAR_REGISTER( &dod_spec_auto );
+		CVAR_REGISTER( &dod_allies_body );
+		CVAR_REGISTER( &dod_axis_body );
 		g_dod_cvars_registered = TRUE;
 	}
 	Dod_GameInit();
@@ -532,7 +569,14 @@ void CHalfLifeDoD::ClientUserInfoChanged( CBasePlayer *pPlayer, char *infobuffer
 	/* Teamplay turns a changed model into a team change; a spectator has no team. */
 	if( pPlayer && pPlayer->IsObserver() )
 		return;
+	/* The team body set by DodGC_ApplyBody is not a team change request. */
+	if( pPlayer && infobuffer ) {
+		const char *body = DodGC_BodyForTeam( DodGC_TeamForPlayer( pPlayer ) );
+		if( body && body[0] && !strcmp( g_engfuncs.pfnInfoKeyValue( infobuffer, "model" ), body ) )
+			return;
+	}
 	CHalfLifeTeamplay::ClientUserInfoChanged( pPlayer, infobuffer );
+	DodGC_ApplyBody( pPlayer );
 }
 
 void CHalfLifeDoD::Think( void )
