@@ -356,9 +356,11 @@ def main(argv=None):
 				r["anim_bytes"], r["texture_bytes"], r["other_bytes"]))
 			for label, n in r["bodyparts"]:
 				print("  bodypart %-20s models=%d" % (label, n))
-			big = max(r["seqs"], key=lambda s: s.get("animend", 0) - s["animindex"], default=None)
-			if big and "animend" in big:
-				print("  largest sequence %s: %d B" % (big["label"], big["animend"] - big["animindex"]))
+			sizes = sorted(((s["animend"] - s["animindex"], s["label"]) for s in r["seqs"] if "animend" in s), reverse=True)
+			for limit in (16, 32, 66, 128, 256):
+				print("  sequences over %3d KiB: %d" % (limit, sum(1 for n, _ in sizes if n > limit * 1024)))
+			for n, label in sizes[:12]:
+				print("  %8d B  %s" % (n, label))
 			return 0
 		files, report = split(data, name, args.group_bytes, args.max_groups)
 	except StudioError as e:
