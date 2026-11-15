@@ -298,6 +298,7 @@ def integrate_spectator_camera(client: Path) -> None:
 		'\t\t{\n'
 		'\t\t\tstatic DodCamState s_dodCam;\n'
 		'\t\t\tDodCam_Smooth( &s_dodCam, g_iUser1, g_iUser2, v_origin, v_angles, pparams->frametime, v_origin, v_angles );\n'
+		'\t\t\tDodCam_Level( g_iUser1, v_angles );\n'
 		'\t\t}\n'
 		'\n'
 		'\t\tif( gHUD.m_Spectator.m_pip->value )\n\t\t\tpparams->nextView = 1;\t// force a second renderer view\n')
