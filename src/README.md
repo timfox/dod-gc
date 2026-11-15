@@ -270,6 +270,16 @@ round clock) that `CHalfLifeDoD::Think` sends once per second as a HUD text
 channel. It is a stand-in for the retail scoreboard and has not been run on
 hardware or Dolphin.
 
+## Bots by default
+
+A Day of Defeat match on the GameCube build starts with bots: `dod_bots` defaults to 3
+("fill the server"), capped by the free server slots (`sv_gc_slots`, 2 by default, so
+one human plus one bot), `mp_teamplay` is forced to 1 for the dod gamedir, and bots are
+balanced across Axis and Allies (`Dod_BotPickTeam`). Menu New Game / Create Server needs
+no setting for this. LAN/listen play is an option on top: `dod_bots_online` (default 0)
+keeps the free slot for the network peer while the link is up. Set `dod_bots 0` for a
+human-only match.
+
 Run the host-side rules-core checks with `python3 tests/test_dod_game.py`.
 
 Do not patch HL1 release artifacts (`halflife1.dol`, `boot.dol`, or
