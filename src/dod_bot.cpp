@@ -108,7 +108,20 @@ BOOL DodBots_Granting( void ) { return g_granting; }
 
 BOOL DodBots_IsBot( CBasePlayer *pPlayer )
 {
-	return pPlayer && pPlayer->pev && ( pPlayer->pev->flags & FL_FAKECLIENT ) ? TRUE : FALSE;
+	DodBotState *state;
+	if( !pPlayer || !pPlayer->pev )
+		return FALSE;
+	if( pPlayer->pev->flags & FL_FAKECLIENT )
+		return TRUE;
+	/* CBasePlayer::Spawn() (every respawn) resets pev->flags to FL_CLIENT, which drops
+	 * FL_FAKECLIENT; the bot's own slot record is the reliable marker. */
+	state = BotState( ENTINDEX( pPlayer->edict() ) );
+	if( state && state->active )
+	{
+		pPlayer->pev->flags |= FL_FAKECLIENT;
+		return TRUE;
+	}
+	return FALSE;
 }
 
 void DodBots_Init( void )
@@ -206,6 +219,7 @@ static void AddBot( int team_counts[4], int special_counts[4][DOD_CLASS_COUNT] )
 		}
 	}
 	DodGC_BotJoin( pBot, team, player_class );
+	pBot->pev->flags |= FL_FAKECLIENT;	/* Spawn() inside BotJoin resets flags to FL_CLIENT */
 	team_counts[team]++;
 	special_counts[team][player_class]++;
 	ALERT( at_console, "DoD bot %s joined %s as %s\n", name, Dod_TeamName( team ), Dod_ClassName( player_class ) );

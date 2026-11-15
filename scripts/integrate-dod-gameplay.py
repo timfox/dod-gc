@@ -270,7 +270,13 @@ def integrate_dod_hud(client: Path) -> None:
 		'\t/* cl_dodhud and the DodHud message: needed by the lean path too. */\n'
 		'\tm_Dod.InitState();\n'
 		'\t/* the lean (quality 0) path returns before hud_textmode is created; DrawHudString reads it */\n'
-		'\tif( !hud_textmode )\n\t\thud_textmode = CVAR_CREATE( "hud_textmode", "0", FCVAR_ARCHIVE );\n')
+		'\tif( !hud_textmode )\n\t\thud_textmode = CVAR_CREATE( "hud_textmode", "0", FCVAR_ARCHIVE );\n'
+		'\t/* spectator camera code reads spec_pip even when CHudSpectator::Init never ran (lean HUD) */\n'
+		'\tif( !m_Spectator.m_pip )\n\t\tm_Spectator.m_pip = gEngfuncs.pfnRegisterVariable( "spec_pip", "0", 0 );\n')
+	# HUD_AddEntity feeds the overview map in spectator modes; the lean HUD has none.
+	replace_once(client / "entity.cpp",
+		'\t\tgHUD.m_Spectator.AddOverviewEntity( type, ent, modelname );\n\n\t\tif( (	g_iUser1 == OBS_IN_EYE || gHUD.m_Spectator.m_pip->value == INSET_IN_EYE ) &&',
+		'\t\tif( (	g_iUser1 == OBS_IN_EYE || ( gHUD.m_Spectator.m_pip && gHUD.m_Spectator.m_pip->value == INSET_IN_EYE ) ) &&')
 	replace_once(hud, "\tm_Menu.Init();\n", "\tm_Menu.Init();\n\tm_Dod.Init();\n")
 	replace_once(hud, "\tm_Menu.VidInit();\n", "\tm_Menu.VidInit();\n\tm_Dod.VidInit();\n")
 	replace_once(client / "hud_redraw.cpp",
