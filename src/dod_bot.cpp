@@ -153,11 +153,12 @@ static CBasePlayer *PlayerAt( int index )
 
 /* ------------------------------------------------------------- bot count */
 
-static void CountPlayers( int *humans, int *bots, int team_counts[4], int special_counts[4][DOD_CLASS_COUNT] )
+static void CountPlayers( int *humans, int *bots, int team_counts[4], int bot_team_counts[4], int special_counts[4][DOD_CLASS_COUNT] )
 {
 	int i;
 	*humans = *bots = 0;
 	memset( team_counts, 0, sizeof( int ) * 4 );
+	memset( bot_team_counts, 0, sizeof( int ) * 4 );
 	memset( special_counts, 0, sizeof( int ) * 4 * DOD_CLASS_COUNT );
 	for( i = 1; i <= gpGlobals->maxClients; i++ )
 	{
@@ -174,6 +175,9 @@ static void CountPlayers( int *humans, int *bots, int team_counts[4], int specia
 		if( team == DOD_TEAM_ALLIES || team == DOD_TEAM_AXIS )
 		{
 			team_counts[team]++;
+	bot_team_counts[team]++;
+			if( DodBots_IsBot( pPlayer ) )
+				bot_team_counts[team]++;
 			state = Dod_GetPlayer( i );
 			if( state && state->player_class > DOD_CLASS_NONE && state->player_class < DOD_CLASS_COUNT )
 				special_counts[team][state->player_class]++;
@@ -186,7 +190,7 @@ static const char *const g_bot_names[] = {
 	"Sgt. Walker", "Pvt. Brandt", "Cpl. Hayes", "Ofw. Vogel"
 };
 
-static void AddBot( int team_counts[4], int special_counts[4][DOD_CLASS_COUNT] )
+static void AddBot( int team_counts[4], int bot_team_counts[4], int special_counts[4][DOD_CLASS_COUNT] )
 {
 	static int name_index;
 	const char *name = g_bot_names[name_index++ % ( sizeof( g_bot_names ) / sizeof( g_bot_names[0] ) )];
@@ -208,7 +212,8 @@ static void AddBot( int team_counts[4], int special_counts[4][DOD_CLASS_COUNT] )
 	pBot = (CBasePlayer *)CBaseEntity::Instance( pEdict );
 	if( !pBot )
 		return;
-	team = Dod_BotPickTeam( team_counts[DOD_TEAM_ALLIES], team_counts[DOD_TEAM_AXIS] );
+	team = Dod_BotPickTeamBalanced( team_counts[DOD_TEAM_ALLIES], team_counts[DOD_TEAM_AXIS],
+		bot_team_counts[DOD_TEAM_ALLIES], bot_team_counts[DOD_TEAM_AXIS] );
 	player_class = Dod_BotPickClass( RANDOM_LONG( 0, 1000 ), special_counts[team] );
 	{
 		DodBotState *state = BotState( ENTINDEX( pEdict ) );
@@ -251,9 +256,9 @@ static BOOL NetworkUp( void )
 
 static void PlanBots( void )
 {
-	int humans, bots, team_counts[4], special_counts[4][DOD_CLASS_COUNT], target;
+	int humans, bots, team_counts[4], bot_team_counts[4], special_counts[4][DOD_CLASS_COUNT], target;
 
-	CountPlayers( &humans, &bots, team_counts, special_counts );
+	CountPlayers( &humans, &bots, team_counts, bot_team_counts, special_counts );
 	if( humans > 0 && g_first_human_time == 0.0f )
 		g_first_human_time = gpGlobals->time;
 	if( humans == 0 )
@@ -269,7 +274,7 @@ static void PlanBots( void )
 	if( bots > target )
 		KickOneBot();
 	else if( bots < target && gpGlobals->time - g_first_human_time > 3.0f )
-		AddBot( team_counts, special_counts );	/* one per plan tick: no spawn burst */
+		AddBot( team_counts, bot_team_counts, special_counts );	/* one per plan tick: no spawn burst */
 }
 
 /* -------------------------------------------------------------------- AI */

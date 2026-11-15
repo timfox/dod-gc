@@ -39,6 +39,12 @@ static void test_team_pick(void)
 	assert(Dod_BotPickTeam(1, 0) == DOD_TEAM_AXIS);
 	assert(Dod_BotPickTeam(2, 2) == DOD_TEAM_AXIS);		/* tie */
 	assert(Dod_BotPickTeam(0, 0) == DOD_TEAM_AXIS);
+	/* human on Allies, one bot already on Axis: the second bot joins Allies so the bots oppose */
+	assert(Dod_BotPickTeamBalanced(1, 0, 0, 0) == DOD_TEAM_AXIS);
+	assert(Dod_BotPickTeamBalanced(1, 1, 0, 1) == DOD_TEAM_ALLIES);
+	assert(Dod_BotPickTeamBalanced(2, 1, 1, 0) == DOD_TEAM_AXIS);
+	assert(Dod_BotPickTeamBalanced(0, 0, 0, 0) == DOD_TEAM_AXIS);
+	assert(Dod_BotPickTeamBalanced(2, 2, 1, 1) == DOD_TEAM_AXIS);
 	assert(Dod_BotPickTeam(3, 5) == DOD_TEAM_ALLIES);
 	{	/* one human on Allies plus three bots fills out to two a side */
 		int allies = 1, axis = 0, i;
