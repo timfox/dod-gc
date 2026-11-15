@@ -274,6 +274,30 @@ class HudIntegrationTest(unittest.TestCase):
 				INTEGRATOR.integrate_dod_hud(client)
 
 
+class SpectatorCameraIntegrationTest(unittest.TestCase):
+	VIEW = ('#include "view.h"\nvoid f()\n{\n\t\tif( gHUD.m_Spectator.m_pip->value )\n'
+		'\t\t\tpparams->nextView = 1;\t// force a second renderer view\n}\n')
+
+	def run_integration(self, text):
+		with tempfile.TemporaryDirectory() as directory:
+			client = Path(directory)
+			(client / "view.cpp").write_text(text)
+			INTEGRATOR.integrate_spectator_camera(client)
+			first = (client / "view.cpp").read_text()
+			INTEGRATOR.integrate_spectator_camera(client)
+			self.assertEqual(first, (client / "view.cpp").read_text(), "must be idempotent")
+			return first
+
+	def test_smoothing_hooked_before_the_inset_view(self):
+		text = self.run_integration(self.VIEW)
+		self.assertIn('#include "dod_cam.h"', text)
+		self.assertLess(text.index("DodCam_Smooth("), text.index("pparams->nextView = 1;"))
+
+	def test_missing_anchor_fails_loudly(self):
+		with self.assertRaises(SystemExit):
+			self.run_integration("int unrelated;\n")
+
+
 class ClientSourceSyncTest(unittest.TestCase):
 	def test_client_sources_are_copied_and_stale_ones_removed(self):
 		with tempfile.TemporaryDirectory() as directory:
