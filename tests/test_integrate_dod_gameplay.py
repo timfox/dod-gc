@@ -292,6 +292,7 @@ class SpectatorCameraIntegrationTest(unittest.TestCase):
 		text = self.run_integration(self.VIEW)
 		self.assertIn('#include "dod_cam.h"', text)
 		self.assertLess(text.index("DodCam_Smooth("), text.index("pparams->nextView = 1;"))
+		self.assertLess(text.index("DodCam_Smooth("), text.index("DodCam_Level("))
 
 	def test_missing_anchor_fails_loudly(self):
 		with self.assertRaises(SystemExit):
