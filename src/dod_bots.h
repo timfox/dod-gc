@@ -27,6 +27,8 @@ int Dod_BotRequestedCount(int requested, int network_up, int allowed_online);
 /* The team a new bot joins: the smaller one, so bots fill the side the
  * humans are not on. A tie goes to Axis. */
 DodTeam Dod_BotPickTeam(int allies, int axis);
+/* Team for a joining bot: fewer players first, ties go to the side with fewer bots. */
+DodTeam Dod_BotPickTeamBalanced(int allies, int axis, int allies_bots, int axis_bots);
 
 /* Class for a new bot. roll is any non-negative number (a random draw).
  * Mostly cheap infantry classes; each special class (sniper, MG, rocket) is

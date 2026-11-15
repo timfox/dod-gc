@@ -33,6 +33,17 @@ DodTeam Dod_BotPickTeam(int allies, int axis)
 	return allies < axis ? DOD_TEAM_ALLIES : DOD_TEAM_AXIS;
 }
 
+DodTeam Dod_BotPickTeamBalanced(int allies, int axis, int allies_bots, int axis_bots)
+{
+	/* Fewer players first. On a tie put the bot on the side with fewer bots, so
+	 * the bots end up opposing each other instead of stacking on one side. */
+	if (allies != axis)
+		return allies < axis ? DOD_TEAM_ALLIES : DOD_TEAM_AXIS;
+	if (allies_bots != axis_bots)
+		return allies_bots < axis_bots ? DOD_TEAM_ALLIES : DOD_TEAM_AXIS;
+	return DOD_TEAM_AXIS;
+}
+
 DodClass Dod_BotPickClass(int roll, const int special_counts[DOD_CLASS_COUNT])
 {
 	/* Weighted draw: rifleman 4, assault 3, support 2, sniper 1, mg 1, rocket 1. */
