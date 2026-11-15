@@ -223,6 +223,7 @@ DOD_CLIENT_SOURCES = (
 	("dod_hud.h", "dod_hud.h"),
 	("client/hud_dod.h", "hud_dod.h"),
 	("client/hud_dod.cpp", "hud_dod.cpp"),
+	("client/dod_cam.h", "dod_cam.h"),
 )
 
 
@@ -284,6 +285,22 @@ def integrate_dod_hud(client: Path) -> None:
 		"\t\t\tif( m_Menu.m_fMenuDisplayed )\n\t\t\t\tm_Menu.Draw( flTime );\n"
 		"\t\t\t/* DoD match HUD (cl_dodhud): score, clock, flags, round. */\n"
 		"\t\t\tm_Dod.Draw( flTime );\n")
+
+
+def integrate_spectator_camera(client: Path) -> None:
+	"""Smooth the spectator chase cameras (dod_cam.h) in the HLSDK client view."""
+	view = client / "view.cpp"
+	replace_once(view, '#include "view.h"\n', '#include "view.h"\n#include "dod_cam.h"\n')
+	replace_once(view,
+		'\t\tif( gHUD.m_Spectator.m_pip->value )\n\t\t\tpparams->nextView = 1;\t// force a second renderer view\n',
+		'\t\t/* DoD: the chase cameras follow an entity origin that only moves on a network\n'
+		'\t\t * update; low-pass them so the view glides (snaps on target or mode changes). */\n'
+		'\t\t{\n'
+		'\t\t\tstatic DodCamState s_dodCam;\n'
+		'\t\t\tDodCam_Smooth( &s_dodCam, g_iUser1, g_iUser2, v_origin, v_angles, pparams->frametime, v_origin, v_angles );\n'
+		'\t\t}\n'
+		'\n'
+		'\t\tif( gHUD.m_Spectator.m_pip->value )\n\t\t\tpparams->nextView = 1;\t// force a second renderer view\n')
 
 
 def main() -> int:
@@ -424,6 +441,7 @@ def main() -> int:
 	integrate_grenades(dlls)
 	integrate_weapons(dlls)
 	integrate_dod_hud(client)
+	integrate_spectator_camera(client)
 
 	replace_once(
 		dlls / "CMakeLists.txt",
