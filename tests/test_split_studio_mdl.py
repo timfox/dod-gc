@@ -171,6 +171,42 @@ class SplitTest(unittest.TestCase):
 		self.assertEqual(report["groups"], 1)
 		self.assertNotIn("player02.mdl", files)
 
+	def test_pack_is_big_endian_and_aligned(self):
+		files, report = ssm.split(self.data, "player", pack_path="models/player/anim_%s.gca")
+		self.assertEqual(report["groups"], 1)
+		pack_name = [n for n in files if n.endswith(".gca")][0]
+		pack = files[pack_name]
+		self.assertEqual(pack[:4], b"GCAP")
+		version, numseq, numbones, data_off, total, _ = struct.unpack_from(">6I", pack, 4)
+		self.assertEqual((version, numseq, numbones, total), (1, len(self.anims), NUMBONES, len(pack)))
+		self.assertEqual(data_off % 32, 0)
+		core = files["player.mdl"]
+		hdr = ssm.read_header(core)
+		# The core names the pack and carries no animation of its own.
+		gt = hdr["seqgroupindex"] + ssm.SEQGROUP_SIZE
+		self.assertEqual(core[gt + 32:gt + 96].split(b"\0")[0].decode(), "models/player/" + pack_name)
+		self.assertNotIn(self.anims[0], core)
+		for i, want in enumerate(self.anims):
+			so = hdr["seqindex"] + i * ssm.SEQ_SIZE
+			self.assertEqual(struct.unpack_from("<i", core, so + ssm.SEQ_SEQGROUP)[0], 1)
+			off, size = struct.unpack_from(">2I", pack, ssm.PACK_HDR_SIZE + i * 8)
+			self.assertEqual(off % 32, 0)
+			self.assertEqual(size, len(want))
+			block = pack[off:off + size]
+			# Table offsets and values read back big-endian equal the originals.
+			self.assertEqual(struct.unpack_from(">6H", block, 0), struct.unpack_from("<6H", want, 0))
+			first = struct.unpack_from("<6H", want, 0)[0]
+			self.assertEqual(block[first:first + 2], want[first:first + 2])	# valid/total bytes
+			self.assertEqual(struct.unpack_from(">h", block, first + 2), struct.unpack_from("<h", want, first + 2))
+			# Swapping twice restores the little-endian block.
+			nf = struct.unpack_from("<i", core, so + ssm.SEQ_NUMFRAMES)[0]
+			self.assertEqual(len(ssm.swap_anim_block(want, 1, NUMBONES, nf)), len(want))
+
+	def test_identical_animation_shares_a_pack_name(self):
+		a, _ = ssm.split(self.data, "axis", pack_path="models/player/anim_%s.gca")
+		b, _ = ssm.split(self.data, "allies", pack_path="models/player/anim_%s.gca")
+		self.assertEqual([n for n in a if n.endswith(".gca")], [n for n in b if n.endswith(".gca")])
+
 	def test_rejects_non_studio(self):
 		with self.assertRaises(ssm.StudioError):
 			ssm.split(b"nope" + bytes(300), "x")

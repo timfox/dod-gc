@@ -15,8 +15,16 @@ the engine's ARAM-backed animation slots.
 
   split_studio_mdl.py info  model.mdl
   split_studio_mdl.py split model.mdl outdir [--group-bytes N] [--max-groups N]
+  split_studio_mdl.py split model.mdl outdir --pack models/player/anim_%s.gca
+
+--pack writes one GameCube-native animation pack instead of sequence group
+files: big-endian, one 32-byte aligned block per sequence with a directory, so
+the engine can fetch a single sequence from ARAM with one DMA and no byte
+swapping. The file name carries a content hash, so models with identical
+animation share one pack.
 """
 import argparse
+import hashlib
 import os
 import struct
 import sys
@@ -33,6 +41,9 @@ BODYPART_SIZE = 76
 MODEL_SIZE = 112
 MESH_SIZE = 20
 PALETTE = 768
+PACK_MAGIC = b"GCAP"
+PACK_VERSION = 1
+PACK_HDR_SIZE = 32
 
 # studiohdr_t int fields from offset 140
 HDR_FIELDS = (
@@ -223,13 +234,66 @@ def _fix(buf, off, remap):
 		_put(buf, off, remap(val))
 
 
-def split(data, name, group_bytes=66 * 1024, max_groups=16):
-	"""Return {filename: bytes} for the split model."""
+def swap_anim_block(block, numblends, numbones, numframes):
+	"""Little-endian animation block to big-endian (GameCube native)."""
+	out = bytearray(block)
+	for k in range(numblends * numbones):
+		base = k * 12
+		offs = struct.unpack_from("<6H", block, base)
+		struct.pack_into(">6H", out, base, *offs)
+		for off in offs:
+			if not off:
+				continue
+			p = base + off
+			frames = 0
+			while frames < numframes:
+				valid, total = block[p], block[p + 1]
+				for v in range(valid):
+					q = p + 2 + 2 * v
+					out[q], out[q + 1] = block[q + 1], block[q]
+				p += 2 + 2 * valid
+				frames += total
+	return bytes(out)
+
+
+def build_pack(data, hdr, seqs):
+	"""GameCube animation pack: big-endian directory plus 32-byte aligned,
+	pre-swapped sequence blocks, so one sequence is one ARAM DMA."""
+	numseq = len(seqs)
+	data_off = (PACK_HDR_SIZE + numseq * 8 + 31) & ~31
+	body = bytearray()
+	entries = []
+	for s in seqs:
+		if s["seqgroup"] != 0:
+			entries.append((0, 0))
+			continue
+		block = swap_anim_block(data[s["animindex"]:s["animend"]], s["numblends"],
+			hdr["numbones"], s["numframes"])
+		entries.append((data_off + len(body), len(block)))
+		body += block
+		while len(body) % 32:
+			body.append(0)
+	head = PACK_MAGIC + struct.pack(">6I", PACK_VERSION, numseq, hdr["numbones"],
+		data_off, data_off + len(body), 0) + b"\0\0\0\0"
+	table = b"".join(struct.pack(">2I", o, n) for o, n in entries)
+	blob = head + table
+	blob += b"\0" * (data_off - len(blob)) + body
+	return bytes(blob)
+
+
+def split(data, name, group_bytes=66 * 1024, max_groups=16, pack_path=None):
+	"""Return {filename: bytes} for the split model.
+
+	With pack_path, all animation goes to one GameCube pack instead of
+	sequence group files; pack_path may contain %s for the content hash."""
 	hdr = read_header(data)
 	if hdr["numseqgroups"] > 1:
 		raise StudioError("model already uses sequence groups")
 	seqs = read_sequences(data, hdr)
-	bins, kept = pack_groups(seqs, group_bytes, max_groups)
+	if pack_path:
+		bins, kept = [[i for i, s in enumerate(seqs) if s["seqgroup"] == 0]], []
+	else:
+		bins, kept = pack_groups(seqs, group_bytes, max_groups)
 
 	blocks = sorted((seqs[i]["animindex"], seqs[i]["animend"]) for b in bins for i in b)
 	for (s0, e0), (s1, _) in zip(blocks, blocks[1:]):
@@ -239,6 +303,23 @@ def split(data, name, group_bytes=66 * 1024, max_groups=16):
 	out = {}
 	removed = []
 	src = bytearray(data)
+
+	group_names = []
+	if pack_path:
+		pack = build_pack(data, hdr, seqs)
+		if "%s" in pack_path:
+			pack_path = pack_path % hashlib.sha1(pack).hexdigest()[:12]
+		if len(pack_path) > 63:
+			raise StudioError("pack path longer than 63 characters")
+		out[os.path.basename(pack_path)] = pack
+		group_names.append(pack_path)
+		for i in bins[0]:
+			s = seqs[i]
+			_put(src, s["off"] + SEQ_ANIMINDEX, 0)
+			_put(src, s["off"] + SEQ_SEQGROUP, 1)
+			s["moved"] = True
+			removed.append((s["animindex"], s["animend"]))
+		bins = []
 
 	# Animation files. animindex becomes relative to the group file.
 	for g, members in enumerate(bins, start=1):
@@ -320,14 +401,15 @@ def split(data, name, group_bytes=66 * 1024, max_groups=16):
 		core.append(0)
 	table_off = len(core)
 	core += b"default".ljust(32, b"\0") + b"\0" * 72
-	for g in range(1, len(bins) + 1):
-		fname = "models/%s%02d.mdl" % (name, g)
+	if not group_names:
+		group_names = ["models/%s%02d.mdl" % (name, g) for g in range(1, len(bins) + 1)]
+	for g, fname in enumerate(group_names, start=1):
 		core += ("group%d" % g).encode().ljust(32, b"\0") + fname.encode().ljust(64, b"\0")[:64] + b"\0" * 8
-	_put(core, 140 + 4 * HDR_FIELDS.index("numseqgroups"), len(bins) + 1)
+	_put(core, 140 + 4 * HDR_FIELDS.index("numseqgroups"), len(group_names) + 1)
 	_put(core, 140 + 4 * HDR_FIELDS.index("seqgroupindex"), table_off)
 	_put(core, 72, len(core))
 	out[name + ".mdl"] = bytes(core)
-	return out, {"groups": len(bins), "kept_in_core": [seqs[i]["label"] for i in kept]}
+	return out, {"groups": len(group_names), "kept_in_core": [seqs[i]["label"] for i in kept]}
 
 
 def main(argv=None):
@@ -340,6 +422,9 @@ def main(argv=None):
 	p_split.add_argument("outdir")
 	p_split.add_argument("--group-bytes", type=int, default=66 * 1024)
 	p_split.add_argument("--max-groups", type=int, default=16)
+	p_split.add_argument("--pack", metavar="PATH",
+		help="write all animation to one GameCube pack; PATH is the in-game path, %%s = content hash "
+		"(e.g. models/player/anim_%%s.gca)")
 	args = ap.parse_args(argv)
 
 	with open(args.model, "rb") as f:
@@ -362,7 +447,7 @@ def main(argv=None):
 			for n, label in sizes[:12]:
 				print("  %8d B  %s" % (n, label))
 			return 0
-		files, report = split(data, name, args.group_bytes, args.max_groups)
+		files, report = split(data, name, getattr(args, "group_bytes", 0), getattr(args, "max_groups", 0), getattr(args, "pack", None))
 	except StudioError as e:
 		print("error: %s" % e, file=sys.stderr)
 		return 1
