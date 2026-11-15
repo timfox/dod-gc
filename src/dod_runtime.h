@@ -14,6 +14,7 @@ public:
 	virtual void PlayerKilled( CBasePlayer *pVictim, entvars_t *pKiller, entvars_t *pInflictor );
 	virtual void ClientDisconnected( edict_t *pClient );
 	virtual void Think( void );
+	virtual void ClientUserInfoChanged( CBasePlayer *pPlayer, char *infobuffer );
 	virtual const char *GetGameDescription( void ) { return "Day of Defeat"; }
 	virtual edict_t *GetPlayerSpawnSpot( CBasePlayer *pPlayer );
 };

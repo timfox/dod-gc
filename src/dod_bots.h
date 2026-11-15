@@ -98,6 +98,54 @@ typedef struct DodBotEscape {
  * draw in [0, 1) picking left or right. */
 DodBotEscape Dod_BotStuckUpdate(DodBotStuck *s, float x, float y, float time, int wants_move, float roll);
 
+
+/* ---------------------------------------------------------------- spectator
+ * A spectator is the local human watching a bot match. It takes the human's own
+ * client slot (GoldSrc has no slotless spectator; HLTV also needs one), so the
+ * cost is a few static bytes. The hlsdk observer code does the camera work (chase,
+ * in-eye, roaming; fire = next, alt-fire = previous, jump = mode). These helpers
+ * decide what is worth watching and hide the overview-map modes, which need
+ * map overview data the GameCube build does not ship. */
+
+/* Observer modes, matching the HLSDK OBS_* values in const.h. */
+#define DOD_SPEC_CHASE_LOCKED 1
+#define DOD_SPEC_CHASE_FREE 2
+#define DOD_SPEC_ROAMING 3
+#define DOD_SPEC_IN_EYE 4
+#define DOD_SPEC_MAP_FREE 5
+#define DOD_SPEC_MAP_CHASE 6
+
+/* Map the HLSDK's mode to one the GameCube can show: the two overview-map
+ * modes fall back to a free chase camera, anything unknown to in-eye. */
+int Dod_SpecSanitizeMode(int mode);
+
+/* Seconds the director stays on a target at least / at most. */
+#define DOD_SPEC_MIN_DWELL 4.0f
+#define DOD_SPEC_MAX_DWELL 14.0f
+/* Seconds the director stays quiet after the spectator picks a target by hand. */
+#define DOD_SPEC_MANUAL_HOLD 20.0f
+
+typedef struct DodSpecCandidate {
+	int index;		/* entity index of the player */
+	int alive;
+	float enemy_distance;	/* to the nearest living enemy, < 0 when none */
+} DodSpecCandidate;
+
+/* How interesting a candidate is to watch: 0 for the dead, otherwise higher the
+ * closer it is to an enemy (a fight), with a small floor so a lone walker still
+ * beats nothing. */
+float Dod_SpecInterest(const DodSpecCandidate *c);
+
+/* The next (or previous) living candidate after current in list order, wrapping
+ * around; current may be 0 or not in the list. Returns an entity index or 0. */
+int Dod_SpecCycle(const DodSpecCandidate *list, int count, int current, int reverse);
+
+/* The auto director: which candidate to follow. Keeps current until it has been
+ * watched DOD_SPEC_MIN_DWELL seconds and is dead or clearly duller than the best
+ * (best interest > current + 25%), or DOD_SPEC_MAX_DWELL elapsed. Returns an
+ * entity index, current when nothing better, 0 when nobody is alive. */
+int Dod_SpecDirectorPick(const DodSpecCandidate *list, int count, int current, float dwell);
+
 #ifdef __cplusplus
 }
 #endif
