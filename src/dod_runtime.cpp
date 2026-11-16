@@ -983,6 +983,7 @@ private:
 	string_t m_iszEndCap[3];
 	BOOL m_bResolved;
 	BOOL m_bStarted;
+	BOOL m_bContested;
 	CDoDControlPoint *m_pPoint;
 };
 
@@ -996,7 +997,7 @@ CDoDCaptureArea::CDoDCaptureArea()
 	m_iszTarget = m_iszMaster = 0;
 	m_iszStartCap[DOD_TEAM_ALLIES] = m_iszStartCap[DOD_TEAM_AXIS] = 0;
 	m_iszEndCap[DOD_TEAM_ALLIES] = m_iszEndCap[DOD_TEAM_AXIS] = 0;
-	m_bResolved = m_bStarted = FALSE;
+	m_bResolved = m_bStarted = m_bContested = FALSE;
 	m_pPoint = NULL;
 }
 
@@ -1079,6 +1080,16 @@ void CDoDCaptureArea::Think( void )
 		int axis = ( m_iCanCap[DOD_TEAM_AXIS] && inside[DOD_TEAM_AXIS] >= m_iNumCap[DOD_TEAM_AXIS] ) ? inside[DOD_TEAM_AXIS] : 0;
 		const DodObjectiveState *before = Dod_GetObjective( m_pPoint->PointIndex() );
 		const int owner_before = before ? (int)before->owner : -1;
+
+		if( allies && axis && !m_bContested ) {
+			m_bContested = TRUE;
+			ALERT( at_console, "DoD capture contested point %d: Allies %d, Axis %d, capture paused at %.0f%%\n", m_pPoint->PointIndex(),
+				allies, axis, before ? before->capture_progress * 100.0f : 0.0f );
+		} else if( m_bContested && !( allies && axis ) ) {
+			m_bContested = FALSE;
+			ALERT( at_console, "DoD capture contest over at point %d (%s inside)\n", m_pPoint->PointIndex(),
+				allies ? "Allies" : ( axis ? "Axis" : "nobody" ) );
+		}
 
 		if( ( allies || axis ) && !m_bStarted ) {
 			const DodTeam starter = allies >= axis ? DOD_TEAM_ALLIES : DOD_TEAM_AXIS;
