@@ -123,6 +123,42 @@ static void test_player_body(void)
 	assert(Dod_PlayerBodyValue("us-inf", DOD_CLASS_NONE, 4) == 0);
 }
 
+static void test_class_limits(void)
+{
+	int i;
+	Dod_GameInit();
+	for (i = 1; i <= 4; ++i) {
+		assert(Dod_PlayerConnect(i));
+		assert(Dod_AssignPlayerTeam(i, DOD_TEAM_ALLIES));
+	}
+	assert(Dod_PlayerConnect(5) && Dod_AssignPlayerTeam(5, DOD_TEAM_AXIS));
+	/* unlimited by default */
+	assert(Dod_ClassLimit(DOD_TEAM_ALLIES, DOD_CLASS_SNIPER) == -1 && Dod_ClassAvailable(DOD_TEAM_ALLIES, DOD_CLASS_SNIPER, 1));
+	/* a limit of 2 snipers: the third is turned away, the second player's own pick does not count against itself */
+	Dod_SetClassLimit(DOD_TEAM_ALLIES, DOD_CLASS_SNIPER, 2);
+	assert(Dod_SelectPlayerClass(1, DOD_CLASS_SNIPER) && Dod_SelectPlayerClass(2, DOD_CLASS_SNIPER));
+	assert(Dod_ClassCount(DOD_TEAM_ALLIES, DOD_CLASS_SNIPER, 0) == 2);
+	assert(!Dod_ClassAvailable(DOD_TEAM_ALLIES, DOD_CLASS_SNIPER, 3));
+	assert(Dod_ClassAvailable(DOD_TEAM_ALLIES, DOD_CLASS_SNIPER, 2));	/* already one of them */
+	assert(Dod_ClassAvailable(DOD_TEAM_ALLIES, DOD_CLASS_MG, 3) && Dod_ClassAvailable(DOD_TEAM_AXIS, DOD_CLASS_SNIPER, 5));
+	/* a player who leaves the class makes room */
+	assert(Dod_SelectPlayerClass(1, DOD_CLASS_RIFLEMAN));
+	assert(Dod_ClassAvailable(DOD_TEAM_ALLIES, DOD_CLASS_SNIPER, 3));
+	/* 0 turns a class off; the mask does too */
+	Dod_SetClassLimit(DOD_TEAM_ALLIES, DOD_CLASS_ROCKET, 0);
+	assert(!Dod_ClassAvailable(DOD_TEAM_ALLIES, DOD_CLASS_ROCKET, 3));
+	Dod_SetClassMask(DOD_TEAM_AXIS, (1 << DOD_CLASS_RIFLEMAN) | (1 << DOD_CLASS_MG));
+	assert(Dod_ClassAvailable(DOD_TEAM_AXIS, DOD_CLASS_MG, 5) && !Dod_ClassAvailable(DOD_TEAM_AXIS, DOD_CLASS_SNIPER, 5));
+	Dod_SetClassMask(DOD_TEAM_AXIS, -1);
+	assert(Dod_ClassAvailable(DOD_TEAM_AXIS, DOD_CLASS_SNIPER, 5));
+	/* bad arguments */
+	assert(!Dod_ClassAvailable(DOD_TEAM_SPECTATOR, DOD_CLASS_RIFLEMAN, 1) && !Dod_ClassAvailable(DOD_TEAM_ALLIES, DOD_CLASS_NONE, 1));
+	assert(Dod_ClassLimit(DOD_TEAM_SPECTATOR, DOD_CLASS_SNIPER) == -1);
+	Dod_SetClassLimit(DOD_TEAM_ALLIES, DOD_CLASS_SNIPER, -1);
+	Dod_SetClassLimit(DOD_TEAM_ALLIES, DOD_CLASS_ROCKET, -1);
+	Dod_GameShutdown();
+}
+
 static void test_stamina(void)
 {
 	float now = 100.0f, speed;
@@ -951,6 +987,7 @@ int main(void)
 	test_retail_class_names();
 	test_status_line();
 	test_player_line();
+	test_class_limits();
 	test_stamina();
 	test_voice();
 	test_scoreboard();

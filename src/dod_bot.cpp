@@ -441,6 +441,7 @@ static void AddBot( int team_counts[4], int bot_team_counts[4], int special_coun
 	team = Dod_BotPickTeamBalanced( team_counts[DOD_TEAM_ALLIES], team_counts[DOD_TEAM_AXIS],
 		bot_team_counts[DOD_TEAM_ALLIES], bot_team_counts[DOD_TEAM_AXIS] );
 	player_class = Dod_BotPickClass( RANDOM_LONG( 0, 1000 ), special_counts[team] );
+	player_class = DodGC_OpenClass( pBot, team, player_class );
 	DodGC_BotJoin( pBot, team, player_class );
 	pBot->pev->flags |= FL_FAKECLIENT;	/* Spawn() inside BotJoin resets flags to FL_CLIENT */
 	team_counts[team]++;

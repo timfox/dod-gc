@@ -819,6 +819,65 @@ int Dod_PlayerBodyValue(const char *model, DodClass player_class, int player_ind
 	return part + 6 * helmet + 48 * head + 336 * gear;
 }
 
+static int g_class_limit[4][DOD_CLASS_COUNT];
+static int g_class_mask[4] = { -1, -1, -1, -1 };
+static int g_class_limits_set;
+
+static void dod_class_limits_init(void)
+{
+	int t, c;
+	if (g_class_limits_set)
+		return;
+	for (t = 0; t < 4; ++t)
+		for (c = 0; c < DOD_CLASS_COUNT; ++c)
+			g_class_limit[t][c] = -1;
+	g_class_limits_set = 1;
+}
+
+void Dod_SetClassLimit(DodTeam team, DodClass player_class, int limit)
+{
+	dod_class_limits_init();
+	if ((team == DOD_TEAM_ALLIES || team == DOD_TEAM_AXIS) && player_class > DOD_CLASS_NONE && player_class < DOD_CLASS_COUNT)
+		g_class_limit[team][player_class] = limit < 0 ? -1 : limit;
+}
+
+void Dod_SetClassMask(DodTeam team, int mask)
+{
+	if (team == DOD_TEAM_ALLIES || team == DOD_TEAM_AXIS)
+		g_class_mask[team] = mask;
+}
+
+int Dod_ClassLimit(DodTeam team, DodClass player_class)
+{
+	dod_class_limits_init();
+	if ((team != DOD_TEAM_ALLIES && team != DOD_TEAM_AXIS) || player_class <= DOD_CLASS_NONE || player_class >= DOD_CLASS_COUNT)
+		return -1;
+	return g_class_limit[team][player_class];
+}
+
+int Dod_ClassCount(DodTeam team, DodClass player_class, int except_player)
+{
+	int i, n = 0;
+	for (i = 1; i <= DOD_MAX_PLAYERS; ++i)
+		if (i != except_player && g_dod_players[i].connected && g_dod_players[i].team == team &&
+			g_dod_players[i].player_class == player_class)
+			++n;
+	return n;
+}
+
+int Dod_ClassAvailable(DodTeam team, DodClass player_class, int player_index)
+{
+	int limit;
+	if ((team != DOD_TEAM_ALLIES && team != DOD_TEAM_AXIS) || player_class <= DOD_CLASS_NONE || player_class >= DOD_CLASS_COUNT)
+		return 0;
+	if (g_class_mask[team] != -1 && !(g_class_mask[team] & (1 << player_class)))
+		return 0;
+	limit = Dod_ClassLimit(team, player_class);
+	if (limit < 0)
+		return 1;
+	return Dod_ClassCount(team, player_class, player_index) < limit;
+}
+
 static const struct { const char *cmd, *label, *us, *brit, *ger; } g_voices[] = {
 	{ "attack", "Move out!", "usattack", "britattack", "gerattack" },
 	{ "fallback", "Fall back!", "usfallback", "britfallback", "gerfallback" },
