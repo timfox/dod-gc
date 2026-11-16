@@ -8,6 +8,8 @@
 #ifndef DODGC_DOD_HUD_RETAIL_H
 #define DODGC_DOD_HUD_RETAIL_H
 
+#include <string.h>
+
 /* A sprite cell: sheet index (DodRetailSheet) and its hud.txt rectangle. */
 typedef struct DodRetailCell {
 	int sheet;
@@ -17,13 +19,74 @@ typedef struct DodRetailCell {
 typedef enum {
 	DOD_SHEET_LAYOUT = 0,	/* sprites/hud_layout.spr */
 	DOD_SHEET_CROSS,	/* sprites/dodcross.spr */
+	DOD_SHEET_BULLETS,	/* sprites/clip_bullets.spr */
+	DOD_SHEET_CLIPS,	/* sprites/clip_clips.spr */
+	DOD_SHEET_EXTRAS,	/* sprites/clip_extras.spr */
+	DOD_SHEET_ROCKETS,	/* sprites/rockets.spr */
+	DOD_SHEET_ROCKETS2,	/* sprites/rockets2.spr */
 	DOD_SHEET_COUNT
 } DodRetailSheet;
 
 static const char *const dod_retail_sheet_files[DOD_SHEET_COUNT] = {
 	"sprites/hud_layout.spr",
 	"sprites/dodcross.spr",
+	"sprites/clip_bullets.spr",
+	"sprites/clip_clips.spr",
+	"sprites/clip_extras.spr",
+	"sprites/rockets.spr",
+	"sprites/rockets2.spr",
 };
+
+/* CHudAmmo's weapon table (retail CHudAmmo::VidInit): the clip graphics of
+ * each weapon from hud.txt, and the share of the bullet column a chambered
+ * round (x0) and each round in the clip (per) uncover. per 0 = no column
+ * (rockets): the full graphic shows while loaded. clip is the magazine the
+ * reserve is counted in (retail divides by the WeaponList max clip). The
+ * key is the weapon's classname after "weapon_dod_". */
+typedef struct DodRetailClip {
+	const char *key;
+	DodRetailCell full, empty, extra;
+	float x0, per;
+	int clip;
+} DodRetailClip;
+
+#define DOD_CELL(sheet, x, y, w, h) { DOD_SHEET_##sheet, x, y, w, h }
+static const DodRetailClip dod_retail_clips[] = {
+	{ "garand", DOD_CELL(BULLETS, 0, 183, 57, 48), DOD_CELL(CLIPS, 0, 183, 57, 48), DOD_CELL(EXTRAS, 82, 125, 40, 35), 0.12500f, 0.10417f, 8 },
+	{ "spring", DOD_CELL(BULLETS, 91, 132, 45, 43), DOD_CELL(CLIPS, 91, 132, 45, 43), DOD_CELL(EXTRAS, 150, 0, 28, 29), 0.06977f, 0.18605f, 5 },
+	{ "thompson", DOD_CELL(BULLETS, 107, 0, 37, 130), DOD_CELL(CLIPS, 107, 0, 37, 130), DOD_CELL(EXTRAS, 139, 183, 28, 73), 0.03800f, 0.03077f, 30 },
+	{ "bar", DOD_CELL(BULLETS, 0, 0, 70, 115), DOD_CELL(CLIPS, 0, 0, 70, 115), DOD_CELL(EXTRAS, 0, 198, 39, 58), 0.24348f, 0.03478f, 20 },
+	{ "30cal", DOD_CELL(BULLETS, 161, 123, 35, 133), DOD_CELL(EXTRAS, 181, 40, 64, 128), DOD_CELL(EXTRAS, 0, 68, 81, 66), 0.02300f, 0.03100f, 150 },
+	{ "bazooka", DOD_CELL(ROCKETS2, 0, 128, 128, 64), DOD_CELL(ROCKETS2, 128, 128, 128, 64), DOD_CELL(ROCKETS, 128, 0, 32, 128), 0.0f, 0.0f, 1 },
+	{ "colt", DOD_CELL(BULLETS, 69, 0, 38, 102), DOD_CELL(CLIPS, 69, 0, 38, 102), DOD_CELL(EXTRAS, 150, 28, 24, 56), 0.09804f, 0.10784f, 7 },
+	{ "k98", DOD_CELL(BULLETS, 91, 132, 45, 43), DOD_CELL(CLIPS, 91, 132, 45, 43), DOD_CELL(EXTRAS, 150, 0, 28, 29), 0.06977f, 0.18605f, 5 },
+	{ "k98s", DOD_CELL(BULLETS, 91, 132, 45, 43), DOD_CELL(CLIPS, 91, 132, 45, 43), DOD_CELL(EXTRAS, 150, 0, 28, 29), 0.06977f, 0.18605f, 5 },
+	{ "mp40", DOD_CELL(BULLETS, 161, 123, 35, 133), DOD_CELL(CLIPS, 161, 123, 35, 133), DOD_CELL(EXTRAS, 125, 40, 23, 71), 0.05200f, 0.03008f, 32 },
+	{ "stg44", DOD_CELL(BULLETS, 195, 123, 61, 133), DOD_CELL(CLIPS, 195, 123, 61, 133), DOD_CELL(EXTRAS, 120, 113, 35, 73), 0.06710f, 0.03008f, 30 },
+	{ "mg42", DOD_CELL(BULLETS, 161, 123, 35, 133), DOD_CELL(EXTRAS, 181, 40, 64, 128), DOD_CELL(EXTRAS, 0, 132, 81, 65), 0.02300f, 0.03100f, 250 },
+	{ "pschreck", DOD_CELL(ROCKETS2, 0, 64, 128, 64), DOD_CELL(ROCKETS2, 128, 64, 128, 64), DOD_CELL(ROCKETS, 64, 0, 32, 128), 0.0f, 0.0f, 1 },
+	{ "luger", DOD_CELL(BULLETS, 143, 0, 44, 119), DOD_CELL(CLIPS, 143, 0, 44, 119), DOD_CELL(EXTRAS, 111, 192, 29, 64), 0.18908f, 0.07980f, 8 },
+};
+#undef DOD_CELL
+
+#define DOD_RETAIL_FONT_H 25	/* hud.txt number_0 height */
+
+/* The clip entry for a classname ("weapon_dod_garand"), or 0. */
+static inline const DodRetailClip *Dod_RetailClipFor(const char *classname)
+{
+	const char *key = classname;
+	unsigned i;
+	if (!key)
+		return 0;
+	if (!strncmp(key, "weapon_dod_", 11))
+		key += 11;
+	else if (!strncmp(key, "weapon_", 7))
+		key += 7;
+	for (i = 0; i < sizeof(dod_retail_clips) / sizeof(dod_retail_clips[0]); i++)
+		if (!strcmp(key, dod_retail_clips[i].key))
+			return &dod_retail_clips[i];
+	return 0;
+}
 
 /* hud.txt (640) records the retail HUD draws. */
 static const DodRetailCell dod_cell_main = { DOD_SHEET_LAYOUT, 0, 172, 113, 84 };
@@ -55,7 +118,7 @@ typedef struct DodRetailDraw {
 	int x, y;
 } DodRetailDraw;
 
-#define DOD_RETAIL_MAX_DRAWS 16
+#define DOD_RETAIL_MAX_DRAWS 20
 
 typedef struct DodRetailInput {
 	int screen_w, screen_h;
@@ -67,7 +130,16 @@ typedef struct DodRetailInput {
 	int seconds_left;	/* < 0: no timer */
 	int crosshair;		/* draw the dynamic crosshair */
 	int crosshair_gap;	/* GetCrossHairWidth(); retail default 4 */
+	const DodRetailClip *weapon;	/* held weapon's clip graphics, or 0 */
+	int clip;		/* rounds in the clip, < 0: none */
+	int reserve;		/* rounds carried outside the clip */
 } DodRetailInput;
+
+/* The "x N" spare-clip count retail prints beside the extra-clip graphic. */
+typedef struct DodRetailText {
+	int x, y;		/* < 0: nothing to print */
+	int count;
+} DodRetailText;
 
 static inline int dod_retail_clamp(int v, int lo, int hi)
 {
@@ -85,11 +157,16 @@ static inline void dod_retail_add(DodRetailDraw *out, int *n, int max, DodRetail
 }
 
 /* Build the retail draw list. Returns the number of draws (<= max). */
-static inline int Dod_RetailHudLayout(const DodRetailInput *in, DodRetailDraw *out, int max)
+static inline int Dod_RetailHudLayoutText(const DodRetailInput *in, DodRetailDraw *out, int max,
+	DodRetailText *text)
 {
 	int n = 0, y0, health, rows;
 	DodRetailCell c;
 
+	if (text) {
+		text->x = text->y = -1;
+		text->count = 0;
+	}
 	if (!in || !out || max <= 0 || in->screen_w <= 0 || in->screen_h <= 0)
 		return 0;
 	health = dod_retail_clamp(in->health, 0, 100);
@@ -127,6 +204,39 @@ static inline int Dod_RetailHudLayout(const DodRetailInput *in, DodRetailDraw *o
 				in->screen_h - dod_cell_reinforcements.h);
 	}
 
+	/* Clip ammo (CHudAmmo::Draw): bottom right, the empty clip with the
+	 * remaining rounds uncovered from the top, spare clips beside it. */
+	if (in->weapon && in->clip >= 0 && !in->dead && !in->spectating) {
+		const DodRetailClip *w = in->weapon;
+		const int fh = DOD_RETAIL_FONT_H;
+		const int tx = in->screen_w - w->full.w - w->extra.w - 45;
+		const int base = in->screen_h - fh - fh / 2;
+		const int spare = w->clip > 0 ? in->reserve / w->clip : 0;
+
+		dod_retail_add(out, &n, max, w->empty, tx, base - w->full.h + fh);
+		if (w->per > 0.0f) {
+			float frac = (in->clip > 0 ? w->x0 : 0.0f) + in->clip * w->per;
+			int top;
+			if (frac > 1.0f)
+				frac = 1.0f;
+			top = w->full.y + (int)(w->full.h * (1.0f - frac));
+			c = w->full;
+			c.h = w->full.y + w->full.h - top;
+			c.y = top;
+			if (c.h > 0)
+				dod_retail_add(out, &n, max, c, tx, base + top - w->empty.y - w->full.h + fh);
+		} else if (in->clip > 0)
+			dod_retail_add(out, &n, max, w->full, tx, base - w->full.h + fh);
+		if (spare > 0) {
+			dod_retail_add(out, &n, max, w->extra, tx + w->full.w, base - w->extra.h + fh);
+			if (text) {
+				text->x = tx + w->full.w + w->extra.w;
+				text->y = base;
+				text->count = spare;
+			}
+		}
+	}
+
 	/* Objective timer (CObjectiveIcons::Draw): top-left plate, MM:SS. */
 	if (in->seconds_left >= 0) {
 		const int t = in->seconds_left;
@@ -152,6 +262,11 @@ static inline int Dod_RetailHudLayout(const DodRetailInput *in, DodRetailDraw *o
 		dod_retail_add(out, &n, max, vt, cx - 1, cy + w);
 	}
 	return n;
+}
+
+static inline int Dod_RetailHudLayout(const DodRetailInput *in, DodRetailDraw *out, int max)
+{
+	return Dod_RetailHudLayoutText(in, out, max, 0);
 }
 
 #endif /* DODGC_DOD_HUD_RETAIL_H */

@@ -2,6 +2,7 @@
 #include "hud.h"
 #include "cl_util.h"
 #include "parsemsg.h"
+#include "ammohistory.h"
 
 int __MsgFunc_DodHud( const char *pszName, int iSize, void *pbuf )
 {
@@ -73,6 +74,8 @@ int CHudDod::DrawRetail( float flTime )
 {
 	DodRetailInput in;
 	DodRetailDraw draws[DOD_RETAIL_MAX_DRAWS];
+	DodRetailText spare;
+	const WEAPON *pw;
 	int count, i, drawn = 0;
 
 	if( !m_pCvar || m_pCvar->value == 0.0f )
@@ -117,7 +120,16 @@ int CHudDod::DrawRetail( float flTime )
 		in.seconds_left = left > 0 ? left : 0;
 	}
 
-	count = Dod_RetailHudLayout( &in, draws, DOD_RETAIL_MAX_DRAWS );
+	/* Clip ammo: the held weapon's magazine graphic and spare clips. */
+	pw = gHUD.m_Ammo.GetCurrentWeapon();
+	if( pw && pw->iClip >= 0 )
+	{
+		in.weapon = Dod_RetailClipFor( pw->szName );
+		in.clip = pw->iClip;
+		in.reserve = pw->iAmmoType > 0 ? gWR.CountAmmo( pw->iAmmoType ) : 0;
+	}
+
+	count = Dod_RetailHudLayoutText( &in, draws, DOD_RETAIL_MAX_DRAWS, &spare );
 	for( i = 0; i < count; i++ )
 	{
 		const HSPRITE spr = m_hSheets[draws[i].cell.sheet];
@@ -146,11 +158,20 @@ int CHudDod::DrawRetail( float flTime )
 		}
 		drawn++;
 	}
+	if( spare.count > 0 && spare.x >= 0 )
+	{
+		char buf[16];
+
+		sprintf( buf, "x%d", spare.count );
+		gEngfuncs.pfnDrawSetTextColor( 1.0f, 1.0f, 1.0f );
+		gEngfuncs.pfnDrawConsoleString( (int)( spare.x * sx + 0.5f ),
+			(int)( spare.y * sy + 0.5f ), buf );
+	}
 	if( !m_fDrawLogged )
 	{
 		m_fDrawLogged = 1;
-		gEngfuncs.Con_Printf( "Xash3D GameCube: DoD retail HUD drew %d/%d health=%d timer=%d\n",
-			drawn, count, in.health, in.seconds_left );
+		gEngfuncs.Con_Printf( "Xash3D GameCube: DoD retail HUD drew %d/%d health=%d timer=%d weapon=%s\n",
+			drawn, count, in.health, in.seconds_left, in.weapon ? in.weapon->key : "-" );
 	}
 	return 1;
 }

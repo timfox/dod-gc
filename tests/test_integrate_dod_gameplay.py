@@ -252,7 +252,9 @@ class WeaponHookIntegrationTest(unittest.TestCase):
 
 
 class HudIntegrationTest(unittest.TestCase):
-	HUD_H = "class CHudMenu\n{\n};\n\nclass CHud\n{\npublic:\n\tCHudMenu\t\tm_Menu;\n};\n"
+	HUD_H = ("class CHudAmmo\n{\npublic:\n"
+		"\tint GetLeanClip( void ) const { return m_pWeapon ? m_pWeapon->iClip : -1; }\n};\n"
+		"class CHudMenu\n{\n};\n\nclass CHud\n{\npublic:\n\tCHudMenu\t\tm_Menu;\n};\n")
 	HUD_CPP = ('void CHud::Init( void )\n{\n#ifdef __GAMECUBE__\n'
 		'\tgEngfuncs.Con_Printf( "Xash3D GameCube: CHud::Init begin quality=%d\\n", quality );\n#endif\n'
 		'\tm_Menu.Init();\n}\nvoid CHud::VidInit( void )\n{\n\tm_Menu.VidInit();\n}\n')
@@ -281,6 +283,7 @@ class HudIntegrationTest(unittest.TestCase):
 		files = self.integrate()
 		self.assertIn('#include "hud_dod.h"\n\nclass CHud\n{', files["hud.h"])
 		self.assertIn("CHudDod\t\tm_Dod;", files["hud.h"])
+		self.assertIn("const WEAPON *GetCurrentWeapon( void ) const { return m_pWeapon; }", files["hud.h"])
 		self.assertIn("m_Dod.InitState();", files["hud.cpp"])
 		self.assertIn("m_Dod.Init();", files["hud.cpp"])
 		self.assertIn("m_Dod.VidInit();", files["hud.cpp"])

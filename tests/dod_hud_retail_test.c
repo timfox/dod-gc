@@ -121,6 +121,51 @@ static void test_crosshair(void)
 	assert(bars == 5);
 }
 
+static void test_clip_ammo(void)
+{
+	DodRetailInput in = base();
+	DodRetailDraw d[DOD_RETAIL_MAX_DRAWS];
+	DodRetailText t;
+	const DodRetailClip *g = Dod_RetailClipFor("weapon_dod_garand");
+	const DodRetailDraw *p;
+	int n, tx, base_y;
+
+	assert(g && g->clip == 8);
+	assert(Dod_RetailClipFor("weapon_dod_k98") && !Dod_RetailClipFor("weapon_dod_knife"));
+	in.weapon = g;
+	in.clip = 4;
+	in.reserve = 16;
+	n = Dod_RetailHudLayoutText(&in, d, DOD_RETAIL_MAX_DRAWS, &t);
+	tx = 640 - 57 - 40 - 45;
+	base_y = 480 - 25 - 12;
+	p = find(d, n, DOD_SHEET_CLIPS, 0, 183);	/* empty clip */
+	assert(p && p->x == tx && p->y == base_y - 48 + 25);
+	/* four rounds plus the chambered one uncover the top of the column */
+	{
+		const int top = 183 + (int)(48 * (1.0f - (0.125f + 4 * 0.10417f)));
+		p = find(d, n, DOD_SHEET_BULLETS, 0, top);
+		assert(p && p->x == tx && p->cell.h == 183 + 48 - top);
+		assert(p->y == base_y + top - 183 - 48 + 25);
+	}
+	p = find(d, n, DOD_SHEET_EXTRAS, 82, 125);	/* spare clip */
+	assert(p && p->x == tx + 57);
+	assert(t.count == 2 && t.x == tx + 57 + 40 && t.y == base_y);
+
+	/* empty magazine, no spares: the empty clip only */
+	in.clip = 0;
+	in.reserve = 0;
+	n = Dod_RetailHudLayoutText(&in, d, DOD_RETAIL_MAX_DRAWS, &t);
+	assert(find(d, n, DOD_SHEET_CLIPS, 0, 183) && !find(d, n, DOD_SHEET_EXTRAS, 82, 125));
+	assert(t.count == 0 && t.x < 0);
+
+	/* dead: no ammo */
+	in.clip = 8;
+	in.health = 0;
+	in.dead = 1;
+	n = Dod_RetailHudLayoutText(&in, d, DOD_RETAIL_MAX_DRAWS, &t);
+	assert(!find(d, n, DOD_SHEET_CLIPS, 0, 183));
+}
+
 int main(void)
 {
 	test_panel_full_health();
@@ -128,5 +173,6 @@ int main(void)
 	test_dead_or_spectating_hides_panel();
 	test_timer_digits();
 	test_crosshair();
+	test_clip_ammo();
 	return 0;
 }

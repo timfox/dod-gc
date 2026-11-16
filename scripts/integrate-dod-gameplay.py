@@ -287,6 +287,11 @@ def integrate_dod_hud(client: Path) -> None:
 	replace_once(client / "entity.cpp",
 		'\t\tgHUD.m_Spectator.AddOverviewEntity( type, ent, modelname );\n\n\t\tif( (	g_iUser1 == OBS_IN_EYE || gHUD.m_Spectator.m_pip->value == INSET_IN_EYE ) &&',
 		'\t\tif( (	g_iUser1 == OBS_IN_EYE || ( gHUD.m_Spectator.m_pip && gHUD.m_Spectator.m_pip->value == INSET_IN_EYE ) ) &&')
+	# The retail clip-ammo graphic needs the held weapon (name, clip, ammo type).
+	replace_once(client / "hud.h",
+		"\tint GetLeanClip( void ) const { return m_pWeapon ? m_pWeapon->iClip : -1; }\n",
+		"\tint GetLeanClip( void ) const { return m_pWeapon ? m_pWeapon->iClip : -1; }\n"
+		"\tconst WEAPON *GetCurrentWeapon( void ) const { return m_pWeapon; }\n")
 	replace_once(hud, "\tm_Menu.Init();\n", "\tm_Menu.Init();\n\tm_Dod.Init();\n")
 	replace_once(hud, "\tm_Menu.VidInit();\n", "\tm_Menu.VidInit();\n\tm_Dod.VidInit();\n")
 	replace_once(client / "hud_redraw.cpp",
