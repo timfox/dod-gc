@@ -28,6 +28,8 @@ static cvar_t dod_bots = { "dod_bots", "1", FCVAR_SERVER };
 #endif
 static cvar_t dod_bot_skill = { "dod_bot_skill", "1", FCVAR_SERVER };
 static cvar_t dod_bots_online = { "dod_bots_online", "0", FCVAR_SERVER };
+/* Test scenarios (dev only): 1 = an enemy behind a wall inside the view cone, then in the open; 2 = a contested capture. */
+static cvar_t dod_bot_stage = { "dod_bot_stage", "0", FCVAR_SERVER };
 
 /* The most bots ever; the free slots are the real limit. */
 #define DOD_BOT_HARD_CAP 7
@@ -98,6 +100,9 @@ typedef struct DodBotState {
 	float track_since, last_fight_time, react_until;
 	float burst_until, pause_until;
 	float next_unseen_log, last_fire;
+	int stage_role;			/* test scenario: 1 watcher (holds still, perceives), 2 idle and blind */
+	float stage_yaw;
+	int stage_sightings, stage_fire_frames;
 	int fire_frames, hit_frames;	/* this burst: frames the trigger was held, and how many were on target */
 } DodBotState;
 
@@ -225,6 +230,7 @@ void DodBots_Init( void )
 	{
 		CVAR_REGISTER( &dod_bots );
 		CVAR_REGISTER( &dod_bot_skill );
+		CVAR_REGISTER( &dod_bot_stage );
 		CVAR_REGISTER( &dod_bots_online );
 		g_registered = TRUE;
 	}
@@ -1095,6 +1101,265 @@ static void UpdateArrival( CBasePlayer *pBot, DodBotState *state )
 	}
 }
 
+/* ---------------------------------------------------------------- test scenarios (dod_bot_stage)
+ * Dev-only, off by default. With two bots on opposing teams the harness puts them where a test needs them and
+ * holds them still, so what the perception and capture rules do can be read from the log:
+ *  1: the Allies bot watches; the Axis bot idles at a floor waypoint that is inside the Allies bot's view cone
+ *     but behind a wall (it must neither see nor shoot it), then in the open (it must see it, after a delay);
+ *  2: both bots idle in a capture area: Allies alone (the capture runs), then Axis joins (contested, paused),
+ *     then Axis leaves (the capture finishes). */
+static int g_stage_phase;
+static float g_stage_until;
+static int g_stage_node_a, g_stage_node_c;
+static float g_stage_yaw;
+static int g_stage_point;
+
+static void StagePlace( CBasePlayer *pBot, const Vector &pos, float yaw )
+{
+	DodBotState *state = BotState( pBot->entindex() );
+	pBot->pev->velocity = Vector( 0, 0, 0 );
+	UTIL_SetOrigin( pBot->pev, pos );
+	if( state )
+	{
+		state->yaw = yaw;
+		state->pitch = 0.0f;
+		state->stage_yaw = yaw;
+		state->path_len = 0;
+	}
+}
+
+static BOOL StageNodeEye( int node, Vector *eye )
+{
+	float x, y, z;
+	if( node < 0 || node >= g_nav.node_count )
+		return FALSE;
+	Dod_NavNodePos( &g_nav, node, &x, &y, &z );
+	*eye = Vector( x, y, z + 17.0f );
+	return TRUE;
+}
+
+/* A waypoint pair on one floor, 100..260 units apart, with no line of sight between them (a wall), and a third
+ * waypoint in the same direction from A (within 35 degrees) that A can see. Searches a slice per frame. */
+static BOOL StageFindWall( CBasePlayer *pBot, int *node_a, int *node_b, int *node_c )
+{
+	static int next_a;
+	int tries;
+	for( tries = 0; tries < 24 && next_a < g_nav.node_count; tries++, next_a++ )
+	{
+		float ax, ay, az;
+		int b;
+		Dod_NavNodePos( &g_nav, next_a, &ax, &ay, &az );
+		for( b = 0; b < g_nav.node_count; b++ )
+		{
+			float bx, by, bz, d;
+			Vector ea, eb;
+			TraceResult tr;
+			if( b == next_a )
+				continue;
+			Dod_NavNodePos( &g_nav, b, &bx, &by, &bz );
+			d = sqrtf( ( bx - ax ) * ( bx - ax ) + ( by - ay ) * ( by - ay ) );
+			if( d < 100.0f || d > 260.0f || fabsf( bz - az ) > 12.0f )
+				continue;
+			StageNodeEye( next_a, &ea );
+			StageNodeEye( b, &eb );
+			UTIL_TraceLine( ea, eb, ignore_monsters, pBot->edict(), &tr );
+			if( tr.flFraction > 0.9f )
+				continue;
+			{
+				const float yaw_b = YawTo( ea, eb );
+				int c;
+				for( c = 0; c < g_nav.node_count; c++ )
+				{
+					float cx, cy, cz, dc;
+					Vector ec;
+					if( c == next_a || c == b )
+						continue;
+					Dod_NavNodePos( &g_nav, c, &cx, &cy, &cz );
+					dc = sqrtf( ( cx - ax ) * ( cx - ax ) + ( cy - ay ) * ( cy - ay ) );
+					if( dc < 150.0f || dc > 350.0f || fabsf( cz - az ) > 12.0f )
+						continue;
+					StageNodeEye( c, &ec );
+					if( fabsf( Dod_BotAngleDelta( yaw_b, YawTo( ea, ec ) ) ) > 35.0f )
+						continue;
+					UTIL_TraceLine( ea, ec, ignore_monsters, pBot->edict(), &tr );
+					if( tr.flFraction < 0.98f )
+						continue;
+					*node_a = next_a;
+					*node_b = b;
+					*node_c = c;
+					return TRUE;
+				}
+			}
+		}
+	}
+	return FALSE;
+}
+
+static void StageStep( void )
+{
+	const int stage = (int)CVAR_GET_FLOAT( "dod_bot_stage" );
+	const float now = gpGlobals->time;
+	CBasePlayer *allies = NULL, *axis = NULL;
+	DodBotState *sa, *sx;
+	int i;
+	static float armed_at;
+	if( !stage || g_stage_phase >= 9 )
+		return;
+	for( i = 1; i <= gpGlobals->maxClients && i <= DOD_BOT_MAX_SLOTS; i++ )
+	{
+		CBasePlayer *p = PlayerAt( i );
+		if( !p || !DodBots_IsBot( p ) || !p->IsAlive() )
+			continue;
+		if( TeamOf( p ) == DOD_TEAM_ALLIES && !allies )
+			allies = p;
+		else if( TeamOf( p ) == DOD_TEAM_AXIS && !axis )
+			axis = p;
+	}
+	if( !allies || !axis || !g_nav.node_count )
+	{
+		armed_at = 0.0f;
+		return;
+	}
+	if( armed_at == 0.0f )
+		armed_at = now + 12.0f;
+	if( now < armed_at )
+		return;
+	sa = BotState( allies->entindex() );
+	sx = BotState( axis->entindex() );
+	if( !sa || !sx )
+		return;
+	if( stage == 1 )
+	{
+		int a, b, c;
+		Vector pos;
+		float x, y, z;
+		switch( g_stage_phase )
+		{
+		case 0:
+			if( !StageFindWall( allies, &a, &b, &c ) )
+			{
+				static BOOL warned;
+				if( !warned )
+				{
+					ALERT( at_console, "DoD STAGE wall: still searching for a wall geometry\n" );
+					warned = TRUE;
+				}
+				return;
+			}
+			g_stage_node_a = a;
+			g_stage_node_c = c;
+			Dod_NavNodePos( &g_nav, a, &x, &y, &z );
+			{
+				Vector ea, eb;
+				StageNodeEye( a, &ea );
+				StageNodeEye( b, &eb );
+				g_stage_yaw = YawTo( ea, eb );
+				ALERT( at_console, "DoD STAGE wall: watcher at waypoint %d (%.0f,%.0f,%.0f) facing %.0f; target waypoint %d behind a wall, %.0f units away\n",
+					a, x, y, z, g_stage_yaw, b, ( eb - ea ).Length2D() );
+				sa->stage_role = 1;
+				sx->stage_role = 2;
+				StagePlace( allies, Vector( x, y, z ), g_stage_yaw );
+				Dod_NavNodePos( &g_nav, b, &x, &y, &z );
+				StagePlace( axis, Vector( x, y, z ), 0.0f );
+			}
+			sa->stage_sightings = sa->stage_fire_frames = 0;
+			g_stage_until = now + 8.0f;
+			g_stage_phase = 1;
+			break;
+		case 1:
+			if( now < g_stage_until )
+				break;
+			ALERT( at_console, "DoD STAGE wall: 8 s behind the wall, view cone on it: frames with the target in view %d, trigger frames %d\n",
+				sa->stage_sightings, sa->stage_fire_frames );
+			Dod_NavNodePos( &g_nav, g_stage_node_c, &x, &y, &z );
+			pos = Vector( x, y, z );
+			StagePlace( axis, pos, 0.0f );
+			sa->stage_sightings = sa->stage_fire_frames = 0;
+			ALERT( at_console, "DoD STAGE wall: target steps into the open at waypoint %d (%.0f units from the watcher)\n", g_stage_node_c,
+				( pos - allies->pev->origin ).Length2D() );
+			g_stage_until = now + 6.0f;
+			g_stage_phase = 2;
+			break;
+		case 2:
+			if( now < g_stage_until )
+				break;
+			ALERT( at_console, "DoD STAGE wall: 6 s in the open: frames with the target in view %d, trigger frames %d\n", sa->stage_sightings,
+				sa->stage_fire_frames );
+			sa->stage_role = sx->stage_role = 0;
+			g_stage_phase = 9;
+			break;
+		}
+	}
+	else if( stage == 2 )
+	{
+		DodGCObjectiveView views[DOD_BOT_MAX_OBJECTIVES];
+		const int count = DodGC_ListObjectives( views, DOD_BOT_MAX_OBJECTIVES );
+		int pick = -1, node[2], n;
+		float x, y, z;
+		switch( g_stage_phase )
+		{
+		case 0:
+			for( i = 0; i < count; i++ )
+				ALERT( at_console, "DoD STAGE capture: point %d owner %d, Allies may capture %d, Axis may capture %d\n", views[i].id, (int)views[i].owner,
+					views[i].can_cap[DOD_TEAM_ALLIES], views[i].can_cap[DOD_TEAM_AXIS] );
+			for( i = 0; i < count; i++ )	/* a point both may capture shows a contest; else any the Allies may take */
+				if( views[i].owner != DOD_TEAM_ALLIES && views[i].can_cap[DOD_TEAM_ALLIES] && views[i].can_cap[DOD_TEAM_AXIS] )
+				{
+					pick = i;
+					break;
+				}
+			if( pick < 0 )
+				for( i = 0; i < count; i++ )
+					if( views[i].owner != DOD_TEAM_ALLIES && views[i].can_cap[DOD_TEAM_ALLIES] )
+					{
+						pick = i;
+						break;
+					}
+			if( pick < 0 )
+				return;
+			ALERT( at_console, "DoD STAGE capture: using point %d (%s)\n", views[pick].id,
+				views[pick].can_cap[DOD_TEAM_AXIS] ? "both teams may capture: a contest is possible" : "Axis may not capture here: a defender inside must not block" );
+			n = Dod_NavNearest( &g_nav, views[pick].center.x, views[pick].center.y, views[pick].center.z, node, 2 );
+			if( n < 1 )
+				return;
+			g_stage_point = views[pick].id;
+			g_stage_node_a = node[0];
+			sa->stage_role = sx->stage_role = 2;
+			Dod_NavNodePos( &g_nav, node[0], &x, &y, &z );
+			StagePlace( allies, Vector( x, y, z ), 0.0f );
+			StagePlace( axis, Vector( x + 900.0f, y, z ), 0.0f );	/* parked away until it is needed */
+			ALERT( at_console, "DoD STAGE capture: Allies bot placed in point %d's capture area alone\n", g_stage_point );
+			g_stage_until = now + 2.5f;
+			g_stage_phase = 1;
+			break;
+		case 1:
+			if( now < g_stage_until )
+				break;
+			Dod_NavNodePos( &g_nav, g_stage_node_a, &x, &y, &z );
+			StagePlace( axis, Vector( x + 24.0f, y, z ), 180.0f );
+			ALERT( at_console, "DoD STAGE capture: Axis bot steps into the same area (contest)\n" );
+			g_stage_until = now + 5.0f;
+			g_stage_phase = 2;
+			break;
+		case 2:
+			if( now < g_stage_until )
+				break;
+			Dod_NavNodePos( &g_nav, g_stage_node_a, &x, &y, &z );
+			StagePlace( axis, Vector( x + 900.0f, y, z ), 0.0f );
+			ALERT( at_console, "DoD STAGE capture: Axis bot leaves; Allies carry on\n" );
+			g_stage_until = now + 20.0f;
+			g_stage_phase = 3;
+			break;
+		case 3:
+			if( now < g_stage_until )
+				break;
+			sa->stage_role = sx->stage_role = 0;
+			g_stage_phase = 9;
+			break;
+		}
+	}
+}
+
 static void RunBot( int index, CBasePlayer *pBot )
 {
 	DodBotState *state = BotState( index );
@@ -1148,6 +1413,17 @@ static void RunBot( int index, CBasePlayer *pBot )
 		state->cell_n = 0;
 		state->path_len = 0;
 		state->ladder_dir = 0;
+		return;
+	}
+	if( state->stage_role == 2 )
+	{
+		/* test scenario: stand still, blind and deaf, no buttons */
+		viewangles[0] = state->pitch;
+		viewangles[1] = state->yaw;
+		viewangles[2] = 0.0f;
+		pBot->pev->v_angle.x = viewangles[0];
+		pBot->pev->v_angle.y = viewangles[1];
+		( *g_engfuncs.pfnRunPlayerMove )( pBot->edict(), viewangles, 0, 0, 0, 0, 0, msec );
 		return;
 	}
 	EnsureNav();
@@ -1387,6 +1663,21 @@ static void RunBot( int index, CBasePlayer *pBot )
 	}
 	else
 		state->burst_until = 0.0f;
+	if( state->stage_role == 1 )
+	{
+		/* test scenario: the watcher stays where it was put, looking where it was put until something draws its aim */
+		move.forward = move.side = 0.0f;
+		move.jump = 0;
+		buttons &= ~IN_JUMP;
+		if( !fight )
+			state->yaw = state->heading = state->stage_yaw;
+		if( fight )
+		{
+			state->stage_sightings++;
+			if( move.fire )
+				state->stage_fire_frames++;
+		}
+	}
 	if( state->behavior == DOD_ACT_RELOAD )
 	{
 		move.fire = 0;
@@ -1424,6 +1715,7 @@ void DodBots_Think( void )
 		g_next_plan = gpGlobals->time + 1.0f;
 		PlanBots();
 	}
+	StageStep();
 	for( i = 1; i <= gpGlobals->maxClients && i <= DOD_BOT_MAX_SLOTS; i++ )
 	{
 		CBasePlayer *pBot = PlayerAt( i );
