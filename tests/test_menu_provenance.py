@@ -57,5 +57,29 @@ class EngineCheck(unittest.TestCase):
             self.assertIn("contain", r.stderr)
 
 
+
+class StripSteam(unittest.TestCase):
+    def test_utf16_and_utf8(self):
+        sys_path = str(ROOT / "scripts")
+        import sys
+        sys.path.insert(0, sys_path)
+        import strip_steam_strings as m
+        with tempfile.TemporaryDirectory() as t:
+            u16 = Path(t, "a.txt")
+            u16.write_bytes(b"\xff\xfe" + '"Keep" "1"\r\n"Valve_Enable_SteamNetworking" "Enable Steam Networking"\r\n"Z" "2"\r\n'.encode("utf-16-le"))
+            u8 = Path(t, "b.txt")
+            u8.write_text('"Valve_Enable_SteamNetworking" "Enable Steam Networking"\n"x" "y"\n')
+            other = Path(t, "c.cfg")
+            other.write_text("Enable Steam Networking\n")
+            self.assertEqual(m.main([t]), 1)  # c.cfg is not a localisation file, still reported
+            other.unlink()
+            u16.write_bytes(b"\xff\xfe" + '"Keep" "1"\r\n"Valve_Enable_SteamNetworking" "Enable Steam Networking"\r\n'.encode("utf-16-le"))
+            u8.write_text('"Valve_Enable_SteamNetworking" "Enable Steam Networking"\n"x" "y"\n')
+            self.assertEqual(m.main([t]), 0)
+            self.assertNotIn("Steam", u16.read_bytes().decode("utf-16"))
+            self.assertIn("Keep", u16.read_bytes().decode("utf-16"))
+            self.assertEqual(u8.read_text(), '"x" "y"\n')
+
+
 if __name__ == "__main__":
     unittest.main()
