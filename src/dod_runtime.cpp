@@ -214,6 +214,13 @@ static void DodGC_ApplyClass( CBasePlayer *pPlayer, DodClass player_class )
 		DodGrenadeDef grenade;
 
 		pPlayer->RemoveAllItems( FALSE );
+		/* RemoveAllItems -> UpdateClientData can run the first InitHUD, which
+		 * with dod_spectate 1 turns the human into a spectator right here: give
+		 * an observer no kit and no body. */
+		if( pPlayer->IsObserver() ) {
+			DodBots_SetGranting( FALSE );
+			return;
+		}
 		pPlayer->GiveNamedItem( "weapon_crowbar" );
 		if( sidearm ) {
 			pPlayer->GiveNamedItem( sidearm->classname );
