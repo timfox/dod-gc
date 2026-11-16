@@ -90,9 +90,16 @@ int CHudDod::DrawRetail( float flTime )
 	if( !m_hSheets[DOD_SHEET_LAYOUT] )
 		return 0;	/* no retail sheets on this disc: let the caller draw */
 
+	/* Retail lays the 640-res art out 1:1 on a 640x480 screen. The GameCube
+	 * HUD space is 320x240 (shown at 2x), so lay out at 640x480 and scale
+	 * every draw by the HUD space's share of that. */
+	const int hud_w = ScreenWidth > 0 ? ScreenWidth : 640;
+	const int hud_h = ScreenHeight > 0 ? ScreenHeight : 480;
+	const float sx = hud_w / 640.0f, sy = hud_h / 480.0f;
+
 	memset( &in, 0, sizeof( in ) );
-	in.screen_w = ScreenWidth > 0 ? ScreenWidth : 640;
-	in.screen_h = ScreenHeight > 0 ? ScreenHeight : 480;
+	in.screen_w = 640;
+	in.screen_h = 480;
 	in.health = gHUD.m_Health.m_iHealth;
 	in.stamina = 100.0f;	/* the server has no stamina yet: full tube */
 	in.spectating = g_iUser1 != 0;
@@ -123,7 +130,20 @@ int CHudDod::DrawRetail( float flTime )
 		rc.top = draws[i].cell.y;
 		rc.bottom = draws[i].cell.y + draws[i].cell.h;
 		SPR_Set( spr, 255, 255, 255 );
-		SPR_DrawHoles( 0, draws[i].x, draws[i].y, &rc );
+		if( sx == 1.0f && sy == 1.0f )
+			SPR_DrawHoles( 0, draws[i].x, draws[i].y, &rc );
+		else
+		{
+			/* Snap both edges so neighbouring pieces still meet. */
+			const int x0 = (int)( draws[i].x * sx + 0.5f );
+			const int y0 = (int)( draws[i].y * sy + 0.5f );
+			int w = (int)(( draws[i].x + draws[i].cell.w ) * sx + 0.5f ) - x0;
+			int h = (int)(( draws[i].y + draws[i].cell.h ) * sy + 0.5f ) - y0;
+
+			if( w < 1 ) w = 1;
+			if( h < 1 ) h = 1;
+			gEngfuncs.pfnSPR_DrawGeneric( 0, x0, y0, &rc, 0, 0, w, h );
+		}
 		drawn++;
 	}
 	if( !m_fDrawLogged )
