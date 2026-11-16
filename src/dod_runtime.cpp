@@ -3,6 +3,7 @@
 #include "util.h"
 #include "cbase.h"
 #include "player.h"
+#include "weapons.h"
 #include "gamerules.h"
 #include "teamplay_gamerules.h"
 #include "dod_runtime.h"
@@ -381,6 +382,10 @@ void CHalfLifeDoD::InitHUD( CBasePlayer *pPlayer )
 
 void CHalfLifeDoD::PlayerSpawn( CBasePlayer *pPlayer )
 {
+	/* A round restart respawns living players, who still hold their items. The base spawn gives a
+	 * crowbar again, and a duplicate crowbar (no ammo to extract) stays lying in the world: one
+	 * leaked edict per player per round until the edict pool ran out. Start from nothing. */
+	pPlayer->RemoveAllItems( FALSE );
 	CHalfLifeTeamplay::PlayerSpawn( pPlayer );
 	DodGC_EnsurePlayer( pPlayer );
 	if( pPlayer->IsObserver() )
@@ -583,18 +588,68 @@ void CHalfLifeDoD::ClientUserInfoChanged( CBasePlayer *pPlayer, char *infobuffer
 	DodGC_ApplyBody( pPlayer );
 }
 
+/* GC edict budget: the engine's CapFaces edict tip is 460 and a map already uses about 425, so
+ * every dead player's leftovers count. Retail drops the active gun in a weapon box that lives for
+ * two minutes (a box plus the weapons in it, several edicts), and a gibbed player leaves five gibs;
+ * after a few deaths the pool ran out and the game stalled. Dropping is off here (the dead player's
+ * weapons are just removed) and gibs are swept after a few seconds. */
+int CHalfLifeDoD::DeadPlayerWeapons( CBasePlayer *pPlayer )
+{
+	return GR_PLR_DROP_GUN_NO;
+}
+
+int CHalfLifeDoD::DeadPlayerAmmo( CBasePlayer *pPlayer )
+{
+	return GR_PLR_DROP_AMMO_NO;
+}
+
+#define DOD_GIB_SECONDS 6.0f
+
+/* Remove gibs older than DOD_GIB_SECONDS (all of them and any weapon box when `all`, at a round
+ * restart). Edicts past the clients; the first sighting stamps the gib's unused fuser4. */
+static void DodGC_TrimEdicts( BOOL all )
+{
+	int removed = 0;
+	for( int i = gpGlobals->maxClients + 1; i < gpGlobals->maxEntities; i++ ) {
+		edict_t *e = INDEXENT( i );
+		if( !e || e->free || !e->v.classname )
+			continue;
+		const char *cn = STRING( e->v.classname );
+		CBaseEntity *ent = NULL;
+		if( FStrEq( cn, "gib" ) ) {
+			if( e->v.fuser4 == 0.0f )
+				e->v.fuser4 = gpGlobals->time;
+			if( !all && gpGlobals->time - e->v.fuser4 <= DOD_GIB_SECONDS )
+				continue;
+			ent = CBaseEntity::Instance( e );
+			if( ent ) { UTIL_Remove( ent ); removed++; }
+		} else if( all && FStrEq( cn, "weaponbox" ) ) {
+			ent = CBaseEntity::Instance( e );
+			if( ent ) { ( (CWeaponBox *)ent )->Kill(); removed++; }
+		}
+	}
+	if( all && removed )
+		ALERT( at_console, "DoD round cleanup: removed %d gibs/weapon boxes\n", removed );
+}
+
+static float g_dod_next_trim;
+
 void CHalfLifeDoD::Think( void )
 {
 	CHalfLifeTeamplay::Think();
 	Dod_Think( gpGlobals->frametime );
 	DodBots_Think();
 	DodGC_SpectatorThink();
+	if( gpGlobals->time >= g_dod_next_trim ) {
+		g_dod_next_trim = gpGlobals->time + 1.0f;
+		DodGC_TrimEdicts( FALSE );
+	}
 	const DodGameRulesState *state = Dod_GetState();
 	if( state && state->phase == DOD_ROUND_INTERMISSION && !g_dod_winner_announced ) {
 		const char *winner = state->winner == DOD_TEAM_ALLIES ? "Allies win the round" :
 			state->winner == DOD_TEAM_AXIS ? "Axis win the round" : "Round tied";
 		UTIL_ClientPrintAll( HUD_PRINTCENTER, UTIL_VarArgs( "%s\nNext round in %d seconds", winner,
-			(int)DOD_INTERMISSION_SECONDS ) );
+			(int)( state->intermission_remaining + 0.5f ) ) );
 		g_dod_winner_announced = 1;
 	}
 	if( state && state->restart_serial != g_dod_seen_restart ) {
@@ -602,6 +657,8 @@ void CHalfLifeDoD::Think( void )
 		 * spawn with a fresh loadout (bots included). */
 		g_dod_seen_restart = state->restart_serial;
 		g_dod_winner_announced = 0;
+		ALERT( at_console, "DoD round restart: round %d, serial %d\n", state->round_number, state->restart_serial );
+		DodGC_TrimEdicts( TRUE );
 		if( state->match_serial != g_dod_seen_match ) {
 			g_dod_seen_match = state->match_serial;
 			UTIL_ClientPrintAll( HUD_PRINTCENTER, UTIL_VarArgs( "%s win the match",
@@ -897,8 +954,26 @@ void CDoDPointRelay::Use( CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TYP
 		FireTargets( STRING( pev->target ), pActivator, this, useType, value );
 }
 
-/* dod_round_timer: fires its target when round_timer_length seconds have passed (retail also
- * shows the clock; the rules core already runs the round clock from mp_timelimit). */
+/* Fire a map target by name. Entities the GC engine drops while loading a dense map (the
+ * CapFaces optional-entity filter skips multi_manager, trigger_relay, ...) are simply absent, so
+ * say so instead of failing silently: a missing win target means the round never ends. */
+static void DodGC_FireMapTarget( const char *target, CBaseEntity *caller, const char *what )
+{
+	if( !target || !target[0] )
+		return;
+	CBaseEntity *found = UTIL_FindEntityByTargetname( NULL, target );
+	if( !found ) {
+		ALERT( at_console, "DoD %s: target '%s' does not exist (dropped by the GC entity filter?)\n", what, target );
+		return;
+	}
+	ALERT( at_console, "DoD %s fires '%s' (%s)\n", what, target, STRING( found->pev->classname ) );
+	FireTargets( target, caller, caller, USE_TOGGLE, 0 );
+}
+
+/* dod_round_timer: retail's round clock. It sets the round length (round_timer_length seconds,
+ * every round) and fires its target when the clock runs out, so the map decides who wins a
+ * timeout (charlie: axiswin_mm, an Axis win). The rules core counts the clock down and only
+ * reports the timeout (timeout_serial); with a timer present it no longer ends the round. */
 class CDoDRoundTimer : public CPointEntity
 {
 public:
@@ -907,6 +982,7 @@ public:
 	void Think( void );
 private:
 	float m_flLength;
+	int m_iSeenTimeout;
 };
 
 LINK_ENTITY_TO_CLASS( dod_round_timer, CDoDRoundTimer )
@@ -923,15 +999,163 @@ void CDoDRoundTimer::Spawn( void )
 	pev->solid = SOLID_NOT;
 	pev->movetype = MOVETYPE_NONE;
 	if( m_flLength > 0.0f ) {
+		Dod_SetTimerDriven( 1 );
+		Dod_SetRoundClock( m_flLength );
+		m_iSeenTimeout = Dod_GetState()->timeout_serial;
 		SetThink( &CDoDRoundTimer::Think );
-		pev->nextthink = gpGlobals->time + m_flLength;
+		pev->nextthink = gpGlobals->time + 0.25f;
+		ALERT( at_console, "DoD round timer %.0f s target=%s\n", m_flLength, pev->target ? STRING( pev->target ) : "-" );
 	}
 }
 
 void CDoDRoundTimer::Think( void )
 {
+	const DodGameRulesState *state = Dod_GetState();
+	pev->nextthink = gpGlobals->time + 0.25f;
+	if( state->timeout_serial == m_iSeenTimeout )
+		return;
+	m_iSeenTimeout = state->timeout_serial;
+	ALERT( at_console, "DoD round timer expired (round %d)\n", state->round_number );
 	if( pev->target )
-		FireTargets( STRING( pev->target ), this, this, USE_TOGGLE, 0 );
+		DodGC_FireMapTarget( STRING( pev->target ), this, "round timer" );
+}
+
+/* dod_control_point_master: when a capture leaves one team holding every control point it fires
+ * that team's capture target once (charlie: allies_capture_target = allieswin_mm). Capture events
+ * come from the rules core (capture_serial); a team that already held every point at round start
+ * (Axis on charlie) does not trigger anything, as in retail where only a capture completes it.
+ * point_give_delay_time / point_pointvalue (periodic point score) are not used: charlie sets the
+ * point value to 0, and the core awards the per-point score continuously. */
+class CDoDControlPointMaster : public CPointEntity
+{
+public:
+	CDoDControlPointMaster();
+	void Spawn( void );
+	void KeyValue( KeyValueData *pkvd );
+	void Think( void );
+private:
+	string_t m_iszTarget[3];	/* indexed by DodTeam */
+	int m_iSeenCapture;
+};
+
+LINK_ENTITY_TO_CLASS( dod_control_point_master, CDoDControlPointMaster )
+
+CDoDControlPointMaster::CDoDControlPointMaster()
+{
+	m_iszTarget[0] = m_iszTarget[DOD_TEAM_ALLIES] = m_iszTarget[DOD_TEAM_AXIS] = 0;
+	m_iSeenCapture = 0;
+}
+
+void CDoDControlPointMaster::KeyValue( KeyValueData *pkvd )
+{
+	if( FStrEq( pkvd->szKeyName, "allies_capture_target" ) ) {
+		m_iszTarget[DOD_TEAM_ALLIES] = ALLOC_STRING( pkvd->szValue ); pkvd->fHandled = TRUE;
+	} else if( FStrEq( pkvd->szKeyName, "axis_capture_target" ) ) {
+		m_iszTarget[DOD_TEAM_AXIS] = ALLOC_STRING( pkvd->szValue ); pkvd->fHandled = TRUE;
+	} else if( FStrEq( pkvd->szKeyName, "cpm_group" ) || FStrEq( pkvd->szKeyName, "point_give_delay_time" ) ) {
+		pkvd->fHandled = TRUE;
+	} else CPointEntity::KeyValue( pkvd );
+}
+
+void CDoDControlPointMaster::Spawn( void )
+{
+	pev->solid = SOLID_NOT;
+	pev->movetype = MOVETYPE_NONE;
+	Dod_SetMasterDriven( 1 );
+	m_iSeenCapture = Dod_GetState()->capture_serial;
+	SetThink( &CDoDControlPointMaster::Think );
+	pev->nextthink = gpGlobals->time + 0.25f;
+	ALERT( at_console, "DoD control point master allies=%s axis=%s\n",
+		m_iszTarget[DOD_TEAM_ALLIES] ? STRING( m_iszTarget[DOD_TEAM_ALLIES] ) : "-",
+		m_iszTarget[DOD_TEAM_AXIS] ? STRING( m_iszTarget[DOD_TEAM_AXIS] ) : "-" );
+}
+
+void CDoDControlPointMaster::Think( void )
+{
+	const DodGameRulesState *state = Dod_GetState();
+	pev->nextthink = gpGlobals->time + 0.25f;
+	if( state->capture_serial == m_iSeenCapture )
+		return;
+	m_iSeenCapture = state->capture_serial;
+	ALERT( at_console, "DoD master: capture #%d by %s, Allies hold %d / Axis hold %d of %d points\n", state->capture_serial,
+		state->last_capture_team == DOD_TEAM_ALLIES ? "Allies" : "Axis", state->controlled_objectives[DOD_TEAM_ALLIES],
+		state->controlled_objectives[DOD_TEAM_AXIS], state->objective_count );
+	if( state->phase != DOD_ROUND_ACTIVE || !Dod_TeamOwnsAllObjectives( state->last_capture_team ) )
+		return;
+	const DodTeam team = state->last_capture_team;
+	ALERT( at_console, "DoD master: %s hold every control point, target=%s\n", team == DOD_TEAM_ALLIES ? "Allies" : "Axis",
+		m_iszTarget[team] ? STRING( m_iszTarget[team] ) : "-" );
+	if( m_iszTarget[team] )
+		DodGC_FireMapTarget( STRING( m_iszTarget[team] ), this, "master" );
+}
+
+/* dod_score_ent: gives its team score_points when used. With score_resetplayerstime > 0 it is a
+ * round win (retail resets the players after that many seconds): the round ends with that team as
+ * the winner and restarts after the delay. score_nextmapdelay (a map change) is not implemented;
+ * charlie sets it to 0. message is a localisation key (MAP_AXIS_VICTORY2), which the lean HUD
+ * cannot resolve, so the round announcement text comes from CHalfLifeDoD::Think. */
+class CDoDScoreEnt : public CPointEntity
+{
+public:
+	CDoDScoreEnt();
+	void Spawn( void );
+	void KeyValue( KeyValueData *pkvd );
+	void Use( CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TYPE useType, float value );
+private:
+	int m_iTeam;
+	int m_iPoints;
+	float m_flResetPlayersTime;
+};
+
+LINK_ENTITY_TO_CLASS( dod_score_ent, CDoDScoreEnt )
+
+CDoDScoreEnt::CDoDScoreEnt()
+{
+	m_iTeam = DOD_TEAM_UNASSIGNED;
+	m_iPoints = 0;
+	m_flResetPlayersTime = 0.0f;
+}
+
+void CDoDScoreEnt::KeyValue( KeyValueData *pkvd )
+{
+	if( FStrEq( pkvd->szKeyName, "team" ) ) {
+		m_iTeam = atoi( pkvd->szValue ); pkvd->fHandled = TRUE;
+	} else if( FStrEq( pkvd->szKeyName, "score_points" ) ) {
+		m_iPoints = atoi( pkvd->szValue ); pkvd->fHandled = TRUE;
+	} else if( FStrEq( pkvd->szKeyName, "score_resetplayerstime" ) ) {
+		m_flResetPlayersTime = (float)atof( pkvd->szValue ); pkvd->fHandled = TRUE;
+	} else if( FStrEq( pkvd->szKeyName, "score_nextmapdelay" ) || FStrEq( pkvd->szKeyName, "score_resetitemtime" )
+		|| FStrEq( pkvd->szKeyName, "noise" ) || FStrEq( pkvd->szKeyName, "message" ) ) {
+		pkvd->fHandled = TRUE;
+	} else CPointEntity::KeyValue( pkvd );
+}
+
+void CDoDScoreEnt::Spawn( void )
+{
+	pev->solid = SOLID_NOT;
+	pev->movetype = MOVETYPE_NONE;
+	ALERT( at_console, "DoD score ent '%s' team=%d points=%d restart=%.0f\n", pev->targetname ? STRING( pev->targetname ) : "-",
+		m_iTeam ? m_iTeam : pev->team, m_iPoints, m_flResetPlayersTime );
+}
+
+void CDoDScoreEnt::Use( CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TYPE useType, float value )
+{
+	/* The engine stores the `team` key in pev->team itself, so KeyValue never sees it. */
+	const DodTeam team = (DodTeam)( m_iTeam ? m_iTeam : pev->team );
+	if( team != DOD_TEAM_ALLIES && team != DOD_TEAM_AXIS )
+		return;
+	const DodGameRulesState *state = Dod_GetState();
+	if( state->phase != DOD_ROUND_ACTIVE )
+		return;
+	Dod_AddTeamScore( team, m_iPoints );
+	ALERT( at_console, "DoD score ent '%s' used: %s +%d%s\n", pev->targetname ? STRING( pev->targetname ) : "-", team == DOD_TEAM_ALLIES ? "Allies" : "Axis", m_iPoints,
+		m_flResetPlayersTime > 0.0f ? " (round win)" : "" );
+	if( m_flResetPlayersTime > 0.0f ) {
+		Dod_EndRoundDelayed( team, m_flResetPlayersTime );
+		ALERT( at_console, "DoD round %d won by %s, restart in %.0f s (rounds won allies=%d axis=%d)\n", state->round_number,
+			team == DOD_TEAM_ALLIES ? "Allies" : "Axis", m_flResetPlayersTime,
+			state->rounds_won[DOD_TEAM_ALLIES], state->rounds_won[DOD_TEAM_AXIS] );
+	}
 }
 
 void DodGC_ResetMapObjectives( void )

@@ -7,6 +7,14 @@ import shutil
 from pathlib import Path
 
 
+def remove_once(path: Path, old: str) -> None:
+	"""Delete `old` from the file if it is still there (replace_once cannot: an empty
+	replacement is always "already in" the text)."""
+	text = path.read_text()
+	if old in text:
+		path.write_text(text.replace(old, "", 1))
+
+
 def replace_once(path: Path, old: str, new: str) -> None:
 	text = path.read_text()
 	if new in text:
@@ -489,11 +497,9 @@ def main() -> int:
 		'\tif( !stricmp( gameleaf, "dod" ) && gpGlobals->deathmatch )\n\t\tCVAR_SET_FLOAT( "mp_teamplay", 1 );\n'
 		'\tif( !gpGlobals->deathmatch )\n\t{\n\t\t// generic half-life\n',
 	)
-	replace_once(
-		dlls / "subs.cpp",
-	'LINK_ENTITY_TO_CLASS( dod_control_point, CPointEntity )\n',
-	"",
-	)
+	# The DoD runtime defines these classes; drop the hlsdk stubs so they do not collide.
+	for stub in ("dod_control_point", "dod_control_point_master", "dod_score_ent"):
+		remove_once(dlls / "subs.cpp", f"LINK_ENTITY_TO_CLASS( {stub}, CPointEntity )\n")
 	replace_once(
 		client / "hud.cpp",
 		'int __MsgFunc_VGUIMenu( const char *pszName, int iSize, void *pbuf )\n',
