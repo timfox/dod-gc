@@ -652,10 +652,16 @@ public:
 	void Spawn( void );
 	void KeyValue( KeyValueData *pkvd );
 	void Think( void );
+	/* A dod_capture_area drives this point (retail): the sphere test is off and the area's
+	 * capture time replaces the default. */
+	void SetAreaDriven( float capture_seconds );
+	int PointIndex( void ) const { return m_iPointIndex; }
+	BOOL IsAreaDriven( void ) const { return m_bAreaDriven; }
 private:
 	int m_iPointIndex;
 	int m_iDefaultOwner;
 	char m_szPointName[64];
+	BOOL m_bAreaDriven;
 };
 
 LINK_ENTITY_TO_CLASS( dod_control_point, CDoDControlPoint )
@@ -665,6 +671,17 @@ CDoDControlPoint::CDoDControlPoint()
 	m_iPointIndex = -1;
 	m_iDefaultOwner = DOD_TEAM_UNASSIGNED;
 	m_szPointName[0] = '\0';
+	m_bAreaDriven = FALSE;
+}
+
+void CDoDControlPoint::SetAreaDriven( float capture_seconds )
+{
+	if( m_bAreaDriven )
+		return;
+	m_bAreaDriven = TRUE;
+	if( capture_seconds > 0.0f )
+		Dod_RegisterObjective( m_iPointIndex, DOD_OBJ_CAPTURE_POINT, (DodTeam)m_iDefaultOwner,
+			capture_seconds, DOD_POINT_SCORE_PER_MINUTE );
 }
 
 void CDoDControlPoint::KeyValue( KeyValueData *pkvd )
@@ -692,6 +709,10 @@ void CDoDControlPoint::Spawn( void )
 void CDoDControlPoint::Think( void )
 {
 	int allies = 0, axis = 0, i;
+	if( m_bAreaDriven ) {
+		pev->nextthink = gpGlobals->time + 0.25f;
+		return;
+	}
 	for( i = 1; i <= gpGlobals->maxClients; ++i ) {
 		CBasePlayer *player = (CBasePlayer *)UTIL_PlayerByIndex( i );
 		if( !player || player->pev->deadflag != DEAD_NO ) continue;
@@ -706,6 +727,211 @@ void CDoDControlPoint::Think( void )
 			UTIL_VarArgs( "%s captured control point %d", owner, m_iPointIndex ) );
 	}
 	pev->nextthink = gpGlobals->time + 0.25f;
+}
+
+/* ------------------------------------------------------------ capture areas */
+
+/* Retail dod_capture_area: a brush trigger around a control point. Living players of a team
+ * that may capture (area_<team>_cancap) and are at least area_<team>_numcap strong inside it
+ * capture the point named by `target` over area_time_to_cap seconds. `master` (an env_state)
+ * switches the area off. area_<team>_startcap / area_<team>_endcap are targets fired when a
+ * capture starts / completes. The capture itself runs in the rules core (Dod_TickObjective). */
+class CDoDCaptureArea : public CBaseEntity
+{
+public:
+	CDoDCaptureArea();
+	void Spawn( void );
+	void KeyValue( KeyValueData *pkvd );
+	void Think( void );
+private:
+	float m_flTimeToCap;
+	int m_iNumCap[3];	/* indexed by DodTeam: [DOD_TEAM_ALLIES], [DOD_TEAM_AXIS] */
+	int m_iCanCap[3];
+	string_t m_iszTarget;
+	string_t m_iszMaster;
+	string_t m_iszStartCap[3];
+	string_t m_iszEndCap[3];
+	BOOL m_bResolved;
+	BOOL m_bStarted;
+	CDoDControlPoint *m_pPoint;
+};
+
+LINK_ENTITY_TO_CLASS( dod_capture_area, CDoDCaptureArea )
+
+CDoDCaptureArea::CDoDCaptureArea()
+{
+	m_flTimeToCap = 5.0f;
+	m_iNumCap[DOD_TEAM_ALLIES] = m_iNumCap[DOD_TEAM_AXIS] = 1;
+	m_iCanCap[DOD_TEAM_ALLIES] = m_iCanCap[DOD_TEAM_AXIS] = 1;
+	m_iszTarget = m_iszMaster = 0;
+	m_iszStartCap[DOD_TEAM_ALLIES] = m_iszStartCap[DOD_TEAM_AXIS] = 0;
+	m_iszEndCap[DOD_TEAM_ALLIES] = m_iszEndCap[DOD_TEAM_AXIS] = 0;
+	m_bResolved = m_bStarted = FALSE;
+	m_pPoint = NULL;
+}
+
+void CDoDCaptureArea::KeyValue( KeyValueData *pkvd )
+{
+	if( FStrEq( pkvd->szKeyName, "area_time_to_cap" ) ) {
+		m_flTimeToCap = (float)atof( pkvd->szValue ); pkvd->fHandled = TRUE;
+	} else if( FStrEq( pkvd->szKeyName, "area_axis_numcap" ) ) {
+		m_iNumCap[DOD_TEAM_AXIS] = atoi( pkvd->szValue ); pkvd->fHandled = TRUE;
+	} else if( FStrEq( pkvd->szKeyName, "area_allies_numcap" ) ) {
+		m_iNumCap[DOD_TEAM_ALLIES] = atoi( pkvd->szValue ); pkvd->fHandled = TRUE;
+	} else if( FStrEq( pkvd->szKeyName, "area_axis_cancap" ) ) {
+		m_iCanCap[DOD_TEAM_AXIS] = atoi( pkvd->szValue ); pkvd->fHandled = TRUE;
+	} else if( FStrEq( pkvd->szKeyName, "area_allies_cancap" ) ) {
+		m_iCanCap[DOD_TEAM_ALLIES] = atoi( pkvd->szValue ); pkvd->fHandled = TRUE;
+	} else if( FStrEq( pkvd->szKeyName, "master" ) ) {
+		m_iszMaster = ALLOC_STRING( pkvd->szValue ); pkvd->fHandled = TRUE;
+	} else if( FStrEq( pkvd->szKeyName, "area_allies_startcap" ) ) {
+		m_iszStartCap[DOD_TEAM_ALLIES] = ALLOC_STRING( pkvd->szValue ); pkvd->fHandled = TRUE;
+	} else if( FStrEq( pkvd->szKeyName, "area_axis_startcap" ) ) {
+		m_iszStartCap[DOD_TEAM_AXIS] = ALLOC_STRING( pkvd->szValue ); pkvd->fHandled = TRUE;
+	} else if( FStrEq( pkvd->szKeyName, "area_allies_endcap" ) ) {
+		m_iszEndCap[DOD_TEAM_ALLIES] = ALLOC_STRING( pkvd->szValue ); pkvd->fHandled = TRUE;
+	} else if( FStrEq( pkvd->szKeyName, "area_axis_endcap" ) ) {
+		m_iszEndCap[DOD_TEAM_AXIS] = ALLOC_STRING( pkvd->szValue ); pkvd->fHandled = TRUE;
+	} else if( FStrEq( pkvd->szKeyName, "area_hud_sprite" ) || FStrEq( pkvd->szKeyName, "area_object_group" ) ) {
+		pkvd->fHandled = TRUE;	/* HUD/object-group data: not used by the lean HUD */
+	} else CBaseEntity::KeyValue( pkvd );
+}
+
+void CDoDCaptureArea::Spawn( void )
+{
+	pev->solid = SOLID_TRIGGER;
+	pev->movetype = MOVETYPE_NONE;
+	SET_MODEL( ENT( pev ), STRING( pev->model ) );
+	pev->effects |= EF_NODRAW;
+	SetThink( &CDoDCaptureArea::Think );
+	pev->nextthink = gpGlobals->time + 0.5f;
+}
+
+void CDoDCaptureArea::Think( void )
+{
+	int inside[3] = { 0, 0, 0 }, i;
+	pev->nextthink = gpGlobals->time + 0.25f;
+	if( !m_bResolved ) {
+		/* Every entity has spawned by the first think: find the point this area drives.
+		 * `target` is a standard key the engine stores in pev->target. */
+		m_iszTarget = pev->target;
+		CBaseEntity *e = m_iszTarget ? UTIL_FindEntityByTargetname( NULL, STRING( m_iszTarget ) ) : NULL;
+		while( e && !FClassnameIs( e->pev, "dod_control_point" ) )
+			e = UTIL_FindEntityByTargetname( e, STRING( m_iszTarget ) );
+		m_bResolved = TRUE;
+		if( e ) {
+			m_pPoint = (CDoDControlPoint *)e;
+			m_pPoint->SetAreaDriven( m_flTimeToCap );
+		}
+		ALERT( at_console, "DoD capture area target=%s point=%d time=%.0f absmin=%.0f,%.0f,%.0f absmax=%.0f,%.0f,%.0f\n",
+			m_iszTarget ? STRING( m_iszTarget ) : "-", m_pPoint ? m_pPoint->PointIndex() : -1, m_flTimeToCap,
+			pev->absmin.x, pev->absmin.y, pev->absmin.z, pev->absmax.x, pev->absmax.y, pev->absmax.z );
+	}
+	if( !m_pPoint )
+		return;	/* an area without a point (charlie's `*8`) only gates map logic */
+	if( m_iszMaster && !UTIL_IsMasterTriggered( m_iszMaster, NULL ) )
+		return;
+	for( i = 1; i <= gpGlobals->maxClients; ++i ) {
+		CBasePlayer *player = (CBasePlayer *)UTIL_PlayerByIndex( i );
+		DodTeam team;
+		if( !player || player->pev->deadflag != DEAD_NO ) continue;
+		if( player->pev->absmin.x > pev->absmax.x || player->pev->absmax.x < pev->absmin.x
+			|| player->pev->absmin.y > pev->absmax.y || player->pev->absmax.y < pev->absmin.y
+			|| player->pev->absmin.z > pev->absmax.z || player->pev->absmax.z < pev->absmin.z )
+			continue;
+		team = DodGC_TeamForPlayer( player );
+		if( team == DOD_TEAM_ALLIES || team == DOD_TEAM_AXIS )
+			++inside[team];
+	}
+	{
+		int allies = ( m_iCanCap[DOD_TEAM_ALLIES] && inside[DOD_TEAM_ALLIES] >= m_iNumCap[DOD_TEAM_ALLIES] ) ? inside[DOD_TEAM_ALLIES] : 0;
+		int axis = ( m_iCanCap[DOD_TEAM_AXIS] && inside[DOD_TEAM_AXIS] >= m_iNumCap[DOD_TEAM_AXIS] ) ? inside[DOD_TEAM_AXIS] : 0;
+		const DodObjectiveState *before = Dod_GetObjective( m_pPoint->PointIndex() );
+		const int owner_before = before ? (int)before->owner : -1;
+
+		if( ( allies || axis ) && !m_bStarted ) {
+			const DodTeam starter = allies >= axis ? DOD_TEAM_ALLIES : DOD_TEAM_AXIS;
+			if( owner_before == (int)starter )
+				return;	/* already theirs: nothing to start */
+			m_bStarted = TRUE;
+			ALERT( at_console, "DoD capture start point %d by %s\n", m_pPoint->PointIndex(), starter == DOD_TEAM_ALLIES ? "Allies" : "Axis" );
+			if( m_iszStartCap[starter] )
+				FireTargets( STRING( m_iszStartCap[starter] ), this, this, USE_TOGGLE, 0 );
+		} else if( !allies && !axis ) {
+			m_bStarted = FALSE;
+		}
+		if( Dod_TickObjective( m_pPoint->PointIndex(), allies, axis, 0.25f ) ) {
+			const DodObjectiveState *after = Dod_GetObjective( m_pPoint->PointIndex() );
+			const DodTeam owner = after ? after->owner : DOD_TEAM_UNASSIGNED;
+			ALERT( at_console, "DoD capture complete point %d owner %s\n", m_pPoint->PointIndex(), owner == DOD_TEAM_ALLIES ? "Allies" : "Axis" );
+			UTIL_ClientPrintAll( HUD_PRINTCENTER, UTIL_VarArgs( "%s captured control point %d",
+				owner == DOD_TEAM_ALLIES ? "Allies" : "Axis", m_pPoint->PointIndex() ) );
+			if( ( owner == DOD_TEAM_ALLIES || owner == DOD_TEAM_AXIS ) && m_iszEndCap[owner] )
+				FireTargets( STRING( m_iszEndCap[owner] ), this, this, USE_TOGGLE, 0 );
+			m_bStarted = FALSE;
+		}
+	}
+}
+
+/* dod_point_relay: forwards a use to its target (retail relays capture events to map logic). */
+class CDoDPointRelay : public CPointEntity
+{
+public:
+	void KeyValue( KeyValueData *pkvd );
+	void Use( CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TYPE useType, float value );
+};
+
+LINK_ENTITY_TO_CLASS( dod_point_relay, CDoDPointRelay )
+
+void CDoDPointRelay::KeyValue( KeyValueData *pkvd )
+{
+	if( FStrEq( pkvd->szKeyName, "dod_relay_team" ) )
+		pkvd->fHandled = TRUE;	/* team filter: not applied (unverified retail semantics) */
+	else
+		CPointEntity::KeyValue( pkvd );
+}
+
+void CDoDPointRelay::Use( CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TYPE useType, float value )
+{
+	if( pev->target )
+		FireTargets( STRING( pev->target ), pActivator, this, useType, value );
+}
+
+/* dod_round_timer: fires its target when round_timer_length seconds have passed (retail also
+ * shows the clock; the rules core already runs the round clock from mp_timelimit). */
+class CDoDRoundTimer : public CPointEntity
+{
+public:
+	void Spawn( void );
+	void KeyValue( KeyValueData *pkvd );
+	void Think( void );
+private:
+	float m_flLength;
+};
+
+LINK_ENTITY_TO_CLASS( dod_round_timer, CDoDRoundTimer )
+
+void CDoDRoundTimer::KeyValue( KeyValueData *pkvd )
+{
+	if( FStrEq( pkvd->szKeyName, "round_timer_length" ) ) {
+		m_flLength = (float)atof( pkvd->szValue ); pkvd->fHandled = TRUE;
+	} else CPointEntity::KeyValue( pkvd );
+}
+
+void CDoDRoundTimer::Spawn( void )
+{
+	pev->solid = SOLID_NOT;
+	pev->movetype = MOVETYPE_NONE;
+	if( m_flLength > 0.0f ) {
+		SetThink( &CDoDRoundTimer::Think );
+		pev->nextthink = gpGlobals->time + m_flLength;
+	}
+}
+
+void CDoDRoundTimer::Think( void )
+{
+	if( pev->target )
+		FireTargets( STRING( pev->target ), this, this, USE_TOGGLE, 0 );
 }
 
 void DodGC_ResetMapObjectives( void )

@@ -179,7 +179,7 @@ void CDodWeapon::Spawn( void )
 	/* The world body is the stock weapon box, already resident. */
 	SET_MODEL( ENT( pev ), "models/w_weaponbox.mdl" );
 	m_iDefaultAmmo = def->clip;
-	m_iClip = -1;
+	m_iClip = 0; // AddPrimaryAmmo only fills the clip when it is 0; -1 left DoD guns permanently empty
 	FallInit();
 }
 
