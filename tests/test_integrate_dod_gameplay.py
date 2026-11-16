@@ -203,6 +203,31 @@ class GrenadeIntegrationTest(unittest.TestCase):
 				INTEGRATOR.integrate_grenades(dlls)
 
 
+class TriggerHurtIntegrationTest(unittest.TestCase):
+	TRIGGERS = ('#include "gamerules.h"\n\nvoid CBaseTrigger::HurtTouch( CBaseEntity *pOther )\n{\n\tfloat fldmg;\n\n'
+		'\tif( !pOther->pev->takedamage )\n\t\treturn;\n\n'
+		'\tif( ( pev->spawnflags & SF_TRIGGER_HURT_NO_CLIENTS ) && pOther->IsPlayer() )\n\t\treturn;\n\n\tfldmg = pev->dmg;\n}\n')
+
+	def test_team_filter_is_patched_in_once_after_the_stock_checks(self):
+		with tempfile.TemporaryDirectory() as directory:
+			dlls = Path(directory)
+			(dlls / "triggers.cpp").write_text(self.TRIGGERS)
+			INTEGRATOR.integrate_trigger_hurt(dlls)
+			first = (dlls / "triggers.cpp").read_text()
+			INTEGRATOR.integrate_trigger_hurt(dlls)
+			self.assertEqual((dlls / "triggers.cpp").read_text(), first, "must be idempotent")
+			self.assertEqual(first.count("DodGC_TriggerHurtApplies( pev->spawnflags, pOther )"), 1)
+			self.assertLess(first.index("SF_TRIGGER_HURT_NO_CLIENTS"), first.index("DodGC_TriggerHurtApplies( pev"))
+			self.assertLess(first.index("DodGC_TriggerHurtApplies( pev"), first.index("fldmg = pev->dmg"))
+
+	def test_missing_anchor_fails_loudly(self):
+		with tempfile.TemporaryDirectory() as directory:
+			dlls = Path(directory)
+			(dlls / "triggers.cpp").write_text('#include "gamerules.h"\nint unrelated;\n')
+			with self.assertRaises(SystemExit):
+				INTEGRATOR.integrate_trigger_hurt(dlls)
+
+
 class WeaponHookIntegrationTest(unittest.TestCase):
 	WEAPONS = ('#include "gamerules.h"\n\nvoid W_Precache( void )\n{\n'
 		'\tUTIL_PrecacheOtherWeapon( "weapon_crowbar" );\n'

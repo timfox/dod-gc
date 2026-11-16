@@ -134,6 +134,12 @@ int Dod_AssignPlayerTeam(int player_index, DodTeam team);
 int Dod_SelectPlayerClass(int player_index, DodClass player_class);
 void Dod_RecordKill(int attacker_index, int victim_index);
 const DodPlayerState *Dod_GetPlayer(int player_index);
+/* DoD trigger_hurt team flags: spawnflag 64 hurts only the Axis, 128 only the Allies (the spawn-protection zones that
+ * keep the enemy out of a base while the owners spawn and leave inside or beside them); neither (or both) hurts
+ * everyone. A spectator or unassigned player is never hurt by a team-flagged zone. Returns 1 when the zone applies. */
+#define DOD_HURT_AXIS_ONLY 64
+#define DOD_HURT_ALLIES_ONLY 128
+int Dod_HurtAppliesToTeam(int spawnflags, DodTeam team);
 int Dod_TeamFromName(const char *name);
 const char *Dod_TeamName(DodTeam team);
 const char *Dod_ClassName(DodClass player_class);

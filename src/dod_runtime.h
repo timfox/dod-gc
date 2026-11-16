@@ -34,6 +34,9 @@ typedef struct DodGCObjectiveView {
 /* Fill up to max views, one per control point; returns the count. */
 int DodGC_ListObjectives( DodGCObjectiveView *out, int max );
 
+/* trigger_hurt team filter (spawnflag 64 hurts Axis only, 128 Allies only). */
+BOOL DodGC_TriggerHurtApplies( int spawnflags, CBaseEntity *pOther );
+
 void DodGC_ResetMapObjectives( void );
 /* Put a bot on a team with a class: the same steps a human's menu choices take. */
 void DodGC_BotJoin( CBasePlayer *pPlayer, DodTeam team, DodClass player_class );

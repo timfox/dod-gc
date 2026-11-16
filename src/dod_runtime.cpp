@@ -134,6 +134,14 @@ static DodTeam DodGC_TeamForPlayer( CBasePlayer *pPlayer )
 	return (DodTeam)Dod_TeamFromName( pPlayer->m_szTeamName );
 }
 
+/* trigger_hurt's DoD team flags (see Dod_HurtAppliesToTeam); called from CBaseTrigger::HurtTouch by the integrator's patch. */
+BOOL DodGC_TriggerHurtApplies( int spawnflags, CBaseEntity *pOther )
+{
+	if( !pOther || !pOther->IsPlayer() || !( spawnflags & ( DOD_HURT_AXIS_ONLY | DOD_HURT_ALLIES_ONLY ) ) )
+		return TRUE;
+	return Dod_HurtAppliesToTeam( spawnflags, DodGC_TeamForPlayer( (CBasePlayer *)pOther ) ) ? TRUE : FALSE;
+}
+
 static void DodGC_EnsurePlayer( CBasePlayer *pPlayer )
 {
 	const int index = DodGC_PlayerIndex( pPlayer );
