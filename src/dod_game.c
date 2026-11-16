@@ -836,6 +836,26 @@ const char *Dod_KillWeaponLabel(const char *classname, DodTeam team, int british
 	return "Weapon";
 }
 
+int Dod_PuffScale(float size)
+{
+	int scale = (int)(size / 16.0f * 10.0f);
+	if (size <= 0.0f)
+		scale = 10;
+	return scale < 10 ? 10 : (scale > 120 ? 120 : scale);
+}
+
+int Dod_PuffAllowed(float now, float *window_start, int *in_window, int per_second)
+{
+	if (now - *window_start >= 1.0f || now < *window_start) {
+		*window_start = now;
+		*in_window = 0;
+	}
+	if (*in_window >= per_second)
+		return 0;
+	++*in_window;
+	return 1;
+}
+
 static int g_class_limit[4][DOD_CLASS_COUNT];
 static int g_class_mask[4] = { -1, -1, -1, -1 };
 static int g_class_limits_set;

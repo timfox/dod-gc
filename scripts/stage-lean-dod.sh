@@ -124,6 +124,11 @@ echo "staged lean HUD sources: $hud_staged sprites (for gc_* bootstrap inject)"
 
 # DoD match HUD (cl_dodhud): one 96x32 sheet with the neutral, Allies and Axis
 # flag icons (3.9 KB). The client loads it the first time it draws a flag.
+# particle_shooter smoke (src/dod_runtime.cpp): one small puff sprite for every emitter (9 KB; the map sprites are 72-197 KB).
+if [[ -f "$SRC/sprites/gas_puff_01.spr" ]]; then
+	cp -f "$SRC/sprites/gas_puff_01.spr" "$LEAN/sprites/"
+	echo "staged particle_shooter puff sprite: sprites/gas_puff_01.spr"
+fi
 if [[ -f "$SRC/sprites/icon_obj.spr" ]]; then
 	cp -f "$SRC/sprites/icon_obj.spr" "$LEAN/sprites/"
 	echo "staged DoD HUD flag sheet: sprites/icon_obj.spr"

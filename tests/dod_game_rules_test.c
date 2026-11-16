@@ -123,6 +123,19 @@ static void test_player_body(void)
 	assert(Dod_PlayerBodyValue("us-inf", DOD_CLASS_NONE, 4) == 0);
 }
 
+static void test_puffs(void)
+{
+	float window = 0.0f;
+	int n = 0, i, allowed = 0;
+	assert(Dod_PuffScale(16.0f) == 10 && Dod_PuffScale(8.0f) == 10 && Dod_PuffScale(128.0f) == 80 && Dod_PuffScale(5000.0f) == 120 && Dod_PuffScale(0.0f) == 10);
+	/* six puffs a second, whoever asks; the next second starts fresh */
+	for (i = 0; i < 20; ++i)
+		allowed += Dod_PuffAllowed(10.0f + i * 0.04f, &window, &n, 6);
+	assert(allowed == 6);
+	assert(Dod_PuffAllowed(11.2f, &window, &n, 6) == 1);
+	assert(Dod_PuffAllowed(5.0f, &window, &n, 6) == 1);	/* a clock that went back starts over */
+}
+
 static void test_kill_labels(void)
 {
 	Dod_SetAlliesCountry(DOD_COUNTRY_US);
@@ -1007,6 +1020,7 @@ int main(void)
 	test_retail_class_names();
 	test_status_line();
 	test_player_line();
+	test_puffs();
 	test_kill_labels();
 	test_class_limits();
 	test_stamina();
