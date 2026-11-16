@@ -74,6 +74,8 @@ typedef struct DodObjectiveState {
 	float capture_seconds;
 	float score_per_minute;
 	int points_for_cap;	/* score each capturing player gets (the map's point_points_for_cap, default 1) */
+	int team_points;	/* team score when the point is captured (point_team_points, default 0) */
+	int time_points;	/* team score the owner gets every give delay (point_pointvalue, default 1) */
 } DodObjectiveState;
 
 typedef struct DodGameRulesState {
@@ -143,6 +145,11 @@ void Dod_RecordCapture(int player_index, int points);
 int Dod_PlayerScore(int player_index);
 /* The map's point_points_for_cap of an objective (call after Dod_RegisterObjective, which resets it to 1). */
 void Dod_SetObjectivePointsForCap(int id, int points);
+/* The map's point_team_points (on capture) and point_pointvalue (every give delay) of an objective. Like retail, team
+ * score comes only from these, from dod_score_ent and from round wins: kills add nothing. */
+void Dod_SetObjectiveTeamPoints(int id, int team_points, int time_points);
+/* point_give_delay_time of the dod_control_point_master: seconds between the timed awards (retail default 20). */
+void Dod_SetPointGiveDelay(float seconds);
 const DodPlayerState *Dod_GetPlayer(int player_index);
 /* DoD trigger_hurt team flags: spawnflag 64 hurts only the Axis, 128 only the Allies (the spawn-protection zones that
  * keep the enemy out of a base while the owners spawn and leave inside or beside them); neither (or both) hurts
