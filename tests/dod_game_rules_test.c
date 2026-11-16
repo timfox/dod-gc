@@ -613,6 +613,49 @@ static void test_hurt_zone_team_flags(void)
 	assert(Dod_HurtAppliesToTeam(0, DOD_TEAM_SPECTATOR));
 }
 
+static void test_view_animations(void)
+{
+	int id;
+	/* every gun's view model is in the table */
+	for (id = DOD_WEAPON_NONE + 1; id < DOD_WEAPON_COUNT; ++id) {
+		const DodWeaponDef *def = Dod_GetWeaponDef((DodWeaponId)id);
+		assert(def && Dod_ViewAnim(def->view_model, DOD_ANIM_IDLE, 0) >= 0);
+		assert(Dod_ViewAnim(def->view_model, DOD_ANIM_FIRE, 0) >= 0 && Dod_ViewAnim(def->view_model, DOD_ANIM_RELOAD, 0) >= 0);
+	}
+	/* the Garand: shoot1-3 are 1-3, shoot_empty 4, reload 5, draw 6, empty_idle 7 (its reload was sent as 4 and its draw as 5) */
+	assert(Dod_RemapAnim("weapon_dod_garand", DOD_GENERIC_ANIM_FIRE1 + 2) == 3);
+	assert(Dod_RemapAnim("weapon_dod_garand", DOD_GENERIC_ANIM_FIRE_EMPTY) == 4);
+	assert(Dod_RemapAnim("weapon_dod_garand", DOD_GENERIC_ANIM_RELOAD) == 5);
+	assert(Dod_RemapAnim("weapon_dod_garand", DOD_GENERIC_ANIM_DRAW) == 6);
+	assert(Dod_RemapAnim("weapon_dod_garand", DOD_GENERIC_ANIM_IDLE_EMPTY) == 7);
+	/* the Thompson, MP40 and StG44: sequence 1 is the reload, 2 the draw, shoot1/2 are 3/4 (two fire variants wrap) */
+	assert(Dod_RemapAnim("weapon_dod_thompson", DOD_GENERIC_ANIM_FIRE1) == 3 && Dod_RemapAnim("weapon_dod_thompson", DOD_GENERIC_ANIM_FIRE1 + 1) == 4);
+	assert(Dod_RemapAnim("weapon_dod_thompson", DOD_GENERIC_ANIM_FIRE1 + 2) == 3);
+	assert(Dod_RemapAnim("weapon_dod_mp40", DOD_GENERIC_ANIM_RELOAD) == 1 && Dod_RemapAnim("weapon_dod_mp40", DOD_GENERIC_ANIM_DRAW) == 2);
+	assert(Dod_RemapAnim("weapon_dod_stg44", DOD_GENERIC_ANIM_IDLE_EMPTY) == 5);
+	/* bolt actions have one shoot, no empty variants: they fall back */
+	assert(Dod_RemapAnim("weapon_dod_k98", DOD_GENERIC_ANIM_FIRE1 + 1) == 1 && Dod_RemapAnim("weapon_dod_k98", DOD_GENERIC_ANIM_FIRE_EMPTY) == 1);
+	assert(Dod_RemapAnim("weapon_dod_k98", DOD_GENERIC_ANIM_RELOAD) == 2 && Dod_RemapAnim("weapon_dod_k98", DOD_GENERIC_ANIM_IDLE_EMPTY) == 0);
+	assert(Dod_RemapAnim("weapon_dod_spring", DOD_GENERIC_ANIM_RELOAD) == 3 && Dod_RemapAnim("weapon_dod_spring", DOD_GENERIC_ANIM_DRAW) == 4);
+	/* pistols */
+	assert(Dod_RemapAnim("weapon_dod_colt", DOD_GENERIC_ANIM_FIRE_EMPTY) == 6 && Dod_RemapAnim("weapon_dod_colt", DOD_GENERIC_ANIM_DRAW) == 5);
+	assert(Dod_RemapAnim("weapon_dod_luger", DOD_GENERIC_ANIM_FIRE_EMPTY) == 4 && Dod_RemapAnim("weapon_dod_luger", DOD_GENERIC_ANIM_RELOAD) == 6);
+	/* launchers and the belt-fed guns */
+	assert(Dod_RemapAnim("weapon_dod_bazooka", DOD_GENERIC_ANIM_FIRE1) == 3 && Dod_RemapAnim("weapon_dod_bazooka", DOD_GENERIC_ANIM_RELOAD) == 7);
+	assert(Dod_RemapAnim("weapon_dod_pschreck", DOD_GENERIC_ANIM_DRAW) == 1);
+	assert(Dod_RemapAnim("weapon_dod_mg42", DOD_GENERIC_ANIM_FIRE1) == 40 && Dod_RemapAnim("weapon_dod_mg42", DOD_GENERIC_ANIM_RELOAD) == 58);
+	assert(Dod_RemapAnim("weapon_dod_30cal", DOD_GENERIC_ANIM_IDLE_EMPTY) == 9 && Dod_RemapAnim("weapon_dod_30cal", DOD_GENERIC_ANIM_DRAW) == 0);
+	/* the HL1 crowbar wearing the knife: stock draw is 1 (a slash in the knife model), the knife draws with 3 */
+	assert(Dod_RemapAnim("weapon_crowbar", 1) == 3 && Dod_RemapAnim("weapon_crowbar", 2) == 0);
+	assert(Dod_RemapAnim("weapon_crowbar", 4) == 1 && Dod_RemapAnim("weapon_crowbar", 6) == 2 && Dod_RemapAnim("weapon_crowbar", 8) == 1);
+	/* the HL1 hand grenade wearing the DoD grenades: stock draw is 7 (an exploding pin pull in the model), it draws with 1 */
+	assert(Dod_RemapAnim("weapon_handgrenade", 7) == 1 && Dod_RemapAnim("weapon_handgrenade", 2) == 2);
+	assert(Dod_RemapAnim("weapon_handgrenade", 4) == 4 && Dod_RemapAnim("weapon_handgrenade", 6) == 3 && Dod_RemapAnim("weapon_handgrenade", 1) == 0);
+	/* unknown weapons and numbers are left alone */
+	assert(Dod_RemapAnim("weapon_nothing", 5) == 5 && Dod_RemapAnim(0, 5) == 5 && Dod_RemapAnim("weapon_dod_garand", 42) == 42);
+	assert(Dod_ViewAnim("models/v_nothing.mdl", DOD_ANIM_IDLE, 0) == -1 && Dod_ViewAnim(0, DOD_ANIM_IDLE, 0) == -1);
+}
+
 int main(void)
 {
 	test_players_and_weapon_models();
@@ -627,5 +670,6 @@ int main(void)
 	test_match_loop();
 	test_map_driven_round_flow();
 	test_hurt_zone_team_flags();
+	test_view_animations();
 	return 0;
 }

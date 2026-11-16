@@ -96,6 +96,37 @@ int Dod_ReloadAmount(const DodWeaponDef *def, int clip, int reserve);
 /* Whether the trigger may fire again: auto always, semi/bolt only on a new pull. */
 int Dod_WeaponMayFire(const DodWeaponDef *def, int trigger_was_held);
 
+/* ---------------------------------------------------------------- view model animations
+ * The game code sends generic animation numbers; every retail view model orders its sequences differently, so
+ * SendWeaponAnim translates them (tools/gen_viewanims.py names the sequence each role uses in each model). */
+#define DOD_GENERIC_ANIM_IDLE 0
+#define DOD_GENERIC_ANIM_FIRE1 1	/* 1-3: fire variants */
+#define DOD_GENERIC_ANIM_RELOAD 4
+#define DOD_GENERIC_ANIM_DRAW 5
+#define DOD_GENERIC_ANIM_HOLSTER 6
+#define DOD_GENERIC_ANIM_IDLE_EMPTY 7
+#define DOD_GENERIC_ANIM_FIRE_EMPTY 8
+
+typedef enum {
+	DOD_ANIM_IDLE = 0,
+	DOD_ANIM_IDLE_EMPTY,
+	DOD_ANIM_FIRE,		/* variant picks among the model's shoot (or slash) sequences */
+	DOD_ANIM_FIRE_EMPTY,
+	DOD_ANIM_RELOAD,
+	DOD_ANIM_DRAW,
+	DOD_ANIM_HOLSTER,
+	DOD_ANIM_PINPULL,	/* grenades */
+	DOD_ANIM_ROLE_COUNT
+} DodAnimRole;
+
+/* The sequence a retail view model plays for a role, or -1 when the model is unknown or has none. A missing
+ * idle_empty falls back to idle and a missing fire_empty to fire. */
+int Dod_ViewAnim(const char *view_model, DodAnimRole role, int variant);
+/* The sequence to send for a weapon: `anim` is what the code asked for (the generic number for a DoD gun, the stock
+ * constant for the HL1 crowbar and hand grenade that wear the knife and grenade models). Unchanged when the weapon
+ * or the role is not known. */
+int Dod_RemapAnim(const char *classname, int anim);
+
 #ifdef __cplusplus
 }
 #endif
