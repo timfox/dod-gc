@@ -60,6 +60,7 @@ typedef struct DodPlayerState {
 	int objective_score;
 	int teamkills;
 	int captures;	/* control points this player was standing in when they were captured */
+	int score;	/* objective points only: what the captured points give their capturers (retail Score) */
 } DodPlayerState;
 
 typedef struct DodObjectiveState {
@@ -72,6 +73,7 @@ typedef struct DodObjectiveState {
 	float capture_progress;
 	float capture_seconds;
 	float score_per_minute;
+	int points_for_cap;	/* score each capturing player gets (the map's point_points_for_cap, default 1) */
 } DodObjectiveState;
 
 typedef struct DodGameRulesState {
@@ -135,11 +137,12 @@ void Dod_PlayerDisconnect(int player_index);
 int Dod_AssignPlayerTeam(int player_index, DodTeam team);
 int Dod_SelectPlayerClass(int player_index, DodClass player_class);
 void Dod_RecordKill(int attacker_index, int victim_index);
-/* A control point was captured with this player inside it. */
-void Dod_RecordCapture(int player_index);
-/* Player score: 1 per kill, -1 per team kill, DOD_CAPTURE_PLAYER_POINTS per capture helped. */
-#define DOD_CAPTURE_PLAYER_POINTS 2
+/* A control point was captured with this player inside it: the point's points_for_cap go to their Score. Retail keeps
+ * Score apart from Kills and Deaths; kills never add to it. */
+void Dod_RecordCapture(int player_index, int points);
 int Dod_PlayerScore(int player_index);
+/* The map's point_points_for_cap of an objective (call after Dod_RegisterObjective, which resets it to 1). */
+void Dod_SetObjectivePointsForCap(int id, int points);
 const DodPlayerState *Dod_GetPlayer(int player_index);
 /* DoD trigger_hurt team flags: spawnflag 64 hurts only the Axis, 128 only the Allies (the spawn-protection zones that
  * keep the enemy out of a base while the owners spawn and leave inside or beside them); neither (or both) hurts
@@ -232,7 +235,7 @@ int Dod_FormatPlayerLine(int player_index, const char *name, char *buffer, int s
 int Dod_PlayerBodyValue(const char *model, DodClass player_class, int player_index);
 
 /* Team-grouped scoreboard text for one HUD block: each team's header with its score, then its players best first
- * ("1. Name  RIF  7  5/2"), the viewer's line marked with '>'. names[i] is the name of player index i (may be NULL).
+ * ("1. Name  RIF  S7 K5 D2"), the viewer's line marked with '>'. names[i] is the name of player index i (may be NULL).
  * Lines that do not fit are dropped from the bottom. Returns characters written. */
 int Dod_FormatScoreboard(char *buffer, int size, const char *const *names, int viewer_index);
 
