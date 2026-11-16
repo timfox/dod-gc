@@ -1434,6 +1434,24 @@ static void StageStep( void )
 	DodBotState *sa, *sx;
 	int i;
 	static float armed_at;
+	if( stage == 3 && g_stage_phase >= 9 )
+	{
+		/* diagnostic: what state is the human in after the join */
+		static float next_log;
+		if( now >= next_log )
+		{
+			CBasePlayer *p;
+			next_log = now + 5.0f;
+			for( int k = 1; k <= gpGlobals->maxClients; k++ )
+			{
+				p = PlayerAt( k );
+				if( p && !DodBots_IsBot( p ) )
+					ALERT( at_console, "DoD STAGE human: health %.0f deadflag %d observer %d team %d weapon %s origin %.0f,%.0f,%.0f\n", p->pev->health, p->pev->deadflag,
+						p->IsObserver(), (int)TeamOf( p ), p->m_pActiveItem ? STRING( p->m_pActiveItem->pev->classname ) : "-", p->pev->origin.x, p->pev->origin.y, p->pev->origin.z );
+			}
+		}
+		return;
+	}
 	if( !stage || g_stage_phase >= 9 )
 		return;
 	if( stage == 3 )
@@ -1449,7 +1467,7 @@ static void StageStep( void )
 				CBasePlayer *p = PlayerAt( i );
 				if( p && !DodBots_IsBot( p ) )
 				{
-					DodGC_BotJoin( p, DOD_TEAM_ALLIES, DOD_CLASS_RIFLEMAN );
+					DodGC_HumanJoin( p, DOD_TEAM_ALLIES, DOD_CLASS_RIFLEMAN );
 					ALERT( at_console, "DoD STAGE weapons: the human joined the Allies as a rifleman\n" );
 					g_stage_phase = 9;
 					break;

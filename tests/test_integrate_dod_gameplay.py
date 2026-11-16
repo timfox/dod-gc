@@ -228,6 +228,29 @@ class TriggerHurtIntegrationTest(unittest.TestCase):
 				INTEGRATOR.integrate_trigger_hurt(dlls)
 
 
+class VoiceMenuIntegrationTest(unittest.TestCase):
+	PLAYER = ('void CBasePlayer::ImpulseCommands()\n{\n\tswitch( iImpulse )\n\t{\n'
+		'\tcase 100:\n        // temporary flashlight for level designers\n\t\tif( FlashlightIsOn() )\n\t\t\tFlashlightTurnOff();\n\t\tbreak;\n\t}\n}\n')
+
+	def test_impulse_100_asks_the_voice_menu_first_and_is_patched_once(self):
+		with tempfile.TemporaryDirectory() as directory:
+			dlls = Path(directory)
+			(dlls / "player.cpp").write_text(self.PLAYER)
+			INTEGRATOR.integrate_voice_menu(dlls)
+			first = (dlls / "player.cpp").read_text()
+			INTEGRATOR.integrate_voice_menu(dlls)
+			self.assertEqual((dlls / "player.cpp").read_text(), first, "must be idempotent")
+			self.assertEqual(first.count("DodGC_VoiceMenuImpulse( this )"), 1)
+			self.assertLess(first.index("DodGC_VoiceMenuImpulse( this )"), first.index("FlashlightIsOn"))
+
+	def test_missing_anchor_fails_loudly(self):
+		with tempfile.TemporaryDirectory() as directory:
+			dlls = Path(directory)
+			(dlls / "player.cpp").write_text("int unrelated;\n")
+			with self.assertRaises(SystemExit):
+				INTEGRATOR.integrate_voice_menu(dlls)
+
+
 class DefaultItemsIntegrationTest(unittest.TestCase):
 	RULES = ('void CHalfLifeMultiplay::PlayerSpawn( CBasePlayer *pPlayer )\n{\n\tBOOL addDefault = TRUE;\n\n'
 		'\tif( addDefault )\n\t{\n\t\tpPlayer->GiveNamedItem( "weapon_crowbar" );\n'

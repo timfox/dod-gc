@@ -9,6 +9,11 @@ int __MsgFunc_DodHud( const char *pszName, int iSize, void *pbuf )
 	return gHUD.m_Dod.MsgFunc_DodHud( pszName, iSize, pbuf );
 }
 
+int __MsgFunc_DodVoice( const char *pszName, int iSize, void *pbuf )
+{
+	return gHUD.m_Dod.MsgFunc_DodVoice( pszName, iSize, pbuf );
+}
+
 int __MsgFunc_DodBoard( const char *pszName, int iSize, void *pbuf )
 {
 	return gHUD.m_Dod.MsgFunc_DodBoard( pszName, iSize, pbuf );
@@ -33,6 +38,11 @@ void CHudDod::InitState( void )
 	m_pCvar = gEngfuncs.pfnRegisterVariable( "cl_dodhud", "1", FCVAR_ARCHIVE );
 	HOOK_MESSAGE( DodHud );
 	HOOK_MESSAGE( DodBoard );
+	HOOK_MESSAGE( DodVoice );
+	m_szVoice[0] = 0;
+	m_iVoiceSel = 0;
+	m_flVoiceTime = 0.0f;
+	m_fVoiceShown = 0;
 	m_szBoard[0] = 0;
 	m_flBoardTime = 0.0f;
 	m_fBoardShown = 0;
@@ -100,6 +110,68 @@ int CHudDod::MsgFunc_DodBoard( const char *pszName, int iSize, void *pbuf )
 	return 1;
 }
 
+/* The voice menu (Y on the pad): the server sends the lines and the highlighted one whenever it changes. */
+int CHudDod::MsgFunc_DodVoice( const char *pszName, int iSize, void *pbuf )
+{
+	int show;
+
+	BEGIN_READ( pbuf, iSize );
+	show = READ_BYTE();
+	m_iVoiceSel = show ? READ_BYTE() : 0;
+	strncpy( m_szVoice, show ? READ_STRING() : "", sizeof( m_szVoice ) - 1 );
+	m_szVoice[sizeof( m_szVoice ) - 1] = 0;
+	m_flVoiceTime = gEngfuncs.GetClientTime();
+	m_fVoiceShown = show && m_szVoice[0];
+	return 1;
+}
+
+void CHudDod::DrawVoice( void )
+{
+	char line[48];
+	const char *p = m_szVoice;
+	const int line_h = gHUD.m_scrinfo.iCharHeight > 0 ? gHUD.m_scrinfo.iCharHeight : 12;
+	const int w = ScreenWidth > 0 ? ScreenWidth : 320, h = ScreenHeight > 0 ? ScreenHeight : 240;
+	const int pw = 150, pad = 8;
+	int rows = 1, x0, y0, ph, y, row = 0;
+
+	if( !m_fVoiceShown || gEngfuncs.GetClientTime() - m_flVoiceTime > 9.0f )
+		return;
+	for( const char *q = p; *q; q++ )
+		if( *q == '\n' ) rows++;
+	ph = ( rows + 1 ) * line_h + 2 * pad;
+	x0 = ( w - pw ) / 2;
+	y0 = ( h - ph ) / 2;
+	if( y0 < 8 ) y0 = 8;
+	gEngfuncs.pfnFillRGBABlend( x0, y0, pw, ph, 0, 0, 0, 170 );
+	gEngfuncs.pfnFillRGBABlend( x0, y0, pw, 1, 200, 200, 200, 160 );
+	gEngfuncs.pfnFillRGBABlend( x0, y0 + ph - 1, pw, 1, 200, 200, 200, 160 );
+	gEngfuncs.pfnFillRGBABlend( x0, y0, 1, ph, 200, 200, 200, 160 );
+	gEngfuncs.pfnFillRGBABlend( x0 + pw - 1, y0, 1, ph, 200, 200, 200, 160 );
+	y = y0 + pad;
+	gHUD.DrawHudString( x0 + pad, y, x0 + pw - pad, "Voice", 255, 255, 255 );
+	y += line_h;
+	while( *p )
+	{
+		int n = 0;
+		const int sel = row == m_iVoiceSel;
+
+		while( p[n] && p[n] != '\n' && n < (int)sizeof( line ) - 1 )
+		{
+			line[n] = p[n];
+			n++;
+		}
+		line[n] = 0;
+		p += n;
+		if( *p == '\n' ) p++;
+		/* the chosen line sits on a bar (the HUD font has no marker glyph that reads well) */
+		if( sel )
+			gEngfuncs.pfnFillRGBABlend( x0 + 2, y - 1, pw - 4, line_h, 255, 230, 90, 70 );
+		gHUD.DrawHudString( x0 + pad, y, x0 + pw - pad, line, sel ? 255 : 220, sel ? 230 : 220, sel ? 90 : 220 );
+		y += line_h;
+		row++;
+	}
+}
+
 void CHudDod::DrawBoard( void )
 {
 	/* A centred panel, as the retail scoreboard: the title, then a team header with its score and the team's players
@@ -131,7 +203,7 @@ void CHudDod::DrawBoard( void )
 	gEngfuncs.pfnFillRGBABlend( x0 + pw - 1, y0, 1, ph, 200, 200, 200, 160 );
 	y = y0 + pad;
 	{
-		const char *title = "SCOREBOARD";
+		const char *title = "Scoreboard";
 		gHUD.DrawHudString( x0 + ( pw - gHUD.DrawHudStringLen( title )) / 2, y, x0 + pw, title, 255, 255, 255 );
 		y += line_h;
 	}
@@ -150,7 +222,13 @@ void CHudDod::DrawBoard( void )
 		if( !n ) { y += line_h / 2; continue; }
 		if( !strncmp( line, "Allies", 6 )) { r = 140; g = 230; b = 140; }
 		else if( !strncmp( line, "Axis", 4 )) { r = 235; g = 130; b = 130; }
-		else if( line[0] == '>' ) { r = 255; g = 230; b = 90; }
+		else if( line[0] == '>' )
+		{
+			r = 255; g = 230; b = 90;
+			memmove( line, line + 1, n );	/* the viewer's row: a bar instead of the marker glyph */
+			n--;
+			gEngfuncs.pfnFillRGBABlend( x0 + 2, y - 1, pw - 4, line_h, 255, 230, 90, 60 );
+		}
 		/* where the right-hand part starts: the score after a team name, S.. K.. D.. after a player */
 		if( !strncmp( line, "Allies", 6 ) || !strncmp( line, "Axis", 4 ))
 		{
@@ -317,6 +395,7 @@ int CHudDod::DrawRetail( float flTime )
 		gHUD.DrawHudString( tx, (int)( spare.y * sy + 0.5f ), tx + (int)( 64 * sx + 0.5f ), buf, 255, 255, 255 );
 	}
 	DrawBoard();
+	DrawVoice();
 	if( !m_fDrawLogged )
 	{
 		m_fDrawLogged = 1;

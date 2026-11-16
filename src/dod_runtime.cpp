@@ -44,6 +44,7 @@ static float g_spec_next_think;
 static BOOL g_spec_join_pending[DOD_MAX_PLAYERS + 1];
 static int gmsgDodHud;
 static int gmsgDodBoard;
+static int gmsgDodVoice;
 static float g_dod_next_hud;
 static int g_dod_seen_restart;
 static int g_dod_seen_match;
@@ -65,6 +66,10 @@ static float g_dod_next_status;
 #define DOD_VOICE_COOLDOWN 2.0f
 #define DOD_VOICE_AUTO_COOLDOWN 8.0f
 static float g_dod_voice_next[DOD_MAX_PLAYERS + 1];
+/* The pad voice menu (Y): the selected line + 1 while it is open, 0 when closed; it closes itself after 8 s. */
+#define DOD_VOICE_MENU_SECONDS 8.0f
+static int g_dod_voice_menu[DOD_MAX_PLAYERS + 1];
+static float g_dod_voice_menu_until[DOD_MAX_PLAYERS + 1];
 static float g_dod_voice_auto_next[DOD_MAX_PLAYERS + 1];
 /* Scoreboard on the lean HUD (D-pad right, "dod_score"): shown for DOD_BOARD_SECONDS, refreshed once a second,
  * and pressed again it goes away. */
@@ -393,6 +398,7 @@ CHalfLifeDoD::CHalfLifeDoD()
 	/* Registered here, before any client connects, so the client can hook it. */
 	gmsgDodHud = REG_USER_MSG( "DodHud", -1 );
 	gmsgDodBoard = REG_USER_MSG( "DodBoard", -1 );
+	gmsgDodVoice = REG_USER_MSG( "DodVoice", -1 );
 	memset( g_dod_menu_state, 0, sizeof( g_dod_menu_state ) );
 	memset( g_dod_joined, 0, sizeof( g_dod_joined ) );
 	memset( g_dod_weaponlist_resent, 0, sizeof( g_dod_weaponlist_resent ) );
@@ -443,9 +449,21 @@ static void DodGC_PickTeam( CBasePlayer *pPlayer, DodTeam team )
 	DodGC_ShowClassMenu( pPlayer );
 }
 
+/* A human takes a side and a class with the same steps the menus take (the test harness uses this; DodGC_BotJoin is for
+ * fake clients and leaves a human in observer mode). */
+void DodGC_HumanJoin( CBasePlayer *pPlayer, DodTeam team, DodClass player_class );
+
 /* Pick a class. At the menu (an observer who has not spawned) it spawns the player on the picked
  * side with that class at once, with no death. While playing it applies at the next respawn
  * (retail: no suicide for a class change). */
+static void DodGC_PickClass( CBasePlayer *pPlayer, DodClass player_class );
+
+void DodGC_HumanJoin( CBasePlayer *pPlayer, DodTeam team, DodClass player_class )
+{
+	DodGC_PickTeam( pPlayer, team );
+	DodGC_PickClass( pPlayer, player_class );
+}
+
 static void DodGC_PickClass( CBasePlayer *pPlayer, DodClass player_class )
 {
 	const int index = DodGC_PlayerIndex( pPlayer );
@@ -514,6 +532,8 @@ static void DodGC_ShowBoard( CBasePlayer *pPlayer, BOOL show )
 	}
 }
 
+static void DodGC_CloseVoiceMenu( CBasePlayer *pPlayer );
+
 /* Players that asked for the scoreboard get it again every second while their time runs. */
 static void DodGC_RefreshBoards( void )
 {
@@ -523,6 +543,13 @@ static void DodGC_RefreshBoards( void )
 	g_dod_next_board = gpGlobals->time + 1.0f;
 	for( i = 1; i <= gpGlobals->maxClients && i <= DOD_MAX_PLAYERS; i++ ) {
 		CBasePlayer *player;
+		if( g_dod_voice_menu[i] && g_dod_voice_menu_until[i] <= gpGlobals->time ) {
+			player = (CBasePlayer *)UTIL_PlayerByIndex( i );
+			if( player )
+				DodGC_CloseVoiceMenu( player );
+			else
+				g_dod_voice_menu[i] = 0;
+		}
 		if( g_dod_board_until[i] <= 0.0f )
 			continue;
 		player = (CBasePlayer *)UTIL_PlayerByIndex( i );
@@ -580,11 +607,73 @@ void DodGC_VoiceAuto( CBasePlayer *pPlayer, const char *name )
 	DodGC_Voice( pPlayer, Dod_VoiceFind( name ), TRUE );
 }
 
+static void DodGC_SendVoiceMenu( CBasePlayer *pPlayer, int selected )
+{
+	char text[200];
+	int i, len = 0;
+	if( !gmsgDodVoice || !pPlayer )
+		return;
+	text[0] = '\0';
+	if( selected >= 0 ) {
+		for( i = 0; i < DOD_VOICE_MENU_COUNT && len < (int)sizeof( text ) - 24; i++ )
+			len += snprintf( text + len, sizeof( text ) - len, "%s%s", i ? "\n" : "", Dod_VoiceLabel( i ) );
+	}
+	MESSAGE_BEGIN( MSG_ONE, gmsgDodVoice, NULL, pPlayer->edict() );
+		WRITE_BYTE( selected >= 0 ? 1 : 0 );
+		if( selected >= 0 ) {
+			WRITE_BYTE( selected );
+			WRITE_STRING( text );
+		}
+	MESSAGE_END();
+}
+
+static void DodGC_CloseVoiceMenu( CBasePlayer *pPlayer )
+{
+	const int index = DodGC_PlayerIndex( pPlayer );
+	if( index < 1 || index > DOD_MAX_PLAYERS || !g_dod_voice_menu[index] )
+		return;
+	g_dod_voice_menu[index] = 0;
+	DodGC_SendVoiceMenu( pPlayer, -1 );
+}
+
+/* Y (impulse 100, the flashlight in HL, which DoD does not have): open the voice menu, then speak the chosen line.
+ * D-pad up/down move the choice and D-pad left cancels. Patched into CBasePlayer::ImpulseCommands by the integrator. */
+BOOL DodGC_VoiceMenuImpulse( CBasePlayer *pPlayer )
+{
+	const int index = DodGC_PlayerIndex( pPlayer );
+	if( !Dod_GameIsActive() || index < 1 || index > DOD_MAX_PLAYERS || pPlayer->IsObserver() || pPlayer->pev->deadflag != DEAD_NO )
+		return FALSE;
+	if( !g_dod_voice_menu[index] ) {
+		g_dod_voice_menu[index] = 1;
+		g_dod_voice_menu_until[index] = gpGlobals->time + DOD_VOICE_MENU_SECONDS;
+		DodGC_SendVoiceMenu( pPlayer, 0 );
+	} else {
+		const int chosen = g_dod_voice_menu[index] - 1;
+		DodGC_CloseVoiceMenu( pPlayer );
+		DodGC_Voice( pPlayer, chosen, FALSE );
+	}
+	return TRUE;
+}
+
 static void DodGC_CycleWeapon( CBasePlayer *pPlayer, int step );
 
 BOOL CHalfLifeDoD::ClientCommand( CBasePlayer *pPlayer, const char *pcmd )
 {
 	const int index = DodGC_PlayerIndex( pPlayer );
+	if( index >= 1 && index <= DOD_MAX_PLAYERS && g_dod_voice_menu[index]
+		&& ( FStrEq( pcmd, "dod_nextweapon" ) || FStrEq( pcmd, "dod_prevweapon" ) || FStrEq( pcmd, "dod_lastweapon" ) ) ) {
+		/* the voice menu owns the D-pad while it is open */
+		if( FStrEq( pcmd, "dod_lastweapon" ) ) {
+			DodGC_CloseVoiceMenu( pPlayer );
+		} else {
+			const int count = DOD_VOICE_MENU_COUNT;
+			const int sel = ( g_dod_voice_menu[index] - 1 + ( FStrEq( pcmd, "dod_nextweapon" ) ? 1 : count - 1 ) ) % count;
+			g_dod_voice_menu[index] = sel + 1;
+			g_dod_voice_menu_until[index] = gpGlobals->time + DOD_VOICE_MENU_SECONDS;
+			DodGC_SendVoiceMenu( pPlayer, sel );
+		}
+		return TRUE;
+	}
 	if( FStrEq( pcmd, "dod_nextweapon" ) || FStrEq( pcmd, "dod_prevweapon" ) ) {
 		DodGC_CycleWeapon( pPlayer, FStrEq( pcmd, "dod_nextweapon" ) ? 1 : -1 );
 		return TRUE;

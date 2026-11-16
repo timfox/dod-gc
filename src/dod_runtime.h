@@ -45,5 +45,7 @@ BOOL DodGC_Voice( CBasePlayer *pPlayer, int voice, BOOL automatic );
 void DodGC_VoiceAuto( CBasePlayer *pPlayer, const char *name );
 /* Put a bot on a team with a class: the same steps a human's menu choices take. */
 void DodGC_BotJoin( CBasePlayer *pPlayer, DodTeam team, DodClass player_class );
+/* A human joins as the menus do (the test harness): spawns out of observer mode. */
+void DodGC_HumanJoin( CBasePlayer *pPlayer, DodTeam team, DodClass player_class );
 
 #endif
