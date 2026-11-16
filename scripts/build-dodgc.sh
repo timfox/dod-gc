@@ -49,6 +49,7 @@ done
 
 dodgc_require_content
 dodgc_require_hlsdk
+bash "$SCRIPT_DIR/check-menu-provenance.sh" --engine "$DODGC_ENGINE" || exit 1
 
 # A rebuild must not silently use an old engine: with the default clone under .deps/, stop when it is behind the
 # branch the lock tracks (scripts/fetch-sources.sh --update moves it). Offline, or a checkout you supplied
@@ -137,6 +138,7 @@ if (( ! ISO_ONLY )); then
 	fi
 
 	cp -f "$ENGINE_DOL" "$DODGC_DOL"
+	bash "$SCRIPT_DIR/check-menu-provenance.sh" --dol "$DODGC_DOL" || exit 1
 	if [[ -f "$DODGC_ENGINE/OUT/bin/gamecube-handoff.txt" ]]; then
 		cp -f "$DODGC_ENGINE/OUT/bin/gamecube-handoff.txt" "$DODGC_HANDOFF"
 	fi
