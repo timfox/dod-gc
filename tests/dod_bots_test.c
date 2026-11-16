@@ -496,6 +496,63 @@ static void test_goap(void)
 	assert(id >= 0 && kind == DOD_BOT_GOAL_ATTACK);
 }
 
+static void test_perception(void)
+{
+	int skill;
+	float dx, dy;
+	const DodBotSkill med = Dod_BotSkillParams(1);
+
+	/* the presets get stricter with skill and stay inside the "human" reaction window */
+	for (skill = 0; skill < 3; skill++) {
+		const DodBotSkill a = Dod_BotSkillParams(skill), b = Dod_BotSkillParams(skill + 1);
+		assert(a.fov_half <= b.fov_half && a.react_min >= b.react_min && a.aim_base > b.aim_base && a.turn_rate < b.turn_rate);
+		assert(Dod_BotAimErrorEx(&a, 600.0f, 100.0f, 100.0f, 0.0f) > Dod_BotAimErrorEx(&b, 600.0f, 100.0f, 100.0f, 0.0f));
+	}
+	assert(Dod_BotSkillParams(-3).aim_base == Dod_BotSkillParams(0).aim_base && Dod_BotSkillParams(9).aim_base == Dod_BotSkillParams(3).aim_base);
+	assert(med.fov_half * 2.0f >= 90.0f && med.fov_half * 2.0f <= 110.0f);	/* medium sees a ~100 degree cone */
+	for (skill = 0; skill < 4; skill++) {
+		const DodBotSkill sk = Dod_BotSkillParams(skill);
+		assert(Dod_BotReactionDelay(&sk, 0.0f) >= 0.15f - 0.001f && Dod_BotReactionDelay(&sk, 1.0f) <= 0.70f + 0.001f);
+	}
+	assert(Dod_BotReactionDelay(&med, 0.0f) == med.react_min && Dod_BotReactionDelay(&med, 1.0f) == med.react_max);
+	assert(Dod_BotReactionDelay(&med, 0.5f) > Dod_BotReactionDelay(&med, 0.1f) && Dod_BotReactionDelay(NULL, 0.5f) > 0.0f);
+
+	/* the view cone: in front yes, behind and to the side no, across the +-180 seam */
+	assert(Dod_BotInFov(0.0f, 30.0f, 50.0f) && Dod_BotInFov(0.0f, -49.0f, 50.0f));
+	assert(!Dod_BotInFov(0.0f, 80.0f, 50.0f) && !Dod_BotInFov(0.0f, 180.0f, 50.0f));
+	assert(Dod_BotInFov(170.0f, -170.0f, 50.0f) && !Dod_BotInFov(170.0f, -100.0f, 50.0f));
+
+	/* aim error: wider with distance, target speed and own movement; tighter the longer it tracks; floor kept */
+	assert(Dod_BotAimErrorEx(&med, 1000.0f, 0, 0, 0) > Dod_BotAimErrorEx(&med, 200.0f, 0, 0, 0));
+	assert(Dod_BotAimErrorEx(&med, 400.0f, 250.0f, 0, 0) > Dod_BotAimErrorEx(&med, 400.0f, 0, 0, 0));
+	assert(Dod_BotAimErrorEx(&med, 400.0f, 0, 250.0f, 0) > Dod_BotAimErrorEx(&med, 400.0f, 0, 0, 0));
+	assert(Dod_BotAimErrorEx(&med, 400.0f, 0, 0, 2.0f) < Dod_BotAimErrorEx(&med, 400.0f, 0, 0, 0.0f));
+	assert(Dod_BotAimErrorEx(&med, 400.0f, 0, 0, 1000.0f) >= Dod_BotAimErrorEx(&med, 400.0f, 0, 0, 0.0f) * DOD_BOT_SETTLE_FLOOR - 0.001f);
+	/* a long shot at a running target misses a standing man's width (~1 degree at 1000 units) most of the time,
+	 * a close still target is near the limit of what is hittable */
+	assert(Dod_BotAimErrorEx(&med, 1200.0f, 150.0f, 0, 0.0f) > 6.0f);
+	assert(Dod_BotAimErrorEx(&med, 100.0f, 0, 0, 3.0f) < 3.0f);
+
+	/* hearing: gunfire carries, footsteps do not, walking is silent, walls muffle steps, skill scales it */
+	assert(Dod_BotHearRadius(&med, 1, 0.0f, 0) > Dod_BotHearRadius(&med, 0, 250.0f, 1));
+	assert(Dod_BotHearRadius(&med, 0, 100.0f, 1) == 0.0f && Dod_BotHearRadius(&med, 0, 0.0f, 1) == 0.0f);
+	assert(Dod_BotHearRadius(&med, 0, 250.0f, 0) < Dod_BotHearRadius(&med, 0, 250.0f, 1));
+	{
+		const DodBotSkill easy = Dod_BotSkillParams(0), expert = Dod_BotSkillParams(3);
+		assert(Dod_BotHearRadius(&easy, 1, 0, 1) < Dod_BotHearRadius(&expert, 1, 0, 1) && Dod_BotHearRadius(NULL, 1, 0, 1) == 0.0f);
+	}
+	/* a heard position is only approximate, and worse the farther away */
+	Dod_BotHeardOffset(1000.0f, 0.0f, 1.0f, &dx, &dy);
+	assert(dx > 150.0f && fabsf(dy) < 1.0f);
+	Dod_BotHeardOffset(0.0f, 0.5f, 0.0f, &dx, &dy);
+	assert(dx * dx + dy * dy > 15.0f * 15.0f && dx * dx + dy * dy < 60.0f * 60.0f);
+
+	/* burst discipline */
+	assert(Dod_BotBurstLength(1, 100.0f) > Dod_BotBurstLength(1, 500.0f) && Dod_BotBurstLength(1, 500.0f) > Dod_BotBurstLength(1, 1500.0f));
+	assert(Dod_BotBurstPause(1, 1500.0f, 0.0f) > Dod_BotBurstPause(1, 100.0f, 1.0f) - 0.001f);
+	assert(Dod_BotBurstPause(1, 100.0f, 0.0f) < Dod_BotBurstPause(1, 100.0f, 1.0f) && Dod_BotBurstPause(0, 100.0f, 2.0f) <= 0.35f);
+}
+
 int main(void)
 {
 	test_spectator();
@@ -511,5 +568,6 @@ int main(void)
 	test_objectives();
 	test_nav();
 	test_goap();
+	test_perception();
 	return 0;
 }
