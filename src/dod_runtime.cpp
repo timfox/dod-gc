@@ -515,9 +515,11 @@ static void DodGC_RefreshBoards( void )
 
 /* Everyone of `team` who stands in the capture volume gets credit for the capture. A sphere point is the
  * 128-unit radius around it; an area is its brush bounds. */
-static void DodGC_CreditCapture( DodTeam team, const Vector &center, float radius, const Vector *mins, const Vector *maxs )
+static void DodGC_CreditCapture( DodTeam team, int point_index, const Vector &center, float radius, const Vector *mins, const Vector *maxs )
 {
 	int i;
+	const DodObjectiveState *objective = Dod_GetObjective( point_index );
+	const int points = objective ? objective->points_for_cap : 1;
 	for( i = 1; i <= gpGlobals->maxClients; ++i ) {
 		CBasePlayer *player = (CBasePlayer *)UTIL_PlayerByIndex( i );
 		if( !player || !player->IsPlayer() || player->pev->deadflag != DEAD_NO ) continue;
@@ -528,7 +530,7 @@ static void DodGC_CreditCapture( DodTeam team, const Vector &center, float radiu
 		} else if( ( o - center ).Length() > radius ) {
 			continue;
 		}
-		Dod_RecordCapture( DodGC_PlayerIndex( player ) );
+		Dod_RecordCapture( DodGC_PlayerIndex( player ), points );
 	}
 }
 
@@ -1005,6 +1007,7 @@ private:
 	BOOL m_bHasBounds;
 	int m_iPointIndex;
 	int m_iDefaultOwner;
+	int m_iPointsForCap;	/* point_points_for_cap: Score for each player who captures it */
 	char m_szPointName[64];
 	BOOL m_bAreaDriven;
 };
@@ -1015,6 +1018,7 @@ CDoDControlPoint::CDoDControlPoint()
 {
 	m_iPointIndex = -1;
 	m_iDefaultOwner = DOD_TEAM_UNASSIGNED;
+	m_iPointsForCap = 1;
 	m_szPointName[0] = '\0';
 	m_bAreaDriven = FALSE;
 	m_bHasBounds = FALSE;
@@ -1063,6 +1067,7 @@ void CDoDControlPoint::SetAreaDriven( float capture_seconds )
 	if( capture_seconds > 0.0f )
 		Dod_RegisterObjective( m_iPointIndex, DOD_OBJ_CAPTURE_POINT, (DodTeam)m_iDefaultOwner,
 			capture_seconds, DOD_POINT_SCORE_PER_MINUTE );
+	Dod_SetObjectivePointsForCap( m_iPointIndex, m_iPointsForCap );
 }
 
 void CDoDControlPoint::KeyValue( KeyValueData *pkvd )
@@ -1071,6 +1076,8 @@ void CDoDControlPoint::KeyValue( KeyValueData *pkvd )
 		m_iPointIndex = atoi( pkvd->szValue ); pkvd->fHandled = TRUE;
 	} else if( FStrEq( pkvd->szKeyName, "point_default_owner" ) ) {
 		m_iDefaultOwner = atoi( pkvd->szValue ); pkvd->fHandled = TRUE;
+	} else if( FStrEq( pkvd->szKeyName, "point_points_for_cap" ) ) {
+		m_iPointsForCap = atoi( pkvd->szValue ); pkvd->fHandled = TRUE;
 	} else if( FStrEq( pkvd->szKeyName, "point_name" ) ) {
 		strlcpy( m_szPointName, pkvd->szValue, sizeof( m_szPointName ) ); pkvd->fHandled = TRUE;
 	} else CPointEntity::KeyValue( pkvd );
@@ -1083,6 +1090,7 @@ void CDoDControlPoint::Spawn( void )
 	if( m_iPointIndex < 0 ) m_iPointIndex = 0;
 	Dod_RegisterObjective( m_iPointIndex, DOD_OBJ_CAPTURE_POINT,
 		(DodTeam)m_iDefaultOwner, 10.0f, DOD_POINT_SCORE_PER_MINUTE );
+	Dod_SetObjectivePointsForCap( m_iPointIndex, m_iPointsForCap );
 	SetThink( &CDoDControlPoint::Think );
 	pev->nextthink = gpGlobals->time + 0.25f;
 }
@@ -1104,7 +1112,7 @@ void CDoDControlPoint::Think( void )
 	if( Dod_TickObjective( m_iPointIndex, allies, axis, 0.25f ) ) {
 		const DodObjectiveState *objective = Dod_GetObjective( m_iPointIndex );
 		if( objective && ( objective->owner == DOD_TEAM_ALLIES || objective->owner == DOD_TEAM_AXIS ) )
-			DodGC_CreditCapture( objective->owner, pev->origin, 128.0f, NULL, NULL );
+			DodGC_CreditCapture( objective->owner, m_iPointIndex, pev->origin, 128.0f, NULL, NULL );
 		const char *owner = objective && objective->owner == DOD_TEAM_ALLIES ? "Allies" : "Axis";
 		UTIL_ClientPrintAll( HUD_PRINTCENTER,
 			UTIL_VarArgs( "%s captured control point %d", owner, m_iPointIndex ) );
@@ -1259,7 +1267,7 @@ void CDoDCaptureArea::Think( void )
 			const DodObjectiveState *after = Dod_GetObjective( m_pPoint->PointIndex() );
 			const DodTeam owner = after ? after->owner : DOD_TEAM_UNASSIGNED;
 			if( owner == DOD_TEAM_ALLIES || owner == DOD_TEAM_AXIS )
-				DodGC_CreditCapture( owner, pev->origin, 0.0f, &pev->absmin, &pev->absmax );
+				DodGC_CreditCapture( owner, m_pPoint->PointIndex(), pev->origin, 0.0f, &pev->absmin, &pev->absmax );
 			ALERT( at_console, "DoD capture complete point %d owner %s\n", m_pPoint->PointIndex(), owner == DOD_TEAM_ALLIES ? "Allies" : "Axis" );
 			UTIL_ClientPrintAll( HUD_PRINTCENTER, UTIL_VarArgs( "%s captured control point %d",
 				owner == DOD_TEAM_ALLIES ? "Allies" : "Axis", m_pPoint->PointIndex() ) );

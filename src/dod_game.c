@@ -135,6 +135,7 @@ void Dod_ResetPlayerStats(void)
 		g_dod_players[i].objective_score = 0;
 		g_dod_players[i].teamkills = 0;
 		g_dod_players[i].captures = 0;
+		g_dod_players[i].score = 0;
 	}
 }
 
@@ -331,24 +332,31 @@ void Dod_RecordKill(int attacker_index, int victim_index)
 			return;
 		}
 		++attacker->kills;
-		++attacker->objective_score;
 		dod_add_team_score(attacker->team, 1.0f);
 	}
 }
 
-void Dod_RecordCapture(int player_index)
+void Dod_RecordCapture(int player_index, int points)
 {
 	DodPlayerState *player = dod_valid_player(player_index) ? &g_dod_players[player_index] : 0;
-	if (player && player->connected)
+	if (player && player->connected) {
 		++player->captures;
+		player->score += points > 0 ? points : 0;
+		player->objective_score = player->score;
+	}
 }
 
 int Dod_PlayerScore(int player_index)
 {
 	const DodPlayerState *player = dod_valid_player(player_index) ? &g_dod_players[player_index] : 0;
-	if (!player || !player->connected)
-		return 0;
-	return player->kills - player->teamkills + player->captures * DOD_CAPTURE_PLAYER_POINTS;
+	return player && player->connected ? player->score : 0;
+}
+
+void Dod_SetObjectivePointsForCap(int id, int points)
+{
+	DodObjectiveState *objective = dod_find_objective(id);
+	if (objective)
+		objective->points_for_cap = points > 0 ? points : 0;
 }
 
 const DodPlayerState *Dod_GetPlayer(int player_index)
@@ -700,7 +708,7 @@ static const char *dod_class_tag(DodClass c)
 	}
 }
 
-/* true when player a ranks above player b: score, then kills, then fewer deaths, then lower index */
+/* true when player a ranks above player b: Score, then kills, then fewer deaths, then lower index */
 static int dod_ranks_above(int a, int b)
 {
 	const int sa = Dod_PlayerScore(a), sb = Dod_PlayerScore(b);
@@ -737,7 +745,7 @@ int Dod_FormatScoreboard(char *buffer, int size, const char *const *names, int v
 		for (i = 0; i < n; ++i) {
 			const int p = ranked[i];
 			const char *name = names && names[p] && names[p][0] ? names[p] : "player";
-			w = snprintf(buffer + len, (size_t)(size - len), "%s%d. %s  %s  %d  %d/%d\n", p == viewer_index ? ">" : "", ++rank,
+			w = snprintf(buffer + len, (size_t)(size - len), "%s%d. %s  %s  S%d K%d D%d\n", p == viewer_index ? ">" : "", ++rank,
 				name, dod_class_tag(g_dod_players[p].player_class), Dod_PlayerScore(p), g_dod_players[p].kills,
 				g_dod_players[p].deaths);
 			if (w < 0 || w >= size - len) {
@@ -781,6 +789,7 @@ int Dod_RegisterObjective(int id, DodObjectiveKind kind, DodTeam initial_owner,
 	objective->default_owner = objective->owner;
 	objective->capture_seconds = capture_seconds > 0.0f ? capture_seconds : DOD_CAPTURE_SECONDS_DEFAULT;
 	objective->score_per_minute = score_per_minute > 0.0f ? score_per_minute : 0.0f;
+	objective->points_for_cap = 1;
 	dod_recount_objectives();
 	return 1;
 }

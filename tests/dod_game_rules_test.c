@@ -128,24 +128,28 @@ static void test_scoreboard(void)
 	Dod_SelectPlayerClass(1, DOD_CLASS_SNIPER);
 	Dod_SelectPlayerClass(3, DOD_CLASS_MG);
 	names[1] = "Ann"; names[2] = "Bob"; names[3] = "Cy"; /* 4 has no name */
+	assert(Dod_RegisterObjective(0, DOD_OBJ_CAPTURE_POINT, DOD_TEAM_AXIS, 2.0f, 0.0f));
 	Dod_RecordKill(1, 3);
 	Dod_RecordKill(1, 4);
 	Dod_RecordKill(2, 3);
 	Dod_RecordKill(2, 1);	/* team kill: no kill, one team kill */
-	Dod_RecordCapture(2);	/* Bob: 1 kill - 1 team kill + 2 = 2; Ann: 2 kills = 2 */
-	assert(Dod_PlayerScore(1) == 2 && Dod_PlayerScore(2) == 2);
-	assert(Dod_PlayerScore(3) == 0 && Dod_PlayerScore(99) == 0);
-	assert(Dod_FormatScoreboard(board, sizeof(board), names, 2) > 0);
-	/* Ann and Bob tie on score; Ann has more kills, so she ranks first. Bob is the viewer. */
+	/* Score is objectives only: kills and team kills never touch it */
+	assert(Dod_PlayerScore(1) == 0 && Dod_PlayerScore(2) == 0);
+	Dod_RecordCapture(2, 1);	/* a point with the default points_for_cap 1 */
+	Dod_SetObjectivePointsForCap(0, 3);
+	Dod_RecordCapture(2, Dod_GetObjective(0)->points_for_cap);	/* a point the map set to 3 */
+	assert(Dod_PlayerScore(2) == 4 && Dod_PlayerScore(1) == 0 && Dod_PlayerScore(99) == 0);
+	assert(Dod_FormatScoreboard(board, sizeof(board), names, 1) > 0);
+	/* Bob leads on Score 4 although Ann has more kills; Ann is the viewer; Score, Kills, Deaths are separate columns */
 	assert(strstr(board, "Allies  "));
-	assert(strstr(board, "\n1. Ann  SNP  2  2/1\n>2. Bob  --  2  1/0\n"));
+	assert(strstr(board, "\n1. Bob  --  S4 K1 D0\n>2. Ann  SNP  S0 K2 D1\n") || strstr(board, "1. Bob  --  S4 K1 D0\n>2. Ann  SNP  S0 K2 D1\n"));
 	assert(strstr(board, "Axis  "));
-	assert(strstr(board, "\n1. player  --  0  0/1\n2. Cy  MG  0  0/2\n")); /* equal score and kills: fewer deaths first */
+	assert(strstr(board, "\n1. player  --  S0 K0 D1\n2. Cy  MG  S0 K0 D2\n")); /* equal Score and kills: fewer deaths first */
 	/* a buffer that is too small drops whole lines, never part of one */
 	assert(Dod_FormatScoreboard(tiny, sizeof(tiny), names, 0) > 0);
 	assert(strlen(tiny) < sizeof(tiny) && tiny[strlen(tiny) - 1] == '\n');
 	Dod_ResetPlayerStats();
-	assert(Dod_PlayerScore(1) == 0);
+	assert(Dod_PlayerScore(2) == 0);
 	Dod_GameShutdown();
 }
 
@@ -242,7 +246,7 @@ static void test_kill_scoring_and_timed_tie(void)
 	Dod_RecordKill(1, 2);
 	allies = Dod_GetPlayer(1);
 	axis = Dod_GetPlayer(2);
-	assert(allies && allies->kills == 1 && allies->objective_score == 1);
+	assert(allies && allies->kills == 1 && allies->objective_score == 0);
 	assert(axis && axis->deaths == 1);
 	assert(Dod_GetState()->allies_score == 1);
 
