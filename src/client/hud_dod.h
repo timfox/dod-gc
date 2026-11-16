@@ -2,11 +2,13 @@
 #define DODGC_HUD_DOD_H
 
 /* Client side of the Day of Defeat HUD. Included from hud.h after CHudBase.
- * Layout and state live in dod_hud.h (host-tested); this class only receives
- * the server's DodHud message and draws the layout. It is off unless the
- * cl_dodhud cvar is set, and loads its one icon sprite the first time it draws. */
+ * Draws the retail DoD 1.3 HUD (dod_hud_retail.h): the status panel with
+ * stamina and health, the objective timer and the dynamic crosshair, from the
+ * retail hud.txt sheets. The match state (clock, flags, scores) arrives in
+ * the server's DodHud message (dod_hud.h). cl_dodhud 0 turns it off. */
 
 #include "dod_hud.h"
+#include "dod_hud_retail.h"
 
 class CHudDod : public CHudBase
 {
@@ -17,14 +19,19 @@ public:
 	int Init( void );
 	int VidInit( void );
 	int Draw( float flTime );
+	/* The retail HUD, for the lean tier's Redraw: returns 1 when it drew and
+	 * the caller should skip its own HUD. */
+	int DrawRetail( float flTime );
 	int MsgFunc_DodHud( const char *pszName, int iSize, void *pbuf );
 
 private:
 	DodHudState m_state;
 	float m_flLastUpdate;
+	float m_flTimerBase;	/* client time the clock was last set */
 	int m_fHaveState;
-	HSPRITE m_hIcons;
-	int m_fIconsTried;
+	HSPRITE m_hSheets[DOD_SHEET_COUNT];
+	int m_fSheetsTried;
+	int m_fDrawLogged;
 	cvar_t *m_pCvar;
 };
 

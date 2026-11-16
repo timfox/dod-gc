@@ -223,12 +223,13 @@ def integrate_grenades(dlls: Path) -> None:
 DOD_DLL_SOURCES = (
 	"dod_game.c", "dod_game.h", "dod_runtime.cpp", "dod_runtime.h",
 	"dod_grenade.cpp", "dod_grenade.h", "dod_weapons.c", "dod_weapons.h",
-	"dod_weapon.cpp", "dod_weapon.h", "dod_hud.h",
+	"dod_weapon.cpp", "dod_weapon.h", "dod_hud.h", "dod_hud_retail.h",
 	"dod_bots.c", "dod_bots.h", "dod_bot.cpp", "dod_bot.h",
 )
 # Client HUD sources, copied into cl_dll/ (dod_hud.h is shared with the DLL).
 DOD_CLIENT_SOURCES = (
 	("dod_hud.h", "dod_hud.h"),
+	("dod_hud_retail.h", "dod_hud_retail.h"),
 	("client/hud_dod.h", "hud_dod.h"),
 	("client/hud_dod.cpp", "hud_dod.cpp"),
 	("client/dod_cam.h", "dod_cam.h"),
@@ -293,6 +294,21 @@ def integrate_dod_hud(client: Path) -> None:
 		"\t\t\tif( m_Menu.m_fMenuDisplayed )\n\t\t\t\tm_Menu.Draw( flTime );\n"
 		"\t\t\t/* DoD match HUD (cl_dodhud): score, clock, flags, round. */\n"
 		"\t\t\tm_Dod.Draw( flTime );\n")
+	# The lean (quality 0) tier is the HUD DoD matches run with: draw the retail
+	# DoD HUD there instead of the Half-Life sprites, menus still on top.
+	replace_once(client / "hud_redraw.cpp",
+		'\t\t\t\tgEngfuncs.Con_Printf( "Xash3D GameCube: lean HUD scrInfo %dx%d\\n",\n'
+		'\t\t\t\t\tm_scrinfo.iWidth, m_scrinfo.iHeight );\n',
+		'\t\t\t\tgEngfuncs.Con_Printf( "Xash3D GameCube: lean HUD scrInfo %dx%d\\n",\n'
+		'\t\t\t\t\tm_scrinfo.iWidth, m_scrinfo.iHeight );\n'
+		'\n'
+		'\t\t\t/* Day of Defeat: the retail HUD replaces the HL lean sprites. */\n'
+		'\t\t\tif( m_Dod.DrawRetail( flTime ) )\n'
+		'\t\t\t{\n'
+		'\t\t\t\tif( m_Menu.m_fMenuDisplayed )\n'
+		'\t\t\t\t\tm_Menu.Draw( flTime );\n'
+		'\t\t\t\treturn 1;\n'
+		'\t\t\t}\n')
 
 
 def integrate_spectator_camera(client: Path) -> None:

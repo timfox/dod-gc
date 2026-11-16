@@ -256,7 +256,10 @@ class HudIntegrationTest(unittest.TestCase):
 	HUD_CPP = ('void CHud::Init( void )\n{\n#ifdef __GAMECUBE__\n'
 		'\tgEngfuncs.Con_Printf( "Xash3D GameCube: CHud::Init begin quality=%d\\n", quality );\n#endif\n'
 		'\tm_Menu.Init();\n}\nvoid CHud::VidInit( void )\n{\n\tm_Menu.VidInit();\n}\n')
-	REDRAW = ("\t\t\tif( m_Menu.m_fMenuDisplayed )\n\t\t\t\tm_Menu.Draw( flTime );\n")
+	REDRAW = ('\t\t\tif( m_iGcLeanHudLog == 0 )\n'
+		'\t\t\t\tgEngfuncs.Con_Printf( "Xash3D GameCube: lean HUD scrInfo %dx%d\\n",\n'
+		'\t\t\t\t\tm_scrinfo.iWidth, m_scrinfo.iHeight );\n'
+		"\t\t\tif( m_Menu.m_fMenuDisplayed )\n\t\t\t\tm_Menu.Draw( flTime );\n")
 	ENTITY_CPP = ('\t\tgHUD.m_Spectator.AddOverviewEntity( type, ent, modelname );\n\n'
 		'\t\tif( (\tg_iUser1 == OBS_IN_EYE || gHUD.m_Spectator.m_pip->value == INSET_IN_EYE ) &&')
 
@@ -282,6 +285,10 @@ class HudIntegrationTest(unittest.TestCase):
 		self.assertIn("m_Dod.Init();", files["hud.cpp"])
 		self.assertIn("m_Dod.VidInit();", files["hud.cpp"])
 		self.assertIn("m_Dod.Draw( flTime );", files["hud_redraw.cpp"])
+		# the lean tier draws the retail HUD and skips the HL sprites
+		self.assertIn("if( m_Dod.DrawRetail( flTime ) )", files["hud_redraw.cpp"])
+		self.assertLess(files["hud_redraw.cpp"].index("lean HUD scrInfo"),
+			files["hud_redraw.cpp"].index("m_Dod.DrawRetail( flTime )"))
 
 	def test_state_is_set_up_before_the_lean_branch(self):
 		# the lean (quality 0) path never runs m_Menu.Init(), so InitState runs first
