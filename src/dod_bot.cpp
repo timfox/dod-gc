@@ -495,6 +495,14 @@ static void RunBot( int index, CBasePlayer *pBot )
 	viewangles[0] = state->pitch;
 	viewangles[1] = state->yaw;
 	viewangles[2] = 0.0f;
+	/* The engine does not copy a fake client's command angles into pev->v_angle on every build
+	 * (Allies bots kept v_angle 0,0 and every shot flew along +X). Weapons fire along v_angle, so
+	 * set it from the command, with the same sign convention (positive pitch = looking down). */
+	pBot->pev->v_angle.x = viewangles[0];
+	pBot->pev->v_angle.y = viewangles[1];
+	pBot->pev->v_angle.z = 0.0f;
+	pBot->pev->angles.x = viewangles[0] * ( 1.0f / 3.0f );
+	pBot->pev->angles.y = viewangles[1];
 	( *g_engfuncs.pfnRunPlayerMove )( pBot->edict(), viewangles, move.forward * speed, move.side * speed, 0, buttons, 0, msec );
 }
 
