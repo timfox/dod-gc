@@ -77,6 +77,19 @@ typedef struct DodBotState {
 	int want_jump;			/* the edge being walked is a jump */
 	int stall_jumped;		/* a stalled route got its one jump before it is replanned */
 	float jump_until;
+	/* GOAP (see Think) */
+	unsigned ws;			/* world-state facts at the last think */
+	DodGoapPlan plan;
+	int role, team_bots;		/* DodBotRole, and the team size, set when the objective is picked */
+	int goal_held, goal_contested;	/* the objective's ownership, from the last PickGoal */
+	float next_think, last_health;
+	Vector known_pos;		/* last place an enemy was seen */
+	float known_until;
+	int behavior;			/* DodGoapAction being run */
+	/* where the bot is walking to: the objective, or a plan step's own destination */
+	Vector nav_pos;
+	int nav_id, nav_has, nav_arrived;
+	int nav_serial;
 } DodBotState;
 
 /* Per-bot state is heap allocated only while bots exist (the BSS it used to
@@ -84,7 +97,7 @@ typedef struct DodBotState {
  * map change and when the last bot leaves; if the heap cannot give it, no bot
  * is added rather than failing later. */
 #if defined( __GAMECUBE__ )
-#define DOD_BOT_MEM_BUDGET 2048
+#define DOD_BOT_MEM_BUDGET 3072
 #else
 #define DOD_BOT_MEM_BUDGET 8192
 #endif
@@ -412,8 +425,25 @@ static void PickGoal( CBasePlayer *pBot, DodBotState *state )
 	const float now = gpGlobals->time;
 	int count, i, kind = DOD_BOT_GOAL_NONE, id;
 
+	int rank = 0, team_bots = 0, held = 0;
+	const DodTeam my_team = TeamOf( pBot );
 	state->next_goal = now + 2.0f;
 	count = DodGC_ListObjectives( views, DOD_BOT_MAX_OBJECTIVES );
+	/* the team split: this bot's place among the team's bots, and where the others are heading */
+	for( i = 0; i < count; i++ )
+		if( views[i].owner == my_team )
+			held++;
+	for( i = 1; i <= gpGlobals->maxClients && i <= DOD_BOT_MAX_SLOTS; i++ )
+	{
+		CBasePlayer *pOther = PlayerAt( i );
+		if( !pOther || !DodBots_IsBot( pOther ) || TeamOf( pOther ) != my_team )
+			continue;
+		if( pOther == pBot )
+			rank = team_bots;
+		team_bots++;
+	}
+	state->role = Dod_BotRole( rank, team_bots, held );
+	state->team_bots = team_bots;
 	for( i = 0; i < count; i++ )
 	{
 		info[i].id = views[i].id;
@@ -422,6 +452,18 @@ static void PickGoal( CBasePlayer *pBot, DodBotState *state )
 		memcpy( info[i].can_cap, views[i].can_cap, sizeof( info[i].can_cap ) );
 		info[i].distance = ( views[i].center - pBot->pev->origin ).Length2D();
 		info[i].blocked = Dod_BotBlockHas( state->block_id, state->block_until, 3, views[i].id, now );
+		info[i].crowd = 0;
+		{
+			int j;
+			for( j = 1; j <= gpGlobals->maxClients && j <= DOD_BOT_MAX_SLOTS; j++ )
+			{
+				CBasePlayer *pOther = PlayerAt( j );
+				DodBotState *other = BotState( j );
+				if( pOther && pOther != pBot && other && DodBots_IsBot( pOther ) && TeamOf( pOther ) == my_team &&
+					other->has_goal && other->goal_id == views[i].id && other->goal_kind == DOD_BOT_GOAL_ATTACK )
+					info[i].crowd++;
+			}
+		}
 	}
 	/* No progress towards the goal for a long while: give it up for a bit. */
 	if( state->has_goal && state->goal_id >= 0 && !state->arrived && now - state->goal_progress_time > DOD_BOT_GOAL_PATIENCE )
@@ -433,7 +475,7 @@ static void PickGoal( CBasePlayer *pBot, DodBotState *state )
 				info[i].blocked = 1;
 		state->goal_id = -1;
 	}
-	id = Dod_BotChooseObjective( info, count, TeamOf( pBot ), state->has_goal ? state->goal_id : -1, &kind );
+	id = Dod_BotChooseObjectiveRole( info, count, my_team, state->has_goal ? state->goal_id : -1, state->role, &kind );
 	if( id < 0 )
 	{
 		state->has_goal = 0;
@@ -446,6 +488,9 @@ static void PickGoal( CBasePlayer *pBot, DodBotState *state )
 			break;
 	if( i == count )
 		return;
+	/* a pick of a point the team already holds is a guard job whatever the team split said */
+	if( kind == DOD_BOT_GOAL_DEFEND )
+		state->role = DOD_ROLE_DEFENDER;
 	if( !state->has_goal || state->goal_id != id || state->goal_kind != kind )
 	{
 		ALERT( at_console, "DoD bot %s: %s point %d (%.0f units)\n", STRING( pBot->pev->netname ),
@@ -462,6 +507,14 @@ static void PickGoal( CBasePlayer *pBot, DodBotState *state )
 	state->goal_mins = views[i].mins;
 	state->goal_maxs = views[i].maxs;
 	state->has_goal = 1;
+	{
+		const int held_now = views[i].owner == my_team;
+		const int contested_now = views[i].capturing != DOD_TEAM_UNASSIGNED && views[i].capturing != my_team;
+		if( held_now != state->goal_held || contested_now != state->goal_contested )
+			state->next_think = 0.0f;	/* the capture state changed: replan now */
+		state->goal_held = held_now;
+		state->goal_contested = contested_now;
+	}
 }
 
 static float YawTo( const Vector &from, const Vector &to )
@@ -598,7 +651,7 @@ static BOOL PlanPath( CBasePlayer *pBot, DodBotState *state )
 	const Vector origin = pBot->pev->origin;
 	Dod_NavSetTime( &g_nav, gpGlobals->time );
 	ns = Dod_NavNearest( &g_nav, origin.x, origin.y, origin.z, starts, 6 );
-	ng = Dod_NavNearest( &g_nav, state->goal.x, state->goal.y, state->goal.z, goals, 4 );
+	ng = Dod_NavNearest( &g_nav, state->nav_pos.x, state->nav_pos.y, state->nav_pos.z, goals, 4 );
 	for( pass = 0; pass < 2; pass++ )	/* a start node in sight first, then any */
 	{
 		for( i = 0; i < ns; i++ )
@@ -623,14 +676,14 @@ static BOOL PlanPath( CBasePlayer *pBot, DodBotState *state )
 					if( ( Vector( x1, y1, 0 ) - Vector( origin.x, origin.y, 0 ) ).Length() < ( Vector( x1, y1, 0 ) - Vector( x0, y0, 0 ) ).Length() )
 						state->path_idx = 1;
 				}
-				state->path_goal = state->goal_id;
+				state->path_goal = state->nav_id;
 				state->path_best = 1e9f;
 				state->path_progress_time = gpGlobals->time;
 				state->stall_jumped = 0;
 				state->cell_n = 0;
 				state->steer_off = 0.0f;
-				ALERT( at_console, "DoD bot %s: path to point %d, %d waypoints (%d -> %d)\n", STRING( pBot->pev->netname ),
-					state->goal_id, len, tmp[0], tmp[len - 1] );
+				ALERT( at_console, "DoD bot %s: path to %d, %d waypoints (%d -> %d)\n", STRING( pBot->pev->netname ),
+					state->nav_id, len, tmp[0], tmp[len - 1] );
 				return TRUE;
 			}
 		}
@@ -645,13 +698,13 @@ static BOOL NavTarget( CBasePlayer *pBot, DodBotState *state, Vector *target )
 	const float now = gpGlobals->time;
 	const Vector origin = pBot->pev->origin;
 	state->want_jump = now < state->jump_until;
-	if( !g_nav.node_count || !state->has_goal || state->arrived )
+	if( !g_nav.node_count || !state->nav_has || state->nav_arrived )
 	{
 		state->path_len = 0;
 		state->ladder_dir = 0;
 		return FALSE;
 	}
-	if( state->path_len == 0 || state->path_goal != state->goal_id )
+	if( state->path_len == 0 || state->path_goal != state->nav_id )
 	{
 		state->ladder_dir = 0;
 		if( now < state->path_replan )
@@ -766,6 +819,180 @@ static BOOL NavTarget( CBasePlayer *pBot, DodBotState *state, Vector *target )
 	}
 }
 
+/* ---------------------------------------------------------------- GOAP
+ * Every ~0.5 s (and at once when an enemy appears or goes, the bot is hurt, or its objective changes hands) the
+ * bot reads the world into a bitmask, picks the goal it wants most for its role and plans the cheapest actions
+ * to reach it (dod_bots.c). The first step is what it does now: shoot, reload, seek the last-known enemy, take
+ * cover, join a teammate, go to / hold the objective. Cost per bot: one scan of the players, two traces, one
+ * search over a few hundred integers. */
+#define DOD_BOT_THINK_PERIOD 0.5f
+#define DOD_BOT_LOW_HEALTH 35.0f
+#define DOD_BOT_NEAR_TEAM 450.0f
+#define DOD_BOT_ENEMY_MEMORY 6.0f
+
+static const char *const g_goal_names[DOD_GOAL_COUNT] = { "capture", "defend", "hunt", "cover", "reload", "regroup" };
+static const char *const g_action_names[DOD_ACT_COUNT] = { "none", "reload", "attack", "seek", "cover", "regroup", "to-point", "capture", "guard" };
+
+static void SetDest( DodBotState *state, const Vector &pos, int id )
+{
+	if( !state->nav_has || state->nav_id != id || ( pos - state->nav_pos ).Length() > 150.0f )
+	{
+		state->path_len = 0;
+		state->path_replan = 0.0f;
+	}
+	state->nav_pos = pos;
+	state->nav_id = id;
+	state->nav_has = 1;
+}
+
+/* A waypoint near the bot that the last-known enemy cannot see; failing that, straight away from the enemy. */
+static Vector PickCover( CBasePlayer *pBot, DodBotState *state )
+{
+	const Vector eye_off( 0, 0, 17.0f );
+	const Vector from = state->known_pos + eye_off;
+	int near_nodes[8], count, i;
+	if( g_nav.node_count )
+	{
+		count = Dod_NavNearest( &g_nav, pBot->pev->origin.x, pBot->pev->origin.y, pBot->pev->origin.z, near_nodes, 8 );
+		for( i = 0; i < count; i++ )
+		{
+			TraceResult tr;
+			float x, y, z;
+			Dod_NavNodePos( &g_nav, near_nodes[i], &x, &y, &z );
+			if( fabsf( z - pBot->pev->origin.z ) > 64.0f || ( Vector( x, y, z ) - pBot->pev->origin ).Length2D() < 80.0f )
+				continue;
+			UTIL_TraceLine( from, Vector( x, y, z ) + eye_off, ignore_monsters, pBot->edict(), &tr );
+			if( tr.flFraction < 0.95f )
+				return Vector( x, y, z );
+		}
+	}
+	{
+		Vector away = pBot->pev->origin - state->known_pos;
+		away.z = 0.0f;
+		if( away.Length() < 1.0f )
+			away = Vector( 1, 0, 0 );
+		return pBot->pev->origin + away.Normalize() * 300.0f;
+	}
+}
+
+static void BotThink( CBasePlayer *pBot, DodBotState *state, CBasePlayer *enemy )
+{
+	const float now = gpGlobals->time;
+	const DodTeam team = TeamOf( pBot );
+	unsigned ws = 0;
+	int i, old_goal = state->plan.goal, old_behavior = state->behavior;
+	BOOL have_mate = FALSE;
+	Vector mate_pos;
+	float mate_dist = DOD_BOT_NEAR_TEAM;
+
+	if( enemy )
+	{
+		state->known_pos = enemy->pev->origin;
+		state->known_until = now + DOD_BOT_ENEMY_MEMORY;
+	}
+	if( ( enemy != NULL ) != ( ( state->ws & DOD_WS_ENEMY_VISIBLE ) != 0 ) )
+		state->next_think = 0.0f;	/* an enemy appeared or went out of sight */
+	if( pBot->pev->health < state->last_health - 0.5f )
+		state->next_think = 0.0f;	/* hurt */
+	state->last_health = pBot->pev->health;
+	if( now < state->next_think )
+		return;
+	state->next_think = now + DOD_BOT_THINK_PERIOD + RANDOM_FLOAT( 0.0f, 0.1f );
+
+	{
+		CBasePlayerItem *item = pBot->m_pActiveItem;
+		CBasePlayerWeapon *weapon = item ? (CBasePlayerWeapon *)item->GetWeaponPtr() : NULL;
+		BOOL has_ammo = TRUE;
+		/* an empty clip with a spare magazine to load; with none, reloading is no use, so it counts as armed */
+		if( weapon && weapon->m_iClip == 0 && weapon->m_iPrimaryAmmoType >= 0 && pBot->m_rgAmmo[weapon->m_iPrimaryAmmoType] > 0 )
+			has_ammo = FALSE;
+		if( has_ammo )
+			ws |= DOD_WS_HAS_AMMO;
+	}
+	if( enemy )
+		ws |= DOD_WS_ENEMY_VISIBLE | DOD_WS_ENEMY_KNOWN;
+	else if( now < state->known_until )
+		ws |= DOD_WS_ENEMY_KNOWN;
+	if( pBot->pev->health < DOD_BOT_LOW_HEALTH )
+		ws |= DOD_WS_LOW_HEALTH;
+	for( i = 1; i <= gpGlobals->maxClients; i++ )
+	{
+		CBasePlayer *pOther = PlayerAt( i );
+		float d;
+		if( !pOther || pOther == pBot || !pOther->IsAlive() || TeamOf( pOther ) != team )
+			continue;
+		d = ( pOther->pev->origin - pBot->pev->origin ).Length();
+		if( d < mate_dist )
+		{
+			mate_dist = d;
+			mate_pos = pOther->pev->origin;
+			have_mate = TRUE;
+		}
+	}
+	if( have_mate )
+		ws |= DOD_WS_NEAR_TEAM;
+	if( !enemy && now < state->known_until )
+	{
+		TraceResult tr;
+		UTIL_TraceLine( state->known_pos + Vector( 0, 0, 17 ), pBot->pev->origin + pBot->pev->view_ofs, ignore_monsters, pBot->edict(), &tr );
+		if( tr.flFraction < 0.95f )
+			ws |= DOD_WS_IN_COVER;
+	}
+	if( state->has_goal && state->goal_id >= 0 )
+	{
+		if( state->goal_held )
+			ws |= DOD_WS_POINT_HELD;
+		if( state->goal_contested )
+			ws |= DOD_WS_POINT_CONTESTED;
+		if( state->arrived )
+			ws |= DOD_WS_AT_POINT;
+	}
+	state->ws = ws;
+	state->plan = Dod_GoapThink( ws, state->role, state->team_bots, old_goal );
+	state->behavior = state->plan.count ? state->plan.steps[0] : DOD_ACT_NONE;
+
+	switch( state->behavior )
+	{
+	case DOD_ACT_SEEK:
+		SetDest( state, state->known_pos, 1000 );
+		break;
+	case DOD_ACT_TAKE_COVER:
+		SetDest( state, PickCover( pBot, state ), 1001 );
+		break;
+	case DOD_ACT_REGROUP:
+		if( have_mate )
+			SetDest( state, mate_pos, 1002 );
+		break;
+	default:
+		if( state->has_goal && state->goal_id >= 0 )
+			SetDest( state, state->goal, state->goal_id );
+		else
+			state->nav_has = 0;
+		break;
+	}
+	if( state->plan.goal != old_goal || state->behavior != old_behavior )
+		ALERT( at_console, "DoD bot %s: goal %s, doing %s (%d step plan, role %s)\n", STRING( pBot->pev->netname ),
+			state->plan.goal >= 0 ? g_goal_names[state->plan.goal] : "none", g_action_names[state->behavior], state->plan.count,
+			state->role == DOD_ROLE_DEFENDER ? "defender" : "attacker" );
+}
+
+/* Whether the bot is where its current step wants it (checked every frame). */
+static void UpdateArrival( CBasePlayer *pBot, DodBotState *state )
+{
+	switch( state->behavior )
+	{
+	case DOD_ACT_SEEK:
+	case DOD_ACT_TAKE_COVER:
+	case DOD_ACT_REGROUP:
+		state->nav_arrived = state->nav_has &&
+			( state->nav_pos - pBot->pev->origin ).Length2D() < 72.0f && fabsf( state->nav_pos.z - pBot->pev->origin.z ) < 72.0f;
+		break;
+	default:
+		state->nav_arrived = state->nav_has && state->has_goal && state->arrived;
+		break;
+	}
+}
+
 static void RunBot( int index, CBasePlayer *pBot )
 {
 	DodBotState *state = BotState( index );
@@ -807,6 +1034,13 @@ static void RunBot( int index, CBasePlayer *pBot )
 		state->has_goal = 0;
 		state->goal_id = -1;
 		state->arrived = 0;
+		state->nav_has = state->nav_arrived = 0;
+		state->behavior = DOD_ACT_NONE;
+		state->plan.goal = -1;
+		state->plan.count = 0;
+		state->ws = 0;
+		state->next_think = 0.0f;
+		state->known_until = 0.0f;
 		state->cell_n = 0;
 		state->path_len = 0;
 		state->ladder_dir = 0;
@@ -870,11 +1104,15 @@ static void RunBot( int index, CBasePlayer *pBot )
 	}
 
 	enemy = FindEnemy( pBot, &enemy_distance );
+	BotThink( pBot, state, enemy );
+	UpdateArrival( pBot, state );
+	/* shoot only when the plan says so (or there is no plan yet); a bot taking cover or reloading does not stand and trade */
+	const BOOL fight = enemy != NULL && ( state->behavior == DOD_ACT_ATTACK || state->behavior == DOD_ACT_NONE );
 	{
 		/* No path graph: if the bot is walking but going nowhere, break the
 		 * straight-line loop with a growing detour. */
 		const DodBotEscape esc = Dod_BotStuckUpdate( &state->stuck, pBot->pev->origin.x, pBot->pev->origin.y,
-			gpGlobals->time, enemy == NULL && !state->arrived && !state->ladder_dir, RANDOM_FLOAT( 0.0f, 1.0f ) );
+			gpGlobals->time, !fight && !state->nav_arrived && !state->ladder_dir && state->behavior != DOD_ACT_RELOAD, RANDOM_FLOAT( 0.0f, 1.0f ) );
 		if( esc.stuck )
 		{
 			state->heading = Dod_BotAngleDelta( 0.0f, state->yaw + esc.turn );
@@ -892,7 +1130,7 @@ static void RunBot( int index, CBasePlayer *pBot )
 		in.clip_empty = weapon && weapon->m_iClip == 0;
 	}
 
-	if( enemy )
+	if( fight )
 	{
 		const Vector target = enemy->pev->origin + enemy->pev->view_ofs * 0.9f;
 		const float want_yaw = YawTo( eye, target ), want_pitch = PitchTo( eye, target );
@@ -918,7 +1156,7 @@ static void RunBot( int index, CBasePlayer *pBot )
 	{
 		/* Head for the goal, or keep the current heading. Inside the capture volume stand and look
 		 * around instead (an attacker stays until the point flips, a defender guards it). */
-		if( state->arrived )
+		if( state->nav_arrived )
 		{
 			if( gpGlobals->time >= state->hold_heading_until )
 			{
@@ -926,9 +1164,9 @@ static void RunBot( int index, CBasePlayer *pBot )
 				state->hold_heading_until = gpGlobals->time + RANDOM_FLOAT( 2.0f, 4.0f );
 			}
 		}
-		else if( state->has_goal )
+		else if( state->nav_has )
 		{
-			Vector target = state->goal;
+			Vector target = state->nav_pos;
 			const BOOL on_path = NavTarget( pBot, state, &target );
 			if( state->ladder_dir )
 			{
@@ -947,7 +1185,7 @@ static void RunBot( int index, CBasePlayer *pBot )
 			{
 				if( gpGlobals->time >= state->next_steer )
 				{
-					state->steer_yaw = SteerYaw( pBot, state, on_path ? target : state->goal, floor_trust );
+					state->steer_yaw = SteerYaw( pBot, state, on_path ? target : state->nav_pos, floor_trust );
 					state->next_steer = gpGlobals->time + 0.25f;
 				}
 				state->heading = state->steer_yaw;
@@ -958,18 +1196,18 @@ static void RunBot( int index, CBasePlayer *pBot )
 	}
 
 	move = Dod_BotDecide( &in );
-	if( state->has_goal && !enemy && !state->arrived )
+	if( state->nav_has && !fight && !state->nav_arrived )
 		move.turn_away = 0;	/* the steering picks the way round; a random turn only undoes it */
-	if( state->ladder_dir && !enemy )
+	if( state->ladder_dir && !fight )
 	{
 		move.forward = 1.0f;
 		move.side = 0.0f;
 		move.jump = 0;
 		move.turn_away = 0;
 	}
-	if( state->want_jump && !enemy )
+	if( state->want_jump && !fight )
 		buttons |= IN_JUMP;
-	if( state->arrived && !enemy )
+	if( ( state->nav_arrived && !fight ) || ( state->behavior == DOD_ACT_RELOAD && !state->ladder_dir ) )
 	{
 		move.forward = 0.0f;
 		move.side = 0.0f;
@@ -982,6 +1220,11 @@ static void RunBot( int index, CBasePlayer *pBot )
 		state->heading = Dod_BotAngleDelta( 0.0f, state->yaw + turn );
 		state->yaw = state->heading;
 		state->hold_heading_until = gpGlobals->time + 0.7f;
+	}
+	if( state->behavior == DOD_ACT_RELOAD )
+	{
+		move.fire = 0;
+		move.reload = 1;
 	}
 	if( move.fire )
 		buttons |= IN_ATTACK;

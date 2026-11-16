@@ -115,6 +115,7 @@ typedef struct DodBotObjectiveInfo {
 	int can_cap[4];			/* indexed by DodTeam: may that team capture it */
 	float distance;			/* from the bot, ground plane */
 	int blocked;			/* blacklisted for this bot: it could not get there */
+	int crowd;			/* teammates already heading there (spreads attackers out) */
 } DodBotObjectiveInfo;
 
 typedef enum {
@@ -132,12 +133,93 @@ int Dod_BotChooseObjective(const DodBotObjectiveInfo *list, int count, DodTeam t
 void Dod_BotBlockAdd(int *ids, float *untils, int slots, int id, float until, float now);
 int Dod_BotBlockHas(const int *ids, const float *untils, int slots, int id, float now);
 
+/* ---------------------------------------------------------------- GOAP planner
+ * A bot's behaviour is a small goal-oriented action plan. The world is a bitmask of facts; each goal
+ * wants some of them true or false and has an insistence (how badly) computed from the facts and the
+ * bot's role; the planner finds the cheapest chain of actions (at most DOD_GOAP_MAX_PLAN) from the
+ * current facts to the wanted ones. Everything is fixed size and allocation free: a search is a few
+ * hundred integer operations, cheap enough to re-run every ~0.5 s per bot and on events. */
+enum {
+	DOD_WS_HAS_AMMO = 1 << 0,	/* a round in the clip */
+	DOD_WS_ENEMY_VISIBLE = 1 << 1,
+	DOD_WS_ENEMY_KNOWN = 1 << 2,	/* seen or heard recently (last-known position valid) */
+	DOD_WS_POINT_HELD = 1 << 3,	/* the objective is owned by the bot's team */
+	DOD_WS_POINT_CONTESTED = 1 << 4,	/* the enemy is capturing the objective */
+	DOD_WS_LOW_HEALTH = 1 << 5,
+	DOD_WS_NEAR_TEAM = 1 << 6,	/* a teammate within reach */
+	DOD_WS_IN_COVER = 1 << 7,	/* out of sight of the last-known enemy */
+	DOD_WS_AT_POINT = 1 << 8	/* inside the objective's capture volume */
+};
+
+typedef enum {
+	DOD_GOAL_CAPTURE = 0,
+	DOD_GOAL_DEFEND,
+	DOD_GOAL_HUNT,
+	DOD_GOAL_COVER,
+	DOD_GOAL_RELOAD,
+	DOD_GOAL_REGROUP,
+	DOD_GOAL_COUNT
+} DodGoapGoal;
+
+/* What the bot actually does while a plan step runs. */
+typedef enum {
+	DOD_ACT_NONE = 0,
+	DOD_ACT_RELOAD,
+	DOD_ACT_ATTACK,		/* shoot the visible enemy */
+	DOD_ACT_SEEK,		/* go to the last-known enemy position */
+	DOD_ACT_TAKE_COVER,
+	DOD_ACT_REGROUP,	/* go to a teammate */
+	DOD_ACT_MOVE_POINT,
+	DOD_ACT_CAPTURE,	/* stand in the volume until the point flips */
+	DOD_ACT_GUARD,		/* stand in the volume and watch */
+	DOD_ACT_COUNT
+} DodGoapAction;
+
+typedef enum {
+	DOD_ROLE_ATTACKER = 0,
+	DOD_ROLE_DEFENDER
+} DodBotRole;
+
+#define DOD_GOAP_MAX_PLAN 5
+
+typedef struct DodGoapPlan {
+	int goal;			/* DodGoapGoal, or -1 when there is nothing to do */
+	int count;			/* steps; steps[0] is what to do now */
+	unsigned char steps[DOD_GOAP_MAX_PLAN];
+	int cost;
+} DodGoapPlan;
+
+/* The goal's wanted facts: (state & mask) == value satisfies it. */
+void Dod_GoapGoalWant(int goal, unsigned *mask, unsigned *value);
+/* 0..100: how much the bot wants this goal now. */
+int Dod_GoapInsistence(int goal, unsigned state, int role, int team_bots);
+/* The most insistent goal; `current` (or -1) gets a bonus so a bot does not flap between close goals.
+ * Goals already satisfied are skipped. Returns -1 when none is wanted. */
+int Dod_GoapPickGoal(unsigned state, int role, int team_bots, int current);
+/* Cheapest plan from state to the goal, or count 0 when it holds already / cannot be reached. */
+DodGoapPlan Dod_GoapPlan(unsigned state, int goal);
+/* One call: pick the goal and plan it. */
+DodGoapPlan Dod_GoapThink(unsigned state, int role, int team_bots, int current_goal);
+/* Facts after a step runs (planning's own transition, exposed for tests). */
+int Dod_GoapStepApplicable(int action, unsigned state);
+unsigned Dod_GoapStepApply(int action, unsigned state);
+
+/* Team role split: the bot at `rank` (0-based, by entity index) among `team_bots` on its team.
+ * With two or more bots and a held point, about a third (at least one) defend the held points, the
+ * rest attack; a lone bot attacks, and defends only when there is nothing left to take. */
+int Dod_BotRole(int rank, int team_bots, int held_points);
+/* The objective for a role: an attacker takes the nearest uncaptured point (teammates already on it
+ * make it count as farther by DOD_BOT_CROWD_PENALTY each so a team spreads out), a defender guards a
+ * point under attack, else the nearest held one. Each falls back to the other when it has no target. */
+#define DOD_BOT_CROWD_PENALTY 450.0f
+int Dod_BotChooseObjectiveRole(const DodBotObjectiveInfo *list, int count, DodTeam team, int current_id, int role, int *kind);
+
 /* ---------------------------------------------------------------- navigation graph
  * Bots find their way with a waypoint graph baked offline from the map's player hull (tools/gen_waypoints.py,
  * data/waypoints/<map>.wpt, staged next to the BSP): nodes are floor positions, edges are walks, jumps, drops
  * and ladders between neighbouring nodes. The format is big-endian; see the tool for the layout. The search
  * is A* over the graph. Everything here is engine-independent so it can be host-tested. */
-#define DOD_NAV_MAX_PATH 80
+#define DOD_NAV_MAX_PATH 72
 
 typedef enum {
 	DOD_NAV_WALK = 0,
