@@ -412,6 +412,10 @@ const char *Dod_TeamClassWeapon(DodTeam team, DodClass player_class)
 {
 	if (player_class <= DOD_CLASS_NONE || player_class >= DOD_CLASS_COUNT)
 		return "None";
+	if (team == DOD_TEAM_ALLIES && Dod_GetAlliesCountry() == DOD_COUNTRY_BRITISH) {
+		const DodWeaponDef *def = Dod_ClassWeaponDef(team, player_class);	/* the British kit has its own names */
+		return def ? def->title : "None";
+	}
 	if (team == DOD_TEAM_ALLIES) return g_allies_weapon[player_class];
 	if (team == DOD_TEAM_AXIS) return g_axis_weapon[player_class];
 	return "None";
@@ -441,49 +445,38 @@ int Dod_GetWeaponModels(int player_index, DodWeaponModelKind kind,
 		return 1;
 	}
 	if (kind == DOD_MODEL_MELEE) {
-		/* Retail: Allies carry the American knife, Axis the spade. */
-		if (view_model) *view_model = player->team == DOD_TEAM_ALLIES ? "models/v_amerk.mdl" : "models/v_spade.mdl";
-		if (player_model) *player_model = player->team == DOD_TEAM_ALLIES ? "models/p_amerk.mdl" : "models/p_spade.mdl";
+		/* Retail: Allies carry the American knife (the British the Fairbairn), Axis the spade. */
+		const int british = player->team == DOD_TEAM_ALLIES && Dod_GetAlliesCountry() == DOD_COUNTRY_BRITISH;
+		if (view_model) *view_model = player->team == DOD_TEAM_AXIS ? "models/v_spade.mdl" : (british ? "models/v_fairbairn.mdl" : "models/v_amerk.mdl");
+		if (player_model) *player_model = player->team == DOD_TEAM_AXIS ? "models/p_spade.mdl" : (british ? "models/p_fairbairn.mdl" : "models/p_amerk.mdl");
 		return 1;
 	}
 	if (kind == DOD_MODEL_PISTOL) {
-		if (!Dod_ClassHasSidearm(player->player_class))
+		const DodWeaponDef *side = Dod_ClassSidearmDef(player->team, player->player_class);
+		if (!Dod_ClassHasSidearm(player->player_class) || !side)
 			return 0;
-		if (view_model) *view_model = player->team == DOD_TEAM_ALLIES ? "models/v_colt.mdl" : "models/v_luger.mdl";
-		if (player_model) *player_model = player->team == DOD_TEAM_ALLIES ? "models/p_colt.mdl" : "models/p_luger.mdl";
+		if (view_model) *view_model = side->view_model;
+		if (player_model) *player_model = side->player_model;
 		return 1;
 	}
-	if (kind == DOD_MODEL_AUTOMATIC) {
-		if (player->player_class == DOD_CLASS_ASSAULT) {
-			if (view_model) *view_model = player->team == DOD_TEAM_ALLIES ? "models/v_tommy.mdl" : "models/v_mp40.mdl";
-			if (player_model) *player_model = player->team == DOD_TEAM_ALLIES ? "models/p_tommy.mdl" : "models/p_mp40.mdl";
+	{
+		/* the class's primary gun: its models come from its definition, so the British kit follows */
+		const DodWeaponDef *gun = Dod_ClassWeaponDef(player->team, player->player_class);
+		const DodClass c = player->player_class;
+		int wanted = 0;
+		if (kind == DOD_MODEL_AUTOMATIC)
+			wanted = c == DOD_CLASS_ASSAULT || c == DOD_CLASS_MG || c == DOD_CLASS_RIFLEMAN;
+		else if (kind == DOD_MODEL_SUPPORT)
+			wanted = c == DOD_CLASS_SUPPORT;
+		else if (kind == DOD_MODEL_SNIPER)
+			wanted = c == DOD_CLASS_SNIPER;
+		else if (kind == DOD_MODEL_ROCKET)
+			wanted = c == DOD_CLASS_ROCKET;
+		if (wanted && gun) {
+			if (view_model) *view_model = gun->view_model;
+			if (player_model) *player_model = gun->player_model;
 			return 1;
 		}
-		if (player->player_class == DOD_CLASS_MG) {
-			if (view_model) *view_model = player->team == DOD_TEAM_ALLIES ? "models/v_30cal.mdl" : "models/v_mg42.mdl";
-			if (player_model) *player_model = player->team == DOD_TEAM_ALLIES ? "models/p_30cal.mdl" : "models/p_mg42pr.mdl";
-			return 1;
-		}
-		if (player->player_class == DOD_CLASS_RIFLEMAN) {
-			if (view_model) *view_model = player->team == DOD_TEAM_ALLIES ? "models/v_garand.mdl" : "models/v_98k.mdl";
-			if (player_model) *player_model = player->team == DOD_TEAM_ALLIES ? "models/p_garand.mdl" : "models/p_k98.mdl";
-			return 1;
-		}
-	}
-	if (kind == DOD_MODEL_SUPPORT && player->player_class == DOD_CLASS_SUPPORT) {
-		if (view_model) *view_model = player->team == DOD_TEAM_ALLIES ? "models/v_bren.mdl" : "models/v_mp44.mdl";
-		if (player_model) *player_model = player->team == DOD_TEAM_ALLIES ? "models/p_bren.mdl" : "models/p_stg44.mdl";
-		return 1;
-	}
-	if (kind == DOD_MODEL_SNIPER && player->player_class == DOD_CLASS_SNIPER) {
-		if (view_model) *view_model = player->team == DOD_TEAM_ALLIES ? "models/v_spring.mdl" : "models/v_scoped98k.mdl";
-		if (player_model) *player_model = player->team == DOD_TEAM_ALLIES ? "models/p_spring.mdl" : "models/p_k98.mdl";
-		return 1;
-	}
-	if (kind == DOD_MODEL_ROCKET && player->player_class == DOD_CLASS_ROCKET) {
-		if (view_model) *view_model = player->team == DOD_TEAM_ALLIES ? "models/v_bazooka.mdl" : "models/v_panzerschreck.mdl";
-		if (player_model) *player_model = player->team == DOD_TEAM_ALLIES ? "models/p_bazooka.mdl" : "models/p_pschreck.mdl";
-		return 1;
 	}
 	return 0;
 }
@@ -512,11 +505,16 @@ static const DodGrenadeDef g_grenades[2] = {
 	{ "models/v_stick.mdl", "models/p_stick.mdl", "models/w_stick.mdl", 5.0f, 100.0f, 250.0f, 800.0f, 4 }
 };
 
+/* The British Mills bomb: the Allies' grenade on the British maps, same numbers. */
+static const DodGrenadeDef g_mills = {
+	"models/v_mills.mdl", "models/p_mills.mdl", "models/w_mills.mdl", 5.0f, 100.0f, 250.0f, 800.0f, 4
+};
+
 int Dod_GetGrenade(DodTeam team, DodGrenadeDef *out)
 {
 	if ((team != DOD_TEAM_ALLIES && team != DOD_TEAM_AXIS) || !out)
 		return 0;
-	*out = g_grenades[team - 1];
+	*out = team == DOD_TEAM_ALLIES && Dod_GetAlliesCountry() == DOD_COUNTRY_BRITISH ? g_mills : g_grenades[team - 1];
 	return 1;
 }
 

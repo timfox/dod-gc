@@ -339,6 +339,10 @@ CHalfLifeDoD::CHalfLifeDoD()
 		g_dod_cvars_registered = TRUE;
 	}
 	Dod_GameInit();
+	/* before the weapons precache: the British maps give the Allies the British kit (see dod_weapons.h) */
+	Dod_SetAlliesCountry( Dod_AlliesCountryForMap( STRING( gpGlobals->mapname ) ) );
+	ALERT( at_console, "DoD: the Allies are %s on %s\n", Dod_GetAlliesCountry() == DOD_COUNTRY_BRITISH ? "British" : "American",
+		STRING( gpGlobals->mapname ) );
 	Dod_ClearObjectives();
 	round_seconds = CVAR_GET_FLOAT( "mp_timelimit" ) * 60.0f;
 	if( round_seconds <= 0.0f )
