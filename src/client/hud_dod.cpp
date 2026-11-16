@@ -23,6 +23,7 @@ void CHudDod::InitState( void )
 		m_hSheets[i] = 0;
 	m_fSheetsTried = 0;
 	m_fDrawLogged = 0;
+	m_szLoggedWeapon[0] = 0;
 	m_pCvar = gEngfuncs.pfnRegisterVariable( "cl_dodhud", "1", FCVAR_ARCHIVE );
 	HOOK_MESSAGE( DodHud );
 }
@@ -89,6 +90,11 @@ int CHudDod::DrawRetail( float flTime )
 			m_hSheets[i] = SPR_Load( dod_retail_sheet_files[i] );
 		gEngfuncs.Con_Printf( "Xash3D GameCube: DoD retail HUD sheets layout=%d cross=%d\n",
 			m_hSheets[DOD_SHEET_LAYOUT] ? 1 : 0, m_hSheets[DOD_SHEET_CROSS] ? 1 : 0 );
+		for( i = 0; i < DOD_SHEET_COUNT; i++ )
+			gEngfuncs.Con_Printf( "Xash3D GameCube: DoD retail HUD sheet %s h=%d %dx%d\n",
+				dod_retail_sheet_files[i], m_hSheets[i],
+				m_hSheets[i] ? SPR_Width( m_hSheets[i], 0 ) : 0,
+				m_hSheets[i] ? SPR_Height( m_hSheets[i], 0 ) : 0 );
 	}
 	if( !m_hSheets[DOD_SHEET_LAYOUT] )
 		return 0;	/* no retail sheets on this disc: let the caller draw */
@@ -138,6 +144,17 @@ int CHudDod::DrawRetail( float flTime )
 	}
 
 	count = Dod_RetailHudLayoutText( &in, draws, DOD_RETAIL_MAX_DRAWS, &spare );
+	{
+		/* Log each weapon change once (which clip graphic, if any, is drawn). */
+		const char *name = pw ? pw->szName : "-";
+		if( strncmp( m_szLoggedWeapon, name, sizeof( m_szLoggedWeapon ) - 1 ))
+		{
+			strncpy( m_szLoggedWeapon, name, sizeof( m_szLoggedWeapon ) - 1 );
+			m_szLoggedWeapon[sizeof( m_szLoggedWeapon ) - 1] = 0;
+			gEngfuncs.Con_Printf( "Xash3D GameCube: DoD retail HUD weapon %s clip=%d reserve=%d graphic=%s draws=%d\n",
+				name, in.clip, in.reserve, in.weapon ? in.weapon->key : "-", count );
+		}
+	}
 	for( i = 0; i < count; i++ )
 	{
 		const HSPRITE spr = m_hSheets[draws[i].cell.sheet];

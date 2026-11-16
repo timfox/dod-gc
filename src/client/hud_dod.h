@@ -32,6 +32,7 @@ private:
 	HSPRITE m_hSheets[DOD_SHEET_COUNT];
 	int m_fSheetsTried;
 	int m_fDrawLogged;
+	char m_szLoggedWeapon[32];
 	cvar_t *m_pCvar;
 };
 
