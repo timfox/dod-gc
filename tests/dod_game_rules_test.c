@@ -123,6 +123,26 @@ static void test_player_body(void)
 	assert(Dod_PlayerBodyValue("us-inf", DOD_CLASS_NONE, 4) == 0);
 }
 
+static void test_voice(void)
+{
+	char path[64];
+	int i, v;
+	assert(Dod_VoiceCount() >= DOD_VOICE_MENU_COUNT + 2);
+	assert(Dod_VoiceFind("attack") == 0 && Dod_VoiceFind("grenade") == 10 && Dod_VoiceFind("fireinhole") == 11);
+	assert(Dod_VoiceFind("nonsense") == -1 && Dod_VoiceFind(0) == -1);
+	assert(Dod_VoiceSound(0, DOD_TEAM_ALLIES, 0, path, sizeof(path)) > 0 && !strcmp(path, "player/usattack.wav"));
+	assert(Dod_VoiceSound(0, DOD_TEAM_ALLIES, 1, path, sizeof(path)) > 0 && !strcmp(path, "player/britattack.wav"));
+	assert(Dod_VoiceSound(0, DOD_TEAM_AXIS, 0, path, sizeof(path)) > 0 && !strcmp(path, "player/gerattack.wav"));
+	assert(Dod_VoiceSound(Dod_VoiceFind("left"), DOD_TEAM_AXIS, 0, path, sizeof(path)) > 0 && !strcmp(path, "player/germanleft.wav"));
+	assert(Dod_VoiceSound(0, DOD_TEAM_SPECTATOR, 0, path, sizeof(path)) == 0 && Dod_VoiceSound(99, DOD_TEAM_AXIS, 0, path, sizeof(path)) == 0);
+	assert(Dod_VoiceSound(0, DOD_TEAM_AXIS, 0, path, 8) == 0 && path[0] == '\0');	/* too small: nothing partial */
+	for (v = 0; v < Dod_VoiceCount(); ++v) {
+		assert(Dod_VoiceLabel(v)[0]);
+		for (i = 0; i < 3; ++i)
+			assert(Dod_VoiceSound(v, i == 2 ? DOD_TEAM_AXIS : DOD_TEAM_ALLIES, i == 1, path, sizeof(path)) > 0);
+	}
+}
+
 static void test_scoreboard(void)
 {
 	char board[512], tiny[40];
@@ -875,6 +895,7 @@ int main(void)
 	test_retail_class_names();
 	test_status_line();
 	test_player_line();
+	test_voice();
 	test_scoreboard();
 	test_team_points();
 	test_player_body();

@@ -742,6 +742,65 @@ int Dod_PlayerBodyValue(const char *model, DodClass player_class, int player_ind
 	return part + 6 * helmet + 48 * head + 336 * gear;
 }
 
+static const struct { const char *cmd, *label, *us, *brit, *ger; } g_voices[] = {
+	{ "attack", "Move out!", "usattack", "britattack", "gerattack" },
+	{ "fallback", "Fall back!", "usfallback", "britfallback", "gerfallback" },
+	{ "cover", "Covering fire!", "uscover", "britcover", "gercover" },
+	{ "backup", "I need backup!", "usbackup", "britbackup", "gerbackup" },
+	{ "hold", "Hold this position!", "ushold", "brithold", "gerhold" },
+	{ "yessir", "Yes sir!", "usyessir", "brityessir", "geryessir" },
+	{ "left", "Left!", "usleft", "britleft", "germanleft" },
+	{ "right", "Right!", "usright", "britright", "germanright" },
+	{ "needammo", "I need ammo!", "usneedammo", "britneedammo", "gerneedammo" },
+	{ "sniper", "Sniper!", "ussniper", "britsniper", "gersniper" },
+	{ "grenade", "Grenade!", "usgrenade", "britgrenade", "gergrenade" },
+	/* called automatically */
+	{ "fireinhole", "Fire in the hole!", "usfireinhole", "britfireinhole", "gerfireinhole" },
+	{ "enemyahead", "Enemy ahead!", "usenemyahead", "britenemyahead", "gerenemyahead" },
+	{ "medic", "Medic!", "usmedic", "britmedic", "germedic" },
+};
+
+int Dod_VoiceCount(void)
+{
+	return (int)(sizeof(g_voices) / sizeof(g_voices[0]));
+}
+
+const char *Dod_VoiceLabel(int voice)
+{
+	return voice >= 0 && voice < Dod_VoiceCount() ? g_voices[voice].label : "";
+}
+
+int Dod_VoiceFind(const char *name)
+{
+	int i;
+	if (!name)
+		return -1;
+	for (i = 0; i < Dod_VoiceCount(); ++i)
+		if (!strcmp(name, g_voices[i].cmd))
+			return i;
+	return -1;
+}
+
+int Dod_VoiceSound(int voice, DodTeam team, int british, char *buffer, int size)
+{
+	const char *base;
+	int written;
+	if (!buffer || size <= 0 || voice < 0 || voice >= Dod_VoiceCount())
+		return 0;
+	if (team == DOD_TEAM_AXIS)
+		base = g_voices[voice].ger;
+	else if (team == DOD_TEAM_ALLIES)
+		base = british ? g_voices[voice].brit : g_voices[voice].us;
+	else
+		return 0;
+	written = snprintf(buffer, (size_t)size, "player/%s.wav", base);
+	if (written < 0 || written >= size) {
+		buffer[0] = '\0';
+		return 0;
+	}
+	return written;
+}
+
 static const char *dod_class_tag(DodClass c)
 {
 	switch (c) {

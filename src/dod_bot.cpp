@@ -1819,6 +1819,7 @@ static void RunBot( int index, CBasePlayer *pBot )
 			state->next_noise = 0.0f;
 			ALERT( at_console, "DoD bot %s: sees an enemy at %.0f units, reacts in %.0f ms\n", STRING( pBot->pev->netname ), enemy_distance,
 				( state->react_until - now ) * 1000.0f );
+			DodGC_VoiceAuto( pBot, "enemyahead" );
 		}
 		state->last_fight_time = now;
 		err = Dod_BotAimErrorEx( &sk, enemy_distance, enemy->pev->velocity.Length2D(), pBot->pev->velocity.Length2D(), now - state->track_since );

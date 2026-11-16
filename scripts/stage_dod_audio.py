@@ -120,6 +120,43 @@ def weapon_table_sounds(table: Path) -> dict[str, float]:
     return sounds
 
 
+# Voice lines are 1-2 s at 22 kHz: 8-bit mono at 11.025 kHz keeps 1.45 s under the 16 KiB ceiling (16-bit would keep 0.74 s).
+VOICE_SECONDS = 1.45
+
+
+def voice_table_sounds(game_source: Path) -> list[str]:
+    """Voice clips named in the g_voices table of src/dod_game.c (one row per command: us, brit and ger base names), as
+    sound paths. The C table is the single source of truth, so staging reads it."""
+    text = game_source.read_text()
+    start = text.index("g_voices[] = {")
+    end = text.index("};", start)
+    sounds: list[str] = []
+    for row in re.findall(r"\{([^{}]*)\}", text[start + len("g_voices[] = "):end]):
+        names = re.findall(r'"([a-z]+)"', row)  # the label has capitals or punctuation, so it is not matched
+        if len(names) == 4:  # cmd, us, brit, ger
+            sounds.extend(f"player/{name}.wav" for name in names[1:])
+    return sounds
+
+
+def stage_voice_sfx(dod_sound: Path, lean_sound: Path, game_source: Path) -> dict:
+    """Stage every voice line of the table as a short 8-bit clip under the lean disc's WAV ceiling."""
+    roots = [dod_sound]
+    index = build_index(roots)
+    staged: list[str] = []
+    missing: list[str] = []
+    total = 0
+    for rel in voice_table_sounds(game_source):
+        src, _how = resolve_source(rel, index, roots, allow_substitute=False)
+        if src is None:
+            missing.append(rel)
+            continue
+        dest = lean_dest(lean_sound, rel)
+        total += lean_tipsafe_wav(src, dest, VOICE_SECONDS, pcm8=True)
+        if dest.is_file():
+            staged.append(rel)
+    return {"files": len(staged), "bytes": total, "missing": missing, "list": staged}
+
+
 def normalize_sound_path(raw: str) -> str:
     name = raw.replace("\\", "/").lstrip("/")
     if name.lower().startswith("sound/"):
@@ -315,7 +352,7 @@ def stage_map_sounds(
     }
 
 
-def lean_tipsafe_wav(src: Path, dest: Path, max_seconds: float) -> int:
+def lean_tipsafe_wav(src: Path, dest: Path, max_seconds: float, pcm8: bool = False) -> int:
     """CapFaces listen keeps a 16 KiB memopt WAV ceiling — retail DoD shoots
     are 60–120 KiB @ 22 kHz. Emit 11.025 kHz mono s16 clips that fit."""
     dest.parent.mkdir(parents=True, exist_ok=True)
@@ -335,7 +372,7 @@ def lean_tipsafe_wav(src: Path, dest: Path, max_seconds: float) -> int:
         "-ac",
         "1",
         "-c:a",
-        "pcm_s16le",
+        "pcm_u8" if pcm8 else "pcm_s16le",
         str(dest),
     ]
     try:
@@ -523,6 +560,13 @@ def main() -> int:
         print(
             f"grenade + gun SFX: files={grenades['files']} ({grenades['bytes'] / 1024:.0f} KiB)"
             + (f" missing={grenades['missing']}" if grenades["missing"] else "")
+        )
+
+        voices = stage_voice_sfx(dod / "sound", lean / "sound", Path(__file__).resolve().parent.parent / "src" / "dod_game.c")
+        payload["voice_sfx"] = voices
+        print(
+            f"voice lines: files={voices['files']} ({voices['bytes'] / 1024:.0f} KiB)"
+            + (f" missing={voices['missing']}" if voices["missing"] else "")
         )
 
         if args.core_sfx:

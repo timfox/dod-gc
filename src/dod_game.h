@@ -241,6 +241,17 @@ int Dod_FormatPlayerLine(int player_index, const char *name, char *buffer, int s
  * look cloned. Other models (the paratrooper ones) get 0. */
 int Dod_PlayerBodyValue(const char *model, DodClass player_class, int player_index);
 
+/* Voice commands (retail voice_* commands and the lines players call by themselves). Each has a sound per side; the
+ * first DOD_VOICE_MENU_COUNT are on the voice menu, the rest are called automatically. */
+#define DOD_VOICE_MENU_COUNT 11
+int Dod_VoiceCount(void);
+const char *Dod_VoiceLabel(int voice);
+/* Index of a command by name ("attack" for voice_attack), -1 when unknown. */
+int Dod_VoiceFind(const char *name);
+/* The sound path of a voice for a side: "player/usattack.wav". british picks the British Allies; paratroopers speak
+ * with their side's voice. Returns characters written, 0 for a bad voice or team. */
+int Dod_VoiceSound(int voice, DodTeam team, int british, char *buffer, int size);
+
 /* Team-grouped scoreboard text for one HUD block: each team's header with its score, then its players best first
  * ("1. Name  RIF  S7 K5 D2"), the viewer's line marked with '>'. names[i] is the name of player index i (may be NULL).
  * Lines that do not fit are dropped from the bottom. Returns characters written. */

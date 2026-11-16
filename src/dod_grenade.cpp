@@ -8,6 +8,7 @@
 #include "decals.h"
 #include "dod_game.h"
 #include "dod_grenade.h"
+extern void DodGC_VoiceAuto( CBasePlayer *pPlayer, const char *name );	/* dod_runtime.cpp */
 
 /* g_sModelIndexFireball / WExplosion / Smoke come from weapons.h. They are
  * already resident: the stock HL1 precache loads them once for every weapon,
@@ -76,6 +77,7 @@ CGrenade *DodGrenade_Throw( CBasePlayer *pPlayer, float held )
 	}
 	if( !pGrenade )
 		return NULL;
+	DodGC_VoiceAuto( pPlayer, "fireinhole" );
 
 	if( strcmp( def.world_model, "models/w_grenade.mdl" ) )
 		SET_MODEL( ENT( pGrenade->pev ), def.world_model );
