@@ -129,6 +129,31 @@ if [[ -f "$SRC/sprites/icon_obj.spr" ]]; then
 	echo "staged DoD HUD flag sheet: sprites/icon_obj.spr"
 fi
 
+# Retail DoD HUD: sprites/hud.txt plus every sheet it names (hud_layout,
+# clip_*, weapons1-5, dodcross, scopes, ...). The client's HUD_VidInit reads
+# hud.txt at 640 and loads these. DODGC_STAGE_RETAIL_HUD=0 leaves them out.
+if [[ "${DODGC_STAGE_RETAIL_HUD:-1}" == "1" && -f "$SRC/sprites/hud.txt" ]]; then
+	cp -f "$SRC/sprites/hud.txt" "$LEAN/sprites/"
+	retail_hud=0
+	while read -r sheet; do
+		if [[ -f "$SRC/sprites/$sheet.spr" ]]; then
+			cp -f "$SRC/sprites/$sheet.spr" "$LEAN/sprites/"
+			retail_hud=$((retail_hud + 1))
+		else
+			echo "warning: hud.txt names sprites/$sheet.spr, not in $SRC" >&2
+		fi
+	done < <(awk 'NF >= 7 && $2 ~ /^[0-9]+$/ { print $3 }' "$SRC/sprites/hud.txt" | sort -u)
+	echo "staged retail DoD HUD: sprites/hud.txt + $retail_hud sheets"
+	# Objective bar flags (CObjectiveIcons): the generic neutral/Allies/Axis
+	# trio, 32x32 each (about 3 KB apiece).
+	mkdir -p "$LEAN/sprites/obj_icons"
+	for state in neutral allies axis; do
+		if [[ -f "$SRC/sprites/obj_icons/icon_obj_$state.spr" ]]; then
+			cp -f "$SRC/sprites/obj_icons/icon_obj_$state.spr" "$LEAN/sprites/obj_icons/"
+		fi
+	done
+fi
+
 # DoD UI / title art (no loading-screen wallpaper farms).
 mkdir -p "$LEAN/resource"
 # Skip dod_english.txt (≈90 KiB) — MEM1 tip cannot Localize_AddToDict it at

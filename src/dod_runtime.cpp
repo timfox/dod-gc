@@ -221,6 +221,8 @@ static void DodGC_ApplyBody( CBasePlayer *pPlayer )
 	ALERT( at_console, "DoD body %s -> %s\n", STRING( pPlayer->pev->netname ), body );
 }
 
+static int g_dod_weaponlist_resent[DOD_MAX_PLAYERS + 1];
+
 static void DodGC_ApplyClass( CBasePlayer *pPlayer, DodClass player_class )
 {
 	if( pPlayer && pPlayer->IsObserver() )
@@ -231,6 +233,16 @@ static void DodGC_ApplyClass( CBasePlayer *pPlayer, DodClass player_class )
 	DodGC_EnsurePlayer( pPlayer );
 	if( !Dod_SelectPlayerClass( index, player_class ) )
 		return;
+
+	/* The WeaponList burst (UpdateClientData's m_fKnownItem block) first runs
+	 * from ClientPutInServer, before the engine marks the client spawned, and
+	 * the engine drops user messages to unspawned clients: the client never
+	 * learned the weapon names, so the retail ammo HUD and weapon slots had
+	 * nothing. Send it once more when the player first gets a kit. */
+	if( !g_dod_weaponlist_resent[index] && !DodBots_IsBot( pPlayer ) ) {
+		g_dod_weaponlist_resent[index] = 1;
+		pPlayer->m_fKnownItem = FALSE;
+	}
 
 	/* Melee (the HL1 crowbar wearing the knife/spade models), the class gun
 	 * from the DoD weapon table, a Colt/Luger for the heavy classes, and
@@ -302,6 +314,7 @@ CHalfLifeDoD::CHalfLifeDoD()
 	gmsgDodHud = REG_USER_MSG( "DodHud", -1 );
 	memset( g_dod_menu_state, 0, sizeof( g_dod_menu_state ) );
 	memset( g_dod_joined, 0, sizeof( g_dod_joined ) );
+	memset( g_dod_weaponlist_resent, 0, sizeof( g_dod_weaponlist_resent ) );
 	memset( g_dod_pending_team, 0, sizeof( g_dod_pending_team ) );
 	g_dod_winner_announced = 0;
 	g_dod_next_status = 0.0f;
@@ -538,7 +551,7 @@ void CHalfLifeDoD::ClientDisconnected( edict_t *pClient )
 	if( pClient ) {
 		const int index = ENTINDEX( pClient );
 		if( index >= 1 && index <= DOD_MAX_PLAYERS )
-			g_dod_joined[index] = g_dod_pending_team[index] = 0;
+			g_dod_joined[index] = g_dod_pending_team[index] = g_dod_weaponlist_resent[index] = 0;
 		Dod_PlayerDisconnect( index );
 	}
 	CHalfLifeMultiplay::ClientDisconnected( pClient );
