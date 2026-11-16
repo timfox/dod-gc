@@ -17,7 +17,7 @@ This port targets matching **GameCube DoD builds**, with two players per game.
 The connection handshake carries `gc_dod=1` in both directions. A missing or
 incompatible marker rejects the connection before loading the game. This marker
 checks software compatibility; it does not authenticate physical hardware.
-Desktop Steam DoD servers use a different game DLL/client and are outside this
+Retail DoD servers for other platforms use a different game DLL/client and are outside this
 network version. Dolphin remains a development test target.
 
 ## Native ETH2SP1 build

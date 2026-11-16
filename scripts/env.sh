@@ -21,7 +21,7 @@ if [[ ! -d "$DODGC_ENGINE/scripts" ]]; then
 	exit 1
 fi
 
-# Legally obtained Steam Day of Defeat + HL1 basedir (DoD falls back to valve/).
+# Legally obtained retail Day of Defeat + HL1 basedir (DoD falls back to valve/).
 export DODGC_CONTENT_DOD="${DODGC_CONTENT_DOD:-$DODGC_ROOT/content/dod}"
 export DODGC_CONTENT_VALVE="${DODGC_CONTENT_VALVE:-$DODGC_ROOT/content/valve}"
 export DODGC_HLSDK="${DODGC_HLSDK:-$DODGC_ROOT/hlsdk-portable}"
@@ -54,7 +54,7 @@ mkdir -p "$DODGC_OUT" "$DODGC_SHOTS" "$DODGC_VIDEOS" "$DODGC_NOTES" "$XASH3D_GC_
 dodgc_require_content() {
 	if [[ ! -f "$DODGC_CONTENT_DOD/liblist.gam" ]]; then
 		echo "error: DoD content missing at $DODGC_CONTENT_DOD" >&2
-		echo "  symlink content/dod → Steam Half-Life/dod" >&2
+		echo "  symlink content/dod → retail Half-Life/dod" >&2
 		exit 1
 	fi
 	if [[ ! -d "$DODGC_CONTENT_VALVE" ]]; then

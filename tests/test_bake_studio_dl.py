@@ -31,7 +31,7 @@ class BakeStudioDlTest(unittest.TestCase):
 		bsp = ROOT / "content" / "dod" / "maps" / "dod_avalanche.bsp"
 		src = ROOT / "content" / "dod"
 		if not bsp.is_file() or not (src / "models" / "mapmodels" / "sandbags.mdl").is_file():
-			self.skipTest("Steam dod content not linked")
+			self.skipTest("retail dod content not linked")
 		with tempfile.TemporaryDirectory() as td:
 			out = Path(td) / "sd_dod_avalanche.gsd"
 			rc = self.mod.bake_map(bsp, src, out)

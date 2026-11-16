@@ -5,25 +5,25 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 ENGINE_DEFAULT="/run/media/tim/Expansion/xash3d-gc"
-STEAM_HL_DEFAULT="/home/tim/snap/steam/common/.local/share/Steam/steamapps/common/Half-Life"
+RETAIL_HL_DEFAULT="${DODGC_STEAM_HL_DEFAULT:-/home/tim/snap/steam/common/.local/share/Steam/steamapps/common/Half-Life}"
 
 ENGINE="${DODGC_ENGINE_TARGET:-$ENGINE_DEFAULT}"
-STEAM_HL="${DODGC_STEAM_HL:-$STEAM_HL_DEFAULT}"
+RETAIL_HL="${DODGC_RETAIL_HL:-${DODGC_STEAM_HL:-$RETAIL_HL_DEFAULT}}" # DODGC_STEAM_HL: legacy name
 
 usage() {
 	cat <<EOF
-usage: scripts/link-deps.sh [--engine PATH] [--steam-hl PATH]
+usage: scripts/link-deps.sh [--engine PATH] [--retail-hl PATH]
 
 Defaults:
   engine:   $ENGINE_DEFAULT
-  steam-hl: $STEAM_HL_DEFAULT
+  retail-hl: $RETAIL_HL_DEFAULT
 EOF
 }
 
 while [[ $# -gt 0 ]]; do
 	case "$1" in
 		--engine) ENGINE="${2:-}"; shift ;;
-		--steam-hl) STEAM_HL="${2:-}"; shift ;;
+		--retail-hl|--steam-hl) RETAIL_HL="${2:-}"; shift ;;
 		-h|--help) usage; exit 0 ;;
 		*) echo "unknown option: $1" >&2; usage >&2; exit 2 ;;
 	esac
@@ -31,14 +31,14 @@ while [[ $# -gt 0 ]]; do
 done
 
 [[ -d "$ENGINE/scripts" ]] || { echo "error: engine path invalid: $ENGINE" >&2; exit 1; }
-[[ -d "$STEAM_HL/dod" ]] || { echo "error: Steam DoD missing: $STEAM_HL/dod" >&2; exit 1; }
-[[ -d "$STEAM_HL/valve" ]] || { echo "error: Steam valve missing: $STEAM_HL/valve" >&2; exit 1; }
+[[ -d "$RETAIL_HL/dod" ]] || { echo "error: retail DoD missing: $RETAIL_HL/dod" >&2; exit 1; }
+[[ -d "$RETAIL_HL/valve" ]] || { echo "error: retail valve missing: $RETAIL_HL/valve" >&2; exit 1; }
 
 mkdir -p "$ROOT/content"
 ln -sfn "$ENGINE" "$ROOT/engine"
 ln -sfn "$ENGINE/3rdparty/hlsdk-portable" "$ROOT/hlsdk-portable"
-ln -sfn "$STEAM_HL/dod" "$ROOT/content/dod"
-ln -sfn "$STEAM_HL/valve" "$ROOT/content/valve"
+ln -sfn "$RETAIL_HL/dod" "$ROOT/content/dod"
+ln -sfn "$RETAIL_HL/valve" "$ROOT/content/valve"
 
 echo "linked:"
 printf '  %s -> %s\n' engine "$(readlink -f "$ROOT/engine")"

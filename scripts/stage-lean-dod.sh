@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Stage a MEM1-friendly Day of Defeat tree for dodgc.iso / dodgc-menu.iso.
-# Full Steam dod/ is far too large for GameCube boot; keep markers + UI only.
+# Full retail dod/ is far too large for GameCube boot; keep markers + UI only.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -430,7 +430,7 @@ PY
 	fi
 fi
 
-# Retail DoD soldier splash tiles (same 800×600 layout as HL1 steam sheet).
+# Retail DoD soldier splash tiles (same 800×600 layout as HL1 menu background sheet).
 mkdir -p "$LEAN/resource/background"
 DOD_BG_SRC=""
 if [[ -f "$SRC/resource/background/800_1_a_loading.tga" ]]; then

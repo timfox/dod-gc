@@ -70,7 +70,7 @@ if (( ! ISO_ONLY )); then
 
 	if (( ! SKIP_HLSDK )); then
 		echo "==> HLSDK GameCube archives for gamedir=dod → $SDK_PRIVATE"
-		echo "    note: Steam DoD client is vgui2-blocked upstream; this tree uses"
+		echo "    note: retail DoD client is vgui2-blocked upstream; this tree uses"
 		echo "    HL1SDK deathmatch as the code base while mirroring DoD assets."
 		HLSDK_GAMECUBE_DESTDIR="$SDK_PRIVATE" \
 		HLSDK_GAMECUBE_GAMEDIR=dod \
@@ -122,7 +122,7 @@ fi
 echo "==> [dod-gc] packaging isolated ISO: $DODGC_ISO"
 echo "    data=$DODGC_CONTENT_DOD  gamedir=dod  cache=$XASH3D_GC_ISO_CACHE"
 
-# Stage content into cache so disc tooling never writes into Steam or HL1 trees.
+# Stage content into cache so disc tooling never writes into the retail DoD or HL1 trees.
 BUILD_DATA="$XASH3D_GC_ISO_CACHE/dod"
 BUILD_VALVE="$XASH3D_GC_ISO_CACHE/valve"
 mkdir -p "$BUILD_DATA"

@@ -1,6 +1,6 @@
 # Day of Defeat game code
 
-This port uses the HL1SDK-based `hlsdk-portable` game DLL because Steam DoD
+This port uses the HL1SDK-based `hlsdk-portable` game DLL because retail DoD
 provides assets but no game source, and its retail client depends on VGUI2,
 which the current Xash3D GameCube build does not support.
 
