@@ -14,6 +14,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/env.sh"
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/tip-status.sh"
 
 SHORT=0
 [[ "${1:-}" == "--short" ]] && SHORT=1
@@ -38,6 +40,17 @@ if [[ -n "${DODGC_DOLPHIN_SRC:-}" && -d "$DODGC_DOLPHIN_SRC" ]]; then
 	fi
 fi
 
+# Whether each source is at the tip of the ref it tracks. A checkout you supplied yourself is not checked.
+engine_tip="user-supplied (not checked)"
+hlsdk_tip="user-supplied (not checked)"
+if [[ "$DODGC_ENGINE" == "$DODGC_ROOT/.deps/xash3d-gc" ]]; then
+	engine_tip="$(dodgc_tip_status "$DODGC_ENGINE" "$DODGC_ENGINE_REF")"
+fi
+if [[ -n "$DODGC_HLSDK" && "$DODGC_HLSDK" == "$DODGC_ROOT/.deps/hlsdk-portable" ]]; then
+	# the SDK is pinned to a commit: it is "at the tip" when the pinned branch has not moved past the pin
+	hlsdk_tip="$(dodgc_tip_status "$DODGC_HLSDK" "$DODGC_HLSDK_BRANCH")"
+fi
+
 tool="$DODGC_TOOLS/split_studio_mdl.py"
 tool_sha="missing"
 [[ -f "$tool" ]] && tool_sha="$(sha256sum "$tool" | cut -c1-16)"
@@ -45,9 +58,9 @@ tool_sha="missing"
 echo "build-info 1"
 echo "built $(date -u +%Y-%m-%dT%H:%M:%SZ) on $(hostname)"
 echo "dod-gc $(sha "$DODGC_ROOT") $(branch "$DODGC_ROOT") dirty=$(dirty "$DODGC_ROOT")"
-echo "xash3d-gc $(sha "$DODGC_ENGINE") $(branch "$DODGC_ENGINE") dirty=$(dirty "$DODGC_ENGINE")"
+echo "xash3d-gc $(sha "$DODGC_ENGINE") $(branch "$DODGC_ENGINE") dirty=$(dirty "$DODGC_ENGINE") $engine_tip"
 if [[ -n "$DODGC_HLSDK" ]]; then
-	echo "hlsdk $hlsdk_head $(branch "$DODGC_HLSDK") modified-by-integration=$(dirty "$DODGC_HLSDK") pin=$hlsdk_pin"
+	echo "hlsdk $hlsdk_head $(branch "$DODGC_HLSDK") modified-by-integration=$(dirty "$DODGC_HLSDK") pin=$hlsdk_pin branch-$hlsdk_tip"
 else
 	echo "hlsdk none (not selected for this build)"
 fi

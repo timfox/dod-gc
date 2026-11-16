@@ -50,6 +50,26 @@ done
 dodgc_require_content
 dodgc_require_hlsdk
 
+# A rebuild must not silently use an old engine: with the default clone under .deps/, stop when it is behind the
+# branch the lock tracks (scripts/fetch-sources.sh --update moves it). Offline, or a checkout you supplied
+# yourself, is not checked. DODGC_ALLOW_STALE_ENGINE=1 builds anyway.
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/tip-status.sh"
+if (( ! ISO_ONLY )) && [[ "$DODGC_ENGINE" == "$DODGC_ROOT/.deps/xash3d-gc" ]]; then
+	engine_tip="$(dodgc_tip_status "$DODGC_ENGINE" "$DODGC_ENGINE_REF")"
+	case "$engine_tip" in
+		tip=NO*)
+			if [[ "${DODGC_ALLOW_STALE_ENGINE:-0}" != 1 ]]; then
+				echo "error: the engine clone $DODGC_ENGINE is not at the tip of $DODGC_ENGINE_REF: $engine_tip" >&2
+				echo "  run scripts/fetch-sources.sh --update, or set DODGC_ALLOW_STALE_ENGINE=1 to build with it anyway." >&2
+				exit 1
+			fi
+			echo "warning: building with a stale engine ($engine_tip)" >&2
+			;;
+		tip=unknown*) echo "warning: could not check the engine clone against origin ($engine_tip)" >&2 ;;
+	esac
+fi
+
 # The SDK must be the pinned commit (scripts/sources.lock); a different HEAD means the game DLL would
 # be built from code nobody recorded. DODGC_HLSDK_UNPINNED=1 is the explicit way to build another one.
 if git -C "$DODGC_HLSDK" rev-parse --is-inside-work-tree >/dev/null 2>&1; then

@@ -4,14 +4,18 @@
 #
 #   scripts/fetch-sources.sh                 clone what is missing, check out the pinned refs
 #   scripts/fetch-sources.sh --update        also fetch and move an existing clone to the pinned refs
+#                                            (the engine to the tip of its branch; the SDK clone is reset first: the
+#                                            integrator edits it in place on every build, so it is disposable)
 #   scripts/fetch-sources.sh --engine-ref X  use branch/tag/commit X for the engine instead of the lock
 #
-# Existing clones with local changes are never touched: the script stops and says so.
+# It only ever touches the clones under .deps/ (or DODGC_DEPS_DIR); a checkout you point DODGC_ENGINE or
+# DODGC_HLSDK at is never fetched, reset or cleaned. An engine clone with local changes is not touched either:
+# the script stops and says so. DODGC_SOURCES_LOCK names another lock file (tests).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # shellcheck disable=SC1091
-source "$ROOT/scripts/sources.lock"
+source "${DODGC_SOURCES_LOCK:-$ROOT/scripts/sources.lock}"
 
 UPDATE=0
 while [[ $# -gt 0 ]]; do
@@ -24,7 +28,7 @@ while [[ $# -gt 0 ]]; do
 	shift
 done
 
-DEPS="$ROOT/.deps"
+DEPS="${DODGC_DEPS_DIR:-$ROOT/.deps}"
 mkdir -p "$DEPS"
 
 require_clean() {
@@ -60,7 +64,13 @@ if [[ ! -d "$HLSDK_DIR/.git" ]]; then
 	UPDATE=1
 fi
 if (( UPDATE )); then
-	require_clean "$HLSDK_DIR"
+	# The SDK clone is disposable: scripts/integrate-dod-gameplay.py edits it in place (and copies our sources
+	# into it) on every build, so it always "has local changes". Reset it to the commit it is on, drop what the
+	# integrator added, and move it to the pin. HLSDK_DIR is always inside DEPS: a DODGC_HLSDK you supplied is
+	# never reached by this script.
+	case "$HLSDK_DIR" in "$DEPS"/*) ;; *) echo "error: refusing to reset $HLSDK_DIR (not inside $DEPS)" >&2; exit 1 ;; esac
+	git -C "$HLSDK_DIR" reset -q --hard HEAD
+	git -C "$HLSDK_DIR" clean -fdq
 	git -C "$HLSDK_DIR" fetch --tags origin
 	if ! git -C "$HLSDK_DIR" cat-file -e "$DODGC_HLSDK_COMMIT^{commit}" 2>/dev/null; then
 		echo "error: pinned SDK commit $DODGC_HLSDK_COMMIT is not in $DODGC_HLSDK_URL" >&2
