@@ -187,60 +187,287 @@ DodBotEscape Dod_BotStuckUpdate(DodBotStuck *s, float x, float y, float time, in
 	return esc;
 }
 
+/* Attack target: keep the current one while it is still valid, else the nearest (crowd-adjusted) uncaptured. */
+static int choose_attack(const DodBotObjectiveInfo *list, int count, DodTeam team, int current_id, int use_crowd)
+{
+	int i, best = -1;
+	float best_dist = 0.0f;
+	for (i = 0; i < count; ++i) {
+		const DodBotObjectiveInfo *o = &list[i];
+		float d;
+		if (o->blocked || o->owner == team || !o->can_cap[team])
+			continue;
+		if (o->id == current_id)
+			return o->id;
+		d = o->distance + (use_crowd ? DOD_BOT_CROWD_PENALTY * (float)o->crowd : 0.0f);
+		if (best < 0 || d < best_dist) {
+			best = o->id;
+			best_dist = d;
+		}
+	}
+	return best;
+}
+
+/* Defend target: a point being captured by the enemy first, then the current one, then the nearest held. */
+static int choose_defend(const DodBotObjectiveInfo *list, int count, DodTeam team, int current_id)
+{
+	int i, under_attack = -1, nearest = -1, keep = -1;
+	float under_dist = 0.0f, near_dist = 0.0f;
+	for (i = 0; i < count; ++i) {
+		const DodBotObjectiveInfo *o = &list[i];
+		if (o->blocked || o->owner != team)
+			continue;
+		if (o->capturing_team != DOD_TEAM_UNASSIGNED && o->capturing_team != team &&
+			(under_attack < 0 || o->distance < under_dist)) {
+			under_attack = o->id;
+			under_dist = o->distance;
+		}
+		if (o->id == current_id)
+			keep = o->id;
+		if (nearest < 0 || o->distance < near_dist) {
+			nearest = o->id;
+			near_dist = o->distance;
+		}
+	}
+	return under_attack >= 0 ? under_attack : (keep >= 0 ? keep : nearest);
+}
+
 int Dod_BotChooseObjective(const DodBotObjectiveInfo *list, int count, DodTeam team, int current_id, int *kind)
 {
-	int i, best = -1, best_kind = DOD_BOT_GOAL_NONE;
-	float best_dist = 0.0f;
+	return Dod_BotChooseObjectiveRole(list, count, team, current_id, DOD_ROLE_ATTACKER, kind);
+}
+
+int Dod_BotChooseObjectiveRole(const DodBotObjectiveInfo *list, int count, DodTeam team, int current_id, int role, int *kind)
+{
+	int id;
 	if (kind)
 		*kind = DOD_BOT_GOAL_NONE;
 	if (!list || count <= 0 || (team != DOD_TEAM_ALLIES && team != DOD_TEAM_AXIS))
 		return -1;
-	/* Attack: keep the current target while it is still one, else the nearest. */
-	for (i = 0; i < count; ++i) {
-		const DodBotObjectiveInfo *o = &list[i];
-		if (o->blocked || o->owner == team || !o->can_cap[team])
-			continue;
-		if (o->id == current_id) {
+	if (role == DOD_ROLE_DEFENDER) {
+		id = choose_defend(list, count, team, current_id);
+		if (id >= 0) {
 			if (kind)
-				*kind = DOD_BOT_GOAL_ATTACK;
-			return o->id;
+				*kind = DOD_BOT_GOAL_DEFEND;
+			return id;
 		}
-		if (best < 0 || o->distance < best_dist) {
-			best = o->id;
-			best_dist = o->distance;
-			best_kind = DOD_BOT_GOAL_ATTACK;
-		}
+		id = choose_attack(list, count, team, current_id, 1);
+		if (id >= 0 && kind)
+			*kind = DOD_BOT_GOAL_ATTACK;
+		return id;
 	}
-	if (best >= 0) {
+	id = choose_attack(list, count, team, current_id, 1);
+	if (id >= 0) {
 		if (kind)
-			*kind = best_kind;
-		return best;
+			*kind = DOD_BOT_GOAL_ATTACK;
+		return id;
 	}
-	/* Defend: a point being captured by the enemy first, then the current one, then the nearest. */
-	{
-		int under_attack = -1, nearest = -1, keep = -1;
-		float under_dist = 0.0f, near_dist = 0.0f;
-		for (i = 0; i < count; ++i) {
-			const DodBotObjectiveInfo *o = &list[i];
-			if (o->blocked || o->owner != team)
-				continue;
-			if (o->capturing_team != DOD_TEAM_UNASSIGNED && o->capturing_team != team &&
-				(under_attack < 0 || o->distance < under_dist)) {
-				under_attack = o->id;
-				under_dist = o->distance;
-			}
-			if (o->id == current_id)
-				keep = o->id;
-			if (nearest < 0 || o->distance < near_dist) {
-				nearest = o->id;
-				near_dist = o->distance;
-			}
-		}
-		best = under_attack >= 0 ? under_attack : (keep >= 0 ? keep : nearest);
-	}
-	if (best >= 0 && kind)
+	id = choose_defend(list, count, team, current_id);
+	if (id >= 0 && kind)
 		*kind = DOD_BOT_GOAL_DEFEND;
+	return id;
+}
+
+int Dod_BotRole(int rank, int team_bots, int held_points)
+{
+	int defenders;
+	if (team_bots < 2 || held_points <= 0)
+		return DOD_ROLE_ATTACKER;
+	defenders = team_bots / 3;
+	if (defenders < 1)
+		defenders = 1;
+	return rank >= team_bots - defenders ? DOD_ROLE_DEFENDER : DOD_ROLE_ATTACKER;
+}
+
+/* ---------------------------------------------------------------- GOAP */
+
+typedef struct GoapAction {
+	unsigned pre_mask, pre_value, set, clear;
+	int cost;
+} GoapAction;
+
+static const GoapAction goap_actions[DOD_ACT_COUNT] = {
+	/* NONE */ {0, 0, 0, 0, 0},
+	/* RELOAD */ {0, 0, DOD_WS_HAS_AMMO, 0, 2},
+	/* ATTACK */ {DOD_WS_HAS_AMMO | DOD_WS_ENEMY_VISIBLE, DOD_WS_HAS_AMMO | DOD_WS_ENEMY_VISIBLE, 0, DOD_WS_ENEMY_VISIBLE | DOD_WS_ENEMY_KNOWN, 2},
+	/* SEEK */ {DOD_WS_ENEMY_KNOWN | DOD_WS_ENEMY_VISIBLE, DOD_WS_ENEMY_KNOWN, DOD_WS_ENEMY_VISIBLE, DOD_WS_AT_POINT | DOD_WS_IN_COVER, 5},
+	/* TAKE_COVER */ {DOD_WS_IN_COVER, 0, DOD_WS_IN_COVER, DOD_WS_AT_POINT, 3},
+	/* REGROUP */ {DOD_WS_NEAR_TEAM, 0, DOD_WS_NEAR_TEAM, DOD_WS_AT_POINT | DOD_WS_IN_COVER, 4},
+	/* MOVE_POINT */ {DOD_WS_AT_POINT, 0, DOD_WS_AT_POINT, DOD_WS_IN_COVER, 6},
+	/* CAPTURE */ {DOD_WS_AT_POINT | DOD_WS_POINT_HELD, DOD_WS_AT_POINT, DOD_WS_POINT_HELD, DOD_WS_POINT_CONTESTED, 3},
+	/* GUARD */ {DOD_WS_AT_POINT, DOD_WS_AT_POINT, 0, DOD_WS_POINT_CONTESTED, 3}
+};
+
+int Dod_GoapStepApplicable(int action, unsigned state)
+{
+	if (action <= DOD_ACT_NONE || action >= DOD_ACT_COUNT)
+		return 0;
+	return (state & goap_actions[action].pre_mask) == goap_actions[action].pre_value;
+}
+
+unsigned Dod_GoapStepApply(int action, unsigned state)
+{
+	if (action <= DOD_ACT_NONE || action >= DOD_ACT_COUNT)
+		return state;
+	return (state & ~goap_actions[action].clear) | goap_actions[action].set;
+}
+
+void Dod_GoapGoalWant(int goal, unsigned *mask, unsigned *value)
+{
+	unsigned m = 0, v = 0;
+	switch (goal) {
+	case DOD_GOAL_CAPTURE: m = DOD_WS_POINT_HELD; v = DOD_WS_POINT_HELD; break;
+	case DOD_GOAL_DEFEND: m = DOD_WS_AT_POINT | DOD_WS_POINT_CONTESTED; v = DOD_WS_AT_POINT; break;
+	case DOD_GOAL_HUNT: m = DOD_WS_ENEMY_VISIBLE | DOD_WS_ENEMY_KNOWN; v = 0; break;
+	case DOD_GOAL_COVER: m = DOD_WS_IN_COVER; v = DOD_WS_IN_COVER; break;
+	case DOD_GOAL_RELOAD: m = DOD_WS_HAS_AMMO; v = DOD_WS_HAS_AMMO; break;
+	case DOD_GOAL_REGROUP: m = DOD_WS_NEAR_TEAM; v = DOD_WS_NEAR_TEAM; break;
+	default: break;
+	}
+	if (mask)
+		*mask = m;
+	if (value)
+		*value = v;
+}
+
+int Dod_GoapInsistence(int goal, unsigned state, int role, int team_bots)
+{
+	const int enemy = (state & (DOD_WS_ENEMY_VISIBLE | DOD_WS_ENEMY_KNOWN)) != 0;
+	const int visible = (state & DOD_WS_ENEMY_VISIBLE) != 0;
+	const int low = (state & DOD_WS_LOW_HEALTH) != 0;
+	const int cover = (state & DOD_WS_IN_COVER) != 0;
+	const int ammo = (state & DOD_WS_HAS_AMMO) != 0;
+	switch (goal) {
+	case DOD_GOAL_RELOAD:
+		return ammo ? 0 : (visible ? 88 : 92);
+	case DOD_GOAL_COVER:
+		if (cover)
+			return 0;
+		if (low && enemy)
+			return 90;
+		return (!ammo && visible) ? 91 : 0;
+	case DOD_GOAL_HUNT:
+		if (visible)
+			return ammo ? (low ? 60 : 80) : 0;
+		if (state & DOD_WS_ENEMY_KNOWN)
+			return role == DOD_ROLE_DEFENDER ? 25 : 50;
+		return 0;
+	case DOD_GOAL_REGROUP:
+		return (team_bots > 1 && !(state & DOD_WS_NEAR_TEAM) && low) ? 62 : 0;
+	case DOD_GOAL_CAPTURE:
+		if (role != DOD_ROLE_ATTACKER || (state & DOD_WS_POINT_HELD))
+			return 0;
+		return (state & DOD_WS_POINT_CONTESTED) ? 66 : 55;
+	case DOD_GOAL_DEFEND:
+		if (role != DOD_ROLE_DEFENDER)
+			return 0;
+		return (state & DOD_WS_POINT_CONTESTED) ? 72 : 45;
+	default:
+		return 0;
+	}
+}
+
+int Dod_GoapPickGoal(unsigned state, int role, int team_bots, int current)
+{
+	int g, best = -1, best_score = 0;
+	for (g = 0; g < DOD_GOAL_COUNT; ++g) {
+		unsigned mask, value;
+		int score = Dod_GoapInsistence(g, state, role, team_bots);
+		if (score <= 0)
+			continue;
+		Dod_GoapGoalWant(g, &mask, &value);
+		if ((state & mask) == value)
+			continue;	/* already true */
+		if (g == current)
+			score += 10;
+		if (score > best_score) {
+			best_score = score;
+			best = g;
+		}
+	}
 	return best;
+}
+
+#define GOAP_NODES 96
+
+DodGoapPlan Dod_GoapPlan(unsigned state, int goal)
+{
+	unsigned st[GOAP_NODES];
+	short parent[GOAP_NODES];
+	unsigned char act[GOAP_NODES], depth[GOAP_NODES], done[GOAP_NODES];
+	int cost[GOAP_NODES];
+	int n = 1, i, a, cur;
+	unsigned mask, value;
+	DodGoapPlan plan;
+	memset(&plan, 0, sizeof(plan));
+	plan.goal = goal;
+	Dod_GoapGoalWant(goal, &mask, &value);
+	if (goal < 0 || goal >= DOD_GOAL_COUNT || (state & mask) == value)
+		return plan;
+	st[0] = state;
+	parent[0] = -1;
+	act[0] = 0;
+	depth[0] = 0;
+	done[0] = 0;
+	cost[0] = 0;
+	for (;;) {
+		cur = -1;
+		for (i = 0; i < n; ++i)
+			if (!done[i] && (cur < 0 || cost[i] < cost[cur]))
+				cur = i;
+		if (cur < 0)
+			return plan;	/* unreachable */
+		if ((st[cur] & mask) == value) {
+			int len = depth[cur], k = cur;
+			plan.count = len;
+			plan.cost = cost[cur];
+			while (k > 0 && len > 0) {
+				plan.steps[--len] = act[k];
+				k = parent[k];
+			}
+			return plan;
+		}
+		done[cur] = 1;
+		if (depth[cur] >= DOD_GOAP_MAX_PLAN)
+			continue;
+		for (a = 1; a < DOD_ACT_COUNT; ++a) {
+			unsigned ns;
+			int seen = 0, nc;
+			if (!Dod_GoapStepApplicable(a, st[cur]))
+				continue;
+			ns = Dod_GoapStepApply(a, st[cur]);
+			if (ns == st[cur])
+				continue;
+			nc = cost[cur] + goap_actions[a].cost;
+			for (i = 0; i < n; ++i) {
+				if (st[i] == ns && cost[i] <= nc) {
+					seen = 1;
+					break;
+				}
+			}
+			if (seen || n >= GOAP_NODES)
+				continue;
+			st[n] = ns;
+			parent[n] = (short)cur;
+			act[n] = (unsigned char)a;
+			depth[n] = (unsigned char)(depth[cur] + 1);
+			done[n] = 0;
+			cost[n] = nc;
+			++n;
+		}
+	}
+}
+
+DodGoapPlan Dod_GoapThink(unsigned state, int role, int team_bots, int current_goal)
+{
+	const int goal = Dod_GoapPickGoal(state, role, team_bots, current_goal);
+	DodGoapPlan none;
+	if (goal < 0) {
+		memset(&none, 0, sizeof(none));
+		none.goal = -1;
+		return none;
+	}
+	return Dod_GoapPlan(state, goal);
 }
 
 void Dod_BotBlockAdd(int *ids, float *untils, int slots, int id, float until, float now)

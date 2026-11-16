@@ -409,6 +409,93 @@ static void test_nav(void)
 	Dod_NavFree(&nav);
 }
 
+
+static void test_goap(void)
+{
+	const unsigned ammo = DOD_WS_HAS_AMMO;
+	DodGoapPlan p;
+	DodBotObjectiveInfo o[3];
+	int kind, id;
+
+	/* an enemy in sight and ammo: shoot it */
+	p = Dod_GoapThink(ammo | DOD_WS_ENEMY_VISIBLE | DOD_WS_ENEMY_KNOWN, DOD_ROLE_ATTACKER, 2, -1);
+	assert(p.goal == DOD_GOAL_HUNT && p.count == 1 && p.steps[0] == DOD_ACT_ATTACK);
+	/* known but out of sight: go there, then shoot */
+	p = Dod_GoapThink(ammo | DOD_WS_ENEMY_KNOWN | DOD_WS_POINT_HELD, DOD_ROLE_ATTACKER, 2, -1);
+	assert(p.goal == DOD_GOAL_HUNT && p.count == 2 && p.steps[0] == DOD_ACT_SEEK && p.steps[1] == DOD_ACT_ATTACK);
+	/* a defender hunts an unseen enemy less than it guards its point */
+	p = Dod_GoapThink(ammo | DOD_WS_ENEMY_KNOWN | DOD_WS_POINT_HELD | DOD_WS_POINT_CONTESTED, DOD_ROLE_DEFENDER, 2, -1);
+	assert(p.goal == DOD_GOAL_DEFEND && p.count == 2 && p.steps[0] == DOD_ACT_MOVE_POINT && p.steps[1] == DOD_ACT_GUARD);
+	/* empty clip, nobody around: reload */
+	p = Dod_GoapThink(0, DOD_ROLE_ATTACKER, 2, -1);
+	assert(p.goal == DOD_GOAL_RELOAD && p.count == 1 && p.steps[0] == DOD_ACT_RELOAD);
+	/* empty clip with an enemy in sight: cover first, then (out of sight) reload */
+	p = Dod_GoapThink(DOD_WS_ENEMY_VISIBLE | DOD_WS_ENEMY_KNOWN, DOD_ROLE_ATTACKER, 2, -1);
+	assert(p.goal == DOD_GOAL_COVER && p.count == 1 && p.steps[0] == DOD_ACT_TAKE_COVER);
+	p = Dod_GoapThink(DOD_WS_ENEMY_KNOWN | DOD_WS_IN_COVER, DOD_ROLE_ATTACKER, 2, -1);
+	assert(p.goal == DOD_GOAL_RELOAD);
+	/* hurt and hunted: take cover rather than fight on */
+	p = Dod_GoapThink(ammo | DOD_WS_LOW_HEALTH | DOD_WS_ENEMY_VISIBLE | DOD_WS_ENEMY_KNOWN, DOD_ROLE_ATTACKER, 2, -1);
+	assert(p.goal == DOD_GOAL_COVER);
+	/* hurt, in cover, with a friend elsewhere: regroup */
+	p = Dod_GoapThink(ammo | DOD_WS_LOW_HEALTH | DOD_WS_IN_COVER, DOD_ROLE_ATTACKER, 2, -1);
+	assert(p.goal == DOD_GOAL_REGROUP && p.steps[0] == DOD_ACT_REGROUP);
+	p = Dod_GoapThink(ammo | DOD_WS_LOW_HEALTH | DOD_WS_IN_COVER, DOD_ROLE_ATTACKER, 1, -1);
+	assert(p.goal == -1 || p.goal == DOD_GOAL_CAPTURE);	/* alone: nobody to regroup with */
+	/* nothing special: an attacker goes and captures, a defender guards */
+	p = Dod_GoapThink(ammo, DOD_ROLE_ATTACKER, 2, -1);
+	assert(p.goal == DOD_GOAL_CAPTURE && p.count == 2 && p.steps[0] == DOD_ACT_MOVE_POINT && p.steps[1] == DOD_ACT_CAPTURE);
+	p = Dod_GoapThink(ammo | DOD_WS_AT_POINT, DOD_ROLE_ATTACKER, 2, -1);
+	assert(p.goal == DOD_GOAL_CAPTURE && p.count == 1 && p.steps[0] == DOD_ACT_CAPTURE);
+	p = Dod_GoapThink(ammo | DOD_WS_AT_POINT | DOD_WS_POINT_HELD, DOD_ROLE_ATTACKER, 2, -1);
+	assert(p.goal == -1 && p.count == 0);	/* the point is ours: nothing to do */
+	p = Dod_GoapThink(ammo | DOD_WS_POINT_HELD, DOD_ROLE_DEFENDER, 2, -1);
+	assert(p.goal == DOD_GOAL_DEFEND && p.steps[0] == DOD_ACT_MOVE_POINT);
+	p = Dod_GoapThink(ammo | DOD_WS_AT_POINT | DOD_WS_POINT_HELD, DOD_ROLE_DEFENDER, 2, -1);
+	assert(p.goal == -1 && p.count == 0);	/* guarding already */
+
+	/* a held goal's bonus stops flapping between near-equal goals */
+	assert(Dod_GoapPickGoal(ammo | DOD_WS_ENEMY_KNOWN, DOD_ROLE_ATTACKER, 2, DOD_GOAL_CAPTURE) == DOD_GOAL_CAPTURE);
+	assert(Dod_GoapPickGoal(ammo | DOD_WS_ENEMY_KNOWN, DOD_ROLE_ATTACKER, 2, -1) == DOD_GOAL_CAPTURE);	/* 55 vs 50 */
+	assert(Dod_GoapPickGoal(ammo | DOD_WS_ENEMY_KNOWN | DOD_WS_ENEMY_VISIBLE, DOD_ROLE_ATTACKER, 2, DOD_GOAL_CAPTURE) == DOD_GOAL_HUNT);
+
+	/* transitions */
+	assert(Dod_GoapStepApplicable(DOD_ACT_ATTACK, ammo | DOD_WS_ENEMY_VISIBLE));
+	assert(!Dod_GoapStepApplicable(DOD_ACT_ATTACK, DOD_WS_ENEMY_VISIBLE));
+	assert(!Dod_GoapStepApplicable(DOD_ACT_CAPTURE, ammo));
+	assert(Dod_GoapStepApply(DOD_ACT_ATTACK, ammo | DOD_WS_ENEMY_VISIBLE | DOD_WS_ENEMY_KNOWN) == ammo);
+	assert(!Dod_GoapStepApplicable(DOD_ACT_NONE, 0) && !Dod_GoapStepApplicable(99, 0));
+
+	/* roles: a lone bot attacks; with a held point a third (at least one) of the team defends */
+	assert(Dod_BotRole(0, 1, 2) == DOD_ROLE_ATTACKER);
+	assert(Dod_BotRole(0, 3, 0) == DOD_ROLE_ATTACKER && Dod_BotRole(2, 3, 0) == DOD_ROLE_ATTACKER);
+	assert(Dod_BotRole(0, 2, 1) == DOD_ROLE_ATTACKER && Dod_BotRole(1, 2, 1) == DOD_ROLE_DEFENDER);
+	assert(Dod_BotRole(0, 6, 1) == DOD_ROLE_ATTACKER && Dod_BotRole(3, 6, 1) == DOD_ROLE_ATTACKER);
+	assert(Dod_BotRole(4, 6, 1) == DOD_ROLE_DEFENDER && Dod_BotRole(5, 6, 1) == DOD_ROLE_DEFENDER);
+
+	/* role-aware objectives: attackers spread over the uncaptured points, defenders guard held ones */
+	memset(o, 0, sizeof(o));
+	o[0].id = 0; o[0].owner = DOD_TEAM_ALLIES; o[0].distance = 100.0f;
+	o[1].id = 1; o[1].owner = DOD_TEAM_AXIS; o[1].distance = 500.0f;
+	o[2].id = 2; o[2].owner = DOD_TEAM_AXIS; o[2].distance = 700.0f;
+	o[0].can_cap[DOD_TEAM_AXIS] = o[1].can_cap[DOD_TEAM_ALLIES] = o[2].can_cap[DOD_TEAM_ALLIES] = 1;
+	o[0].can_cap[DOD_TEAM_ALLIES] = 1;
+	id = Dod_BotChooseObjectiveRole(o, 3, DOD_TEAM_ALLIES, -1, DOD_ROLE_ATTACKER, &kind);
+	assert(id == 1 && kind == DOD_BOT_GOAL_ATTACK);
+	o[1].crowd = 1;	/* a teammate is already going to point 1: the next attacker takes point 2 */
+	id = Dod_BotChooseObjectiveRole(o, 3, DOD_TEAM_ALLIES, -1, DOD_ROLE_ATTACKER, &kind);
+	assert(id == 2 && kind == DOD_BOT_GOAL_ATTACK);
+	id = Dod_BotChooseObjectiveRole(o, 3, DOD_TEAM_ALLIES, -1, DOD_ROLE_DEFENDER, &kind);
+	assert(id == 0 && kind == DOD_BOT_GOAL_DEFEND);
+	o[0].capturing_team = DOD_TEAM_AXIS;	/* under attack: defenders go there */
+	id = Dod_BotChooseObjectiveRole(o, 3, DOD_TEAM_ALLIES, -1, DOD_ROLE_DEFENDER, &kind);
+	assert(id == 0 && kind == DOD_BOT_GOAL_DEFEND);
+	/* a defender with nothing held takes something instead */
+	o[0].owner = DOD_TEAM_AXIS;
+	id = Dod_BotChooseObjectiveRole(o, 3, DOD_TEAM_ALLIES, -1, DOD_ROLE_DEFENDER, &kind);
+	assert(id >= 0 && kind == DOD_BOT_GOAL_ATTACK);
+}
+
 int main(void)
 {
 	test_spectator();
@@ -423,5 +510,6 @@ int main(void)
 	test_decide();
 	test_objectives();
 	test_nav();
+	test_goap();
 	return 0;
 }
