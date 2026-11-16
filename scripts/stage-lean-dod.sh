@@ -553,6 +553,12 @@ done
 for f in gameui_english.txt valve_english.txt mainui_english.txt; do
 	[[ -f "$VALVE/resource/$f" ]] && cp -f "$VALVE/resource/$f" "$VMIN/resource/"
 done
+# The retail localisation still names the Steam Networking checkbox; no menu draws it, so the staged copy drops the line.
+sed -i '/Valve_Enable_SteamNetworking/d' "$VMIN/resource/"*.txt 2>/dev/null || true
+if grep -rqai "Enable Steam Networking" "$VMIN" "$LEAN" 2>/dev/null; then
+	echo "error: the staged tree still contains \"Enable Steam Networking\"" >&2
+	exit 1
+fi
 
 echo "staged lean DoD: $(du -sh "$LEAN" | awk '{print $1}') → $LEAN"
 echo "staged lean valve: $(du -sh "$VMIN" | awk '{print $1}') → $VMIN"
