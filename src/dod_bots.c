@@ -113,6 +113,119 @@ float Dod_BotAimError(float distance, int skill)
 	return base[skill] + per_unit[skill] * distance;
 }
 
+/* ---------------------------------------------------------------- perception and aim */
+
+DodBotSkill Dod_BotSkillParams(int skill)
+{
+	static const DodBotSkill table[4] = {
+		/* fov  react       aim: base dist tspd own   settle turn  hear  mem  recoil */
+		{ 45.0f, 0.40f, 0.70f, 4.5f, 4.0f, 3.0f, 2.5f, 0.35f, 150.0f, 0.70f, 4.0f, 7.0f },	/* easy */
+		{ 50.0f, 0.22f, 0.40f, 2.0f, 2.2f, 2.0f, 1.5f, 0.60f, 240.0f, 1.00f, 6.0f, 5.0f },	/* medium */
+		{ 55.0f, 0.16f, 0.30f, 1.4f, 1.8f, 1.2f, 0.9f, 0.90f, 330.0f, 1.20f, 8.0f, 3.5f },	/* hard */
+		{ 60.0f, 0.15f, 0.25f, 0.8f, 1.1f, 0.7f, 0.5f, 1.30f, 420.0f, 1.40f, 10.0f, 2.0f }	/* expert */
+	};
+	if (skill < 0)
+		skill = 0;
+	if (skill > 3)
+		skill = 3;
+	return table[skill];
+}
+
+int Dod_BotInFov(float view_yaw, float to_yaw, float half_angle)
+{
+	float d = Dod_BotAngleDelta(view_yaw, to_yaw);
+	return (d < 0.0f ? -d : d) <= half_angle;
+}
+
+float Dod_BotReactionDelay(const DodBotSkill *sk, float roll)
+{
+	if (!sk)
+		return 0.3f;
+	if (roll < 0.0f)
+		roll = 0.0f;
+	if (roll > 1.0f)
+		roll = 1.0f;
+	return sk->react_min + (sk->react_max - sk->react_min) * roll;
+}
+
+float Dod_BotAimErrorEx(const DodBotSkill *sk, float distance, float target_speed, float own_speed, float track_time)
+{
+	float err, settle;
+	if (!sk)
+		return 10.0f;
+	if (distance < 0.0f)
+		distance = 0.0f;
+	if (target_speed < 0.0f)
+		target_speed = 0.0f;
+	if (own_speed < 0.0f)
+		own_speed = 0.0f;
+	if (track_time < 0.0f)
+		track_time = 0.0f;
+	err = sk->aim_base + sk->aim_dist * (distance / 500.0f) + sk->aim_target_speed * (target_speed / 200.0f) +
+		sk->aim_own_speed * (own_speed / 200.0f);
+	settle = 1.0f / (1.0f + sk->settle * track_time);
+	if (settle < DOD_BOT_SETTLE_FLOOR)
+		settle = DOD_BOT_SETTLE_FLOOR;
+	return err * settle;
+}
+
+float Dod_BotHearRadius(const DodBotSkill *sk, int gunfire, float source_speed, int has_los)
+{
+	float r = 0.0f;
+	if (!sk)
+		return 0.0f;
+	if (gunfire)
+		r = DOD_BOT_HEAR_GUNFIRE;
+	else if (source_speed > 150.0f)	/* running; a walking or crouched player is quiet */
+		r = DOD_BOT_HEAR_STEPS * (has_los ? 1.0f : 0.6f);
+	return r * sk->hear_scale;
+}
+
+void Dod_BotHeardOffset(float distance, float roll_a, float roll_b, float *dx, float *dy)
+{
+	const float err = 48.0f + 0.12f * (distance < 0.0f ? 0.0f : distance);
+	const float mag = err * (0.4f + 0.6f * roll_b);
+	const float ang = roll_a * 6.2831853f;
+	if (dx)
+		*dx = mag * cosf(ang);
+	if (dy)
+		*dy = mag * sinf(ang);
+}
+
+float Dod_BotBurstLength(int automatic, float distance)
+{
+	if (!automatic)
+		return 1.4f;
+	if (distance < 300.0f)
+		return 0.9f;
+	if (distance < 700.0f)
+		return 0.5f;
+	return 0.28f;
+}
+
+float Dod_BotBurstPause(int automatic, float distance, float roll)
+{
+	float lo, hi;
+	if (roll < 0.0f)
+		roll = 0.0f;
+	if (roll > 1.0f)
+		roll = 1.0f;
+	if (!automatic) {
+		lo = 0.15f;
+		hi = 0.35f;
+	} else if (distance < 300.0f) {
+		lo = 0.15f;
+		hi = 0.35f;
+	} else if (distance < 700.0f) {
+		lo = 0.25f;
+		hi = 0.55f;
+	} else {
+		lo = 0.4f;
+		hi = 0.8f;
+	}
+	return lo + (hi - lo) * roll;
+}
+
 DodBotMove Dod_BotDecide(const DodBotInput *in)
 {
 	DodBotMove move = { 0.0f, 0.0f, 0, 0, 0, 0 };

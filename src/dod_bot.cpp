@@ -90,6 +90,15 @@ typedef struct DodBotState {
 	Vector nav_pos;
 	int nav_id, nav_has, nav_arrived;
 	int nav_serial;
+	/* perception and aim (see Perceive and the fight code in RunBot) */
+	float next_percept, seen_time;
+	int tgt;			/* entity index of the enemy in view, 0 none (cached between perception ticks) */
+	float tgt_dist;
+	int last_tgt;
+	float track_since, last_fight_time, react_until;
+	float burst_until, pause_until;
+	float next_unseen_log, last_fire;
+	int fire_frames, hit_frames;	/* this burst: frames the trigger was held, and how many were on target */
 } DodBotState;
 
 /* Per-bot state is heap allocated only while bots exist (the BSS it used to
@@ -376,30 +385,123 @@ static BOOL CanSee( CBasePlayer *pBot, CBasePlayer *pTarget )
 	return tr.flFraction >= 0.99f || tr.pHit == pTarget->edict();
 }
 
-static CBasePlayer *FindEnemy( CBasePlayer *pBot, float *distance )
+static float YawTo( const Vector &from, const Vector &to );
+
+static DodBotSkill BotSkill( void )
 {
-	CBasePlayer *best = NULL;
-	float best_dist = 4000.0f;
-	const DodTeam my_team = TeamOf( pBot );
-	int i;
-	for( i = 1; i <= gpGlobals->maxClients; i++ )
+	return Dod_BotSkillParams( (int)CVAR_GET_FLOAT( "dod_bot_skill" ) );
+}
+
+/* What the bot perceives, on its own 10 Hz tick (staggered by when each bot started, with a little jitter; the
+ * result is cached between ticks so the traces cost the same however many frames run).
+ * Sight: inside the view cone (or very close) and in line of sight, nearest first; no x-ray and no
+ * all-round vision. Hearing, when nothing is in sight: gunfire and running footsteps within a radius give a
+ * rough position, never a clean one, and only make the bot go and look. */
+static CBasePlayer *Perceive( CBasePlayer *pBot, DodBotState *state, float *distance )
+{
+	const float now = gpGlobals->time;
+	if( now >= state->next_percept )
 	{
-		CBasePlayer *pOther = PlayerAt( i );
-		float dist;
-		if( !pOther || pOther == pBot || !pOther->IsAlive() || ( pOther->pev->flags & FL_NOTARGET ) )
-			continue;
-		if( TeamOf( pOther ) == my_team || TeamOf( pOther ) == DOD_TEAM_UNASSIGNED )
-			continue;
-		dist = ( pOther->pev->origin - pBot->pev->origin ).Length();
-		if( dist < best_dist && CanSee( pBot, pOther ) )
+		const DodBotSkill sk = BotSkill();
+		const DodTeam my_team = TeamOf( pBot );
+		CBasePlayer *best = NULL;
+		float best_dist = 4000.0f, unseen_dist = 400.0f;
+		const char *unseen_why = NULL;
+		int i;
+		state->next_percept = now + 0.1f + RANDOM_FLOAT( 0.0f, 0.03f );
+		state->tgt = 0;
+		for( i = 1; i <= gpGlobals->maxClients; i++ )
 		{
-			best = pOther;
-			best_dist = dist;
+			CBasePlayer *pOther = PlayerAt( i );
+			float dist;
+			if( !pOther || pOther == pBot || !pOther->IsAlive() || ( pOther->pev->flags & FL_NOTARGET ) )
+				continue;
+			if( TeamOf( pOther ) == my_team || TeamOf( pOther ) == DOD_TEAM_UNASSIGNED )
+				continue;
+			dist = ( pOther->pev->origin - pBot->pev->origin ).Length();
+			if( dist >= best_dist )
+				continue;
+			if( dist > DOD_BOT_CLOSE_NOTICE && !Dod_BotInFov( state->yaw, YawTo( pBot->pev->origin, pOther->pev->origin ), sk.fov_half ) )
+			{
+				if( dist < unseen_dist )
+				{
+					unseen_dist = dist;
+					unseen_why = "outside the view cone";
+				}
+				continue;
+			}
+			if( CanSee( pBot, pOther ) )
+			{
+				best = pOther;
+				best_dist = dist;
+			}
+			else if( dist < unseen_dist )
+			{
+				unseen_dist = dist;
+				unseen_why = "no line of sight";
+			}
+		}
+		if( !best && unseen_why && now >= state->next_unseen_log )
+		{
+			state->next_unseen_log = now + 2.0f;
+			ALERT( at_console, "DoD bot %s: an enemy is %.0f units away but not seen (%s)\n", STRING( pBot->pev->netname ), unseen_dist, unseen_why );
+		}
+		if( best )
+		{
+			state->tgt = best->entindex();
+			state->tgt_dist = best_dist;
+			state->seen_time = now;
+		}
+		else
+		{
+			CBasePlayer *heard = NULL;
+			float heard_dist = 1e9f;
+			for( i = 1; i <= gpGlobals->maxClients; i++ )
+			{
+				CBasePlayer *pOther = PlayerAt( i );
+				float dist, speed, radius;
+				if( !pOther || pOther == pBot || !pOther->IsAlive() || ( pOther->pev->flags & FL_NOTARGET ) )
+					continue;
+				if( TeamOf( pOther ) == my_team || TeamOf( pOther ) == DOD_TEAM_UNASSIGNED )
+					continue;
+				dist = ( pOther->pev->origin - pBot->pev->origin ).Length();
+				speed = ( pOther->pev->flags & FL_ONGROUND ) ? pOther->pev->velocity.Length2D() : 0.0f;
+				radius = Dod_BotHearRadius( &sk, ( pOther->pev->button & IN_ATTACK ) != 0, speed, 1 );
+				if( radius <= 0.0f || dist >= radius || dist >= heard_dist )
+					continue;
+				if( ( pOther->pev->button & IN_ATTACK ) == 0 && dist > Dod_BotHearRadius( &sk, 0, speed, 0 ) && !CanSee( pBot, pOther ) )
+					continue;	/* footsteps through a wall carry less far */
+				heard = pOther;
+				heard_dist = dist;
+			}
+			if( heard && now > state->seen_time + 1.0f )
+			{
+				float dx, dy;
+				Dod_BotHeardOffset( heard_dist, RANDOM_FLOAT( 0.0f, 1.0f ), RANDOM_FLOAT( 0.0f, 1.0f ), &dx, &dy );
+				if( now >= state->known_until )
+					state->next_think = 0.0f;	/* something new to react to */
+				state->known_pos = heard->pev->origin + Vector( dx, dy, 0.0f );
+				if( now >= state->next_unseen_log )
+				{
+					state->next_unseen_log = now + 2.0f;
+					ALERT( at_console, "DoD bot %s: hears an enemy %.0f units away, guesses %.0f units off\n", STRING( pBot->pev->netname ), heard_dist,
+						sqrtf( dx * dx + dy * dy ) );
+				}
+				state->known_until = now + fminf( sk.memory, 4.0f );
+			}
 		}
 	}
-	if( best )
-		*distance = best_dist;
-	return best;
+	if( state->tgt )
+	{
+		CBasePlayer *t = PlayerAt( state->tgt );
+		if( t && t->IsAlive() )
+		{
+			*distance = ( t->pev->origin - pBot->pev->origin ).Length();
+			return t;
+		}
+		state->tgt = 0;
+	}
+	return NULL;
 }
 
 /* Objective goals, retail style (see dod_bots.h): attackers take the nearest point their team may
@@ -825,10 +927,10 @@ static BOOL NavTarget( CBasePlayer *pBot, DodBotState *state, Vector *target )
  * to reach it (dod_bots.c). The first step is what it does now: shoot, reload, seek the last-known enemy, take
  * cover, join a teammate, go to / hold the objective. Cost per bot: one scan of the players, two traces, one
  * search over a few hundred integers. */
+#define DOD_BOT_MAX_FIRE_RANGE 2000.0f
 #define DOD_BOT_THINK_PERIOD 0.5f
 #define DOD_BOT_LOW_HEALTH 35.0f
 #define DOD_BOT_NEAR_TEAM 450.0f
-#define DOD_BOT_ENEMY_MEMORY 6.0f
 
 static const char *const g_goal_names[DOD_GOAL_COUNT] = { "capture", "defend", "hunt", "cover", "reload", "regroup" };
 static const char *const g_action_names[DOD_ACT_COUNT] = { "none", "reload", "attack", "seek", "cover", "regroup", "to-point", "capture", "guard" };
@@ -888,7 +990,7 @@ static void BotThink( CBasePlayer *pBot, DodBotState *state, CBasePlayer *enemy 
 	if( enemy )
 	{
 		state->known_pos = enemy->pev->origin;
-		state->known_until = now + DOD_BOT_ENEMY_MEMORY;
+		state->known_until = now + BotSkill().memory;
 	}
 	if( ( enemy != NULL ) != ( ( state->ws & DOD_WS_ENEMY_VISIBLE ) != 0 ) )
 		state->next_think = 0.0f;	/* an enemy appeared or went out of sight */
@@ -1041,6 +1143,8 @@ static void RunBot( int index, CBasePlayer *pBot )
 		state->ws = 0;
 		state->next_think = 0.0f;
 		state->known_until = 0.0f;
+		state->tgt = 0;
+		state->burst_until = 0.0f;
 		state->cell_n = 0;
 		state->path_len = 0;
 		state->ladder_dir = 0;
@@ -1103,7 +1207,7 @@ static void RunBot( int index, CBasePlayer *pBot )
 		}
 	}
 
-	enemy = FindEnemy( pBot, &enemy_distance );
+	enemy = Perceive( pBot, state, &enemy_distance );
 	BotThink( pBot, state, enemy );
 	UpdateArrival( pBot, state );
 	/* shoot only when the plan says so (or there is no plan yet); a bot taking cover or reloading does not stand and trade */
@@ -1132,22 +1236,37 @@ static void RunBot( int index, CBasePlayer *pBot )
 
 	if( fight )
 	{
+		const DodBotSkill sk = BotSkill();
+		const float now = gpGlobals->time;
 		const Vector target = enemy->pev->origin + enemy->pev->view_ofs * 0.9f;
 		const float want_yaw = YawTo( eye, target ), want_pitch = PitchTo( eye, target );
+		float err;
 		in.has_target = 1;
 		in.target_distance = enemy_distance;
-		if( gpGlobals->time >= state->next_noise )
+		if( enemy->entindex() != state->last_tgt || now - state->last_fight_time > 1.0f )
 		{
-			const float err = Dod_BotAimError( enemy_distance, (int)CVAR_GET_FLOAT( "dod_bot_skill" ) );
+			/* a new target: a moment to take it in before the first shot, and aim from scratch */
+			state->last_tgt = enemy->entindex();
+			state->track_since = now;
+			state->react_until = now + Dod_BotReactionDelay( &sk, RANDOM_FLOAT( 0.0f, 1.0f ) );
+			state->next_noise = 0.0f;
+			ALERT( at_console, "DoD bot %s: sees an enemy at %.0f units, reacts in %.0f ms\n", STRING( pBot->pev->netname ), enemy_distance,
+				( state->react_until - now ) * 1000.0f );
+		}
+		state->last_fight_time = now;
+		err = Dod_BotAimErrorEx( &sk, enemy_distance, enemy->pev->velocity.Length2D(), pBot->pev->velocity.Length2D(), now - state->track_since );
+		if( now >= state->next_noise )
+		{
 			state->noise_yaw = RANDOM_FLOAT( -err, err );
 			state->noise_pitch = RANDOM_FLOAT( -err, err ) * 0.5f;
-			state->next_noise = gpGlobals->time + 0.8f;
+			state->next_noise = now + 0.3f;
 		}
-		state->yaw = Dod_BotTurn( state->yaw, want_yaw + state->noise_yaw, 300.0f * dt );
-		state->pitch = Dod_BotTurn( state->pitch, want_pitch + state->noise_pitch, 300.0f * dt );
+		state->yaw = Dod_BotTurn( state->yaw, want_yaw + state->noise_yaw, sk.turn_rate * dt );
+		state->pitch = Dod_BotTurn( state->pitch, want_pitch + state->noise_pitch, sk.turn_rate * dt );
 		{
-			const float dy = fabsf( Dod_BotAngleDelta( state->yaw, want_yaw ) );
-			const float dp = fabsf( Dod_BotAngleDelta( state->pitch, want_pitch ) );
+			/* fire when the view is on where the bot is trying to aim; the noise is what makes shots miss */
+			const float dy = fabsf( Dod_BotAngleDelta( state->yaw, want_yaw + state->noise_yaw ) );
+			const float dp = fabsf( Dod_BotAngleDelta( state->pitch, want_pitch + state->noise_pitch ) );
 			aim_error = dy > dp ? dy : dp;
 		}
 		in.aim_error = aim_error;
@@ -1221,6 +1340,53 @@ static void RunBot( int index, CBasePlayer *pBot )
 		state->yaw = state->heading;
 		state->hold_heading_until = gpGlobals->time + 0.7f;
 	}
+	if( fight )
+	{
+		const DodBotSkill sk = BotSkill();
+		const float now = gpGlobals->time;
+		const BOOL automatic = !in.semi_auto;
+		if( now < state->react_until || enemy_distance > DOD_BOT_MAX_FIRE_RANGE )
+			move.fire = 0;	/* still taking the target in, or too far to bother */
+		else if( move.fire )
+		{
+			/* trigger discipline: short bursts, shorter at range, with a pause between */
+			if( state->burst_until == 0.0f )
+			{
+				if( now < state->pause_until )
+					move.fire = 0;
+				else
+					state->burst_until = now + Dod_BotBurstLength( automatic, enemy_distance );
+			}
+			else if( now >= state->burst_until )
+			{
+				state->burst_until = 0.0f;
+				state->pause_until = now + Dod_BotBurstPause( automatic, enemy_distance, RANDOM_FLOAT( 0.0f, 1.0f ) );
+				move.fire = 0;
+			}
+		}
+		if( move.fire && automatic )
+			state->pitch -= sk.recoil * dt;	/* the view climbs while the gun is held down; tracking pulls it back */
+		if( move.fire )
+		{
+			/* bookkeeping for the log: is the view within a body's width of the target? */
+			const Vector tc = enemy->pev->origin + enemy->pev->view_ofs * 0.5f;
+			const float off_yaw = fabsf( Dod_BotAngleDelta( state->yaw, YawTo( eye, tc ) ) );
+			const float off_pitch = fabsf( Dod_BotAngleDelta( state->pitch, PitchTo( eye, tc ) ) );
+			const float body = atanf( 16.0f / ( enemy_distance > 16.0f ? enemy_distance : 16.0f ) ) * 180.0f / (float)M_PI;
+			state->fire_frames++;
+			state->last_fire = now;
+			if( off_yaw < body && off_pitch < body * 2.0f )
+				state->hit_frames++;
+		}
+		else if( state->fire_frames && now - state->last_fire >= 0.5f )
+		{
+			ALERT( at_console, "DoD bot %s: burst at %.0f units: %d of %d frames on target\n", STRING( pBot->pev->netname ), enemy_distance,
+				state->hit_frames, state->fire_frames );
+			state->fire_frames = state->hit_frames = 0;
+		}
+	}
+	else
+		state->burst_until = 0.0f;
 	if( state->behavior == DOD_ACT_RELOAD )
 	{
 		move.fire = 0;

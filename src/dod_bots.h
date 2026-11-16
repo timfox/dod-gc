@@ -214,6 +214,49 @@ int Dod_BotRole(int rank, int team_bots, int held_points);
 #define DOD_BOT_CROWD_PENALTY 450.0f
 int Dod_BotChooseObjectiveRole(const DodBotObjectiveInfo *list, int count, DodTeam team, int current_id, int role, int *kind);
 
+/* ---------------------------------------------------------------- perception and aim
+ * Bots play by the same rules as a person: they see only what is inside their view cone and in line of
+ * sight, take a moment to react to a new target, aim with an error that grows with distance, the target's
+ * speed and their own movement and settles while they track, fire in bursts, and otherwise only hear
+ * gunfire and footsteps (an approximate position) and remember where they last saw someone for a while.
+ * dod_bot_skill 0..3 (easy, medium, hard, expert; the default is 1) picks a row of these numbers. */
+typedef struct DodBotSkill {
+	float fov_half;		/* degrees either side of where the bot looks */
+	float react_min, react_max;	/* seconds between first seeing a target and the first shot */
+	float aim_base;		/* degrees of error at point-blank, standing, on a still target */
+	float aim_dist;		/* ... added per 500 units of distance */
+	float aim_target_speed;	/* ... added per 200 units/s the target moves */
+	float aim_own_speed;	/* ... added per 200 units/s the bot moves */
+	float settle;		/* error shrinks to 1 / (1 + settle * seconds tracked), never below DOD_BOT_SETTLE_FLOOR */
+	float turn_rate;	/* degrees per second the view can swing */
+	float hear_scale;	/* multiplies the hearing radii */
+	float memory;		/* seconds an enemy position is remembered after it was seen */
+	float recoil;		/* degrees per second the view climbs while an automatic weapon fires */
+} DodBotSkill;
+
+#define DOD_BOT_SETTLE_FLOOR 0.4f
+#define DOD_BOT_CLOSE_NOTICE 96.0f	/* inside this a bot notices an enemy in line of sight whatever it faces */
+#define DOD_BOT_HEAR_GUNFIRE 1600.0f
+#define DOD_BOT_HEAR_STEPS 450.0f
+
+DodBotSkill Dod_BotSkillParams(int skill);	/* skill clamped to 0..3 */
+/* Is a target at yaw to_yaw inside a cone of half_angle either side of view_yaw? (degrees) */
+int Dod_BotInFov(float view_yaw, float to_yaw, float half_angle);
+/* A reaction time in [react_min, react_max]; roll is in [0, 1). */
+float Dod_BotReactionDelay(const DodBotSkill *sk, float roll);
+/* Aim error in degrees, see DodBotSkill. track_time is how long the same target has been in view. */
+float Dod_BotAimErrorEx(const DodBotSkill *sk, float distance, float target_speed, float own_speed, float track_time);
+/* How far away a bot can hear a source: 0 for a silent one (still, or walking with the walk key). Footsteps
+ * are muffled without a line of sight. */
+float Dod_BotHearRadius(const DodBotSkill *sk, int gunfire, float source_speed, int has_los);
+/* The position the bot believes a heard source is at: the real one plus an error that grows with distance.
+ * roll_a/roll_b in [0, 1) pick the direction and the share of the error. */
+void Dod_BotHeardOffset(float distance, float roll_a, float roll_b, float *dx, float *dy);
+/* How long to hold the trigger and how long to pause afterwards (seconds). Automatic weapons fire short
+ * bursts that get shorter with distance; semi-automatic ones get a longer window and a short pause. roll in [0, 1). */
+float Dod_BotBurstLength(int automatic, float distance);
+float Dod_BotBurstPause(int automatic, float distance, float roll);
+
 /* ---------------------------------------------------------------- navigation graph
  * Bots find their way with a waypoint graph baked offline from the map's player hull (tools/gen_waypoints.py,
  * data/waypoints/<map>.wpt, staged next to the BSP): nodes are floor positions, edges are walks, jumps, drops
