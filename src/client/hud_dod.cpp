@@ -9,6 +9,11 @@ int __MsgFunc_DodHud( const char *pszName, int iSize, void *pbuf )
 	return gHUD.m_Dod.MsgFunc_DodHud( pszName, iSize, pbuf );
 }
 
+int __MsgFunc_DodKill( const char *pszName, int iSize, void *pbuf )
+{
+	return gHUD.m_Dod.MsgFunc_DodKill( pszName, iSize, pbuf );
+}
+
 int __MsgFunc_DodVoice( const char *pszName, int iSize, void *pbuf )
 {
 	return gHUD.m_Dod.MsgFunc_DodVoice( pszName, iSize, pbuf );
@@ -39,6 +44,8 @@ void CHudDod::InitState( void )
 	HOOK_MESSAGE( DodHud );
 	HOOK_MESSAGE( DodBoard );
 	HOOK_MESSAGE( DodVoice );
+	HOOK_MESSAGE( DodKill );
+	m_nKills = 0;
 	m_szVoice[0] = 0;
 	m_iVoiceSel = 0;
 	m_flVoiceTime = 0.0f;
@@ -109,6 +116,63 @@ int CHudDod::MsgFunc_DodBoard( const char *pszName, int iSize, void *pbuf )
 	m_flBoardTime = gEngfuncs.GetClientTime();
 	m_fBoardShown = show && m_szBoard[0];
 	return 1;
+}
+
+/* The kill feed: killer, victim, weapon; the last five are kept and each shows for 6 seconds. */
+int CHudDod::MsgFunc_DodKill( const char *pszName, int iSize, void *pbuf )
+{
+	KillLine line;
+
+	BEGIN_READ( pbuf, iSize );
+	line.killer_team = READ_BYTE();
+	strncpy( line.killer, READ_STRING(), sizeof( line.killer ) - 1 );
+	line.killer[sizeof( line.killer ) - 1] = 0;
+	line.victim_team = READ_BYTE();
+	strncpy( line.victim, READ_STRING(), sizeof( line.victim ) - 1 );
+	line.victim[sizeof( line.victim ) - 1] = 0;
+	strncpy( line.weapon, READ_STRING(), sizeof( line.weapon ) - 1 );
+	line.weapon[sizeof( line.weapon ) - 1] = 0;
+	line.time = gEngfuncs.GetClientTime();
+	if( m_nKills == 5 )
+	{
+		memmove( &m_kills[0], &m_kills[1], sizeof( KillLine ) * 4 );
+		m_nKills = 4;
+	}
+	m_kills[m_nKills++] = line;
+	return 1;
+}
+
+void CHudDod::DrawKills( void )
+{
+	const int line_h = gHUD.m_scrinfo.iCharHeight > 0 ? gHUD.m_scrinfo.iCharHeight : 12;
+	const int w = ScreenWidth > 0 ? ScreenWidth : 320;
+	const float now = gEngfuncs.GetClientTime();
+	int i, y = 62, drawn = 0;
+
+	/* the oldest expired lines drop off */
+	while( m_nKills > 0 && now - m_kills[0].time > 6.0f )
+	{
+		memmove( &m_kills[0], &m_kills[1], sizeof( KillLine ) * ( m_nKills - 1 ));
+		m_nKills--;
+	}
+	for( i = 0; i < m_nKills; i++ )
+	{
+		char text[110];
+		const KillLine &k = m_kills[i];
+		int r = 255, g = 255, b = 255;
+
+		if( k.killer[0] )
+			sprintf( text, "%s - %s - %s", k.killer, k.weapon, k.victim );
+		else
+			sprintf( text, "%s - %s", k.victim, k.weapon );
+		/* the victim's side colours the line: Allies green, Axis red */
+		if( k.victim_team == 1 ) { r = 150; g = 230; b = 150; }
+		else if( k.victim_team == 2 ) { r = 235; g = 140; b = 140; }
+		gHUD.DrawHudString( 6, y, w - 6, text, r, g, b );
+		y += line_h;
+		drawn++;
+	}
+	(void)drawn;
 }
 
 /* The voice menu (Y on the pad): the server sends the lines and the highlighted one whenever it changes. */
@@ -397,6 +461,7 @@ int CHudDod::DrawRetail( float flTime )
 	}
 	DrawBoard();
 	DrawVoice();
+	DrawKills();
 	if( !m_fDrawLogged )
 	{
 		m_fDrawLogged = 1;

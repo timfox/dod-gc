@@ -269,6 +269,10 @@ int Dod_FormatPlayerLine(int player_index, const char *name, char *buffer, int s
  * look cloned. Other models (the paratrooper ones) get 0. */
 int Dod_PlayerBodyValue(const char *model, DodClass player_class, int player_index);
 
+/* What a kill is called in the kill feed: the weapon's title for a gun ("weapon_dod_garand" -> "M1 Garand"), the side's knife for the
+ * crowbar slot, "Grenade", "Rocket", "Fall"/"World" for the rest. british picks the British Allies' names. Never returns NULL. */
+const char *Dod_KillWeaponLabel(const char *classname, DodTeam team, int british);
+
 /* Class limits (retail mp_limit<side><gun> cvars and mp_alliesclasses / mp_axisclasses): a limit of -1 is unlimited, 0 turns the
  * class off; the class mask has bit (1 << class) per allowed class, -1 allows all. A class is available to a player when it is
  * enabled and fewer than its limit of the side's other players hold it. */
