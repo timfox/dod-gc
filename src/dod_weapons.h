@@ -106,6 +106,15 @@ typedef enum {
 	DOD_COUNTRY_BRITISH
 } DodAlliesCountry;
 
+/* Paratroopers: a team of paratroopers (info_doddetect detect_allies_paras / detect_axis_paras) carries the para kit the
+ * same way: the Allies' Garand id becomes the M1 Carbine and the Thompson id the Grease Gun, the Axis' Kar98k id the
+ * FG42; both teams use the para knife. Retail sets this per map: dod_escape, falaise, flugplatz, glider and kraftstoff
+ * for both teams, dod_jagd for the Axis, dod_sturm, switch and zalec for the Allies. */
+void Dod_SetParatroopers(int allies, int axis);
+int Dod_TeamIsParatroopers(DodTeam team);
+/* The paratrooper teams of a retail map by name: bit 0 Allies, bit 1 Axis (so 3 = both). */
+int Dod_ParatroopersForMap(const char *mapname);
+
 void Dod_SetAlliesCountry(DodAlliesCountry country);
 DodAlliesCountry Dod_GetAlliesCountry(void);
 /* The Allied country of a retail map, by name; anything else (custom maps included) is American. */

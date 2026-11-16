@@ -109,6 +109,52 @@ static const DodWeaponDef g_british[DOD_WEAPON_COUNT] = {
 		"weapons/webley_shoot.wav", "weapons/colt_reload_clipin.wav" },
 };
 
+/* The paratrooper kit, like the British one: same ids, class names, slots and ammo pools as what they stand in for. The
+ * stats are plausible, not retail data. */
+static const DodWeaponDef g_para_allies[DOD_WEAPON_COUNT] = {
+	[DOD_WEAPON_GARAND] = { DOD_WEAPON_GARAND, "weapon_dod_garand", "M1 Carbine", A, DOD_FIRE_SEMI, DOD_HLID(DOD_WEAPON_GARAND),
+		"models/v_m1carbine.mdl", "models/p_m1carb.mdl", "dod_30-06", 200, 15, 90,
+		38.0f, 0.18f, 0.015f, 1.2f, 5000.0f, 2.4f, 0.0f, 0, 2, 0, 15,
+		"weapons/carbine_shoot.wav", "weapons/garand_reload_clipin.wav" },
+	[DOD_WEAPON_THOMPSON] = { DOD_WEAPON_THOMPSON, "weapon_dod_thompson", "Grease Gun", A, DOD_FIRE_AUTO, DOD_HLID(DOD_WEAPON_THOMPSON),
+		"models/v_greasegun.mdl", "models/p_grease.mdl", "dod_45", 250, 32, 192,
+		22.0f, 0.10f, 0.045f, 0.9f, 3200.0f, 2.3f, 0.0f, 0, 2, 1, 15,
+		"weapons/greasegun_shoot.wav", "weapons/tommy_reload_clipin.wav" },
+};
+static const DodWeaponDef g_para_axis[DOD_WEAPON_COUNT] = {
+	[DOD_WEAPON_K98] = { DOD_WEAPON_K98, "weapon_dod_k98", "FG42", X, DOD_FIRE_AUTO, DOD_HLID(DOD_WEAPON_K98),
+		"models/v_fg42.mdl", "models/p_fg42.mdl", "dod_8mm", 200, 20, 100,
+		32.0f, 0.075f, 0.030f, 1.6f, 6000.0f, 3.0f, 0.0f, 0, 2, 0, 15,
+		"weapons/fg42_shoot.wav", "weapons/gewehr_reload_clipin.wav" },
+};
+static int g_paras[2];	/* [0] Allies, [1] Axis */
+
+void Dod_SetParatroopers(int allies, int axis)
+{
+	g_paras[0] = allies != 0;
+	g_paras[1] = axis != 0;
+}
+
+int Dod_TeamIsParatroopers(DodTeam team)
+{
+	return (team == DOD_TEAM_ALLIES && g_paras[0]) || (team == DOD_TEAM_AXIS && g_paras[1]);
+}
+
+int Dod_ParatroopersForMap(const char *mapname)
+{
+	static const struct { const char *name; int teams; } maps[] = {
+		{ "dod_escape", 3 }, { "dod_falaise", 3 }, { "dod_flugplatz", 3 }, { "dod_glider", 3 }, { "dod_kraftstoff", 3 },
+		{ "dod_jagd", 2 }, { "dod_sturm", 1 }, { "dod_switch", 1 }, { "dod_zalec", 1 }
+	};
+	size_t i;
+	if (!mapname)
+		return 0;
+	for (i = 0; i < sizeof(maps) / sizeof(maps[0]); ++i)
+		if (!strcmp(mapname, maps[i].name))
+			return maps[i].teams;
+	return 0;
+}
+
 static DodAlliesCountry g_allies_country = DOD_COUNTRY_US;
 
 void Dod_SetAlliesCountry(DodAlliesCountry country)
@@ -139,6 +185,10 @@ const DodWeaponDef *Dod_GetWeaponDef(DodWeaponId id)
 		return 0;
 	if (g_allies_country == DOD_COUNTRY_BRITISH && g_british[id].id == id)
 		return &g_british[id];
+	if (g_paras[0] && g_allies_country != DOD_COUNTRY_BRITISH && g_para_allies[id].id == id)
+		return &g_para_allies[id];
+	if (g_paras[1] && g_para_axis[id].id == id)
+		return &g_para_axis[id];
 	return &g_weapons[id];
 }
 
