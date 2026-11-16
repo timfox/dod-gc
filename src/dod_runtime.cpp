@@ -46,7 +46,7 @@ static float g_dod_next_hud;
 static int g_dod_seen_restart;
 static int g_dod_seen_match;
 
-#define DOD_POINT_SCORE_PER_MINUTE 2.0f
+#define DOD_POINT_SCORE_PER_MINUTE 0.0f	/* retail has no continuous score: capture points and timed points (Dod_SetObjectiveTeamPoints) */
 
 extern int gmsgShowMenu;
 extern int gmsgScoreInfo;
@@ -1008,6 +1008,7 @@ private:
 	int m_iPointIndex;
 	int m_iDefaultOwner;
 	int m_iPointsForCap;	/* point_points_for_cap: Score for each player who captures it */
+	int m_iTeamPoints, m_iTimePoints;	/* point_team_points (on capture), point_pointvalue (timed) */
 	char m_szPointName[64];
 	BOOL m_bAreaDriven;
 };
@@ -1019,6 +1020,8 @@ CDoDControlPoint::CDoDControlPoint()
 	m_iPointIndex = -1;
 	m_iDefaultOwner = DOD_TEAM_UNASSIGNED;
 	m_iPointsForCap = 1;
+	m_iTeamPoints = 0;
+	m_iTimePoints = 1;
 	m_szPointName[0] = '\0';
 	m_bAreaDriven = FALSE;
 	m_bHasBounds = FALSE;
@@ -1068,6 +1071,7 @@ void CDoDControlPoint::SetAreaDriven( float capture_seconds )
 		Dod_RegisterObjective( m_iPointIndex, DOD_OBJ_CAPTURE_POINT, (DodTeam)m_iDefaultOwner,
 			capture_seconds, DOD_POINT_SCORE_PER_MINUTE );
 	Dod_SetObjectivePointsForCap( m_iPointIndex, m_iPointsForCap );
+	Dod_SetObjectiveTeamPoints( m_iPointIndex, m_iTeamPoints, m_iTimePoints );
 }
 
 void CDoDControlPoint::KeyValue( KeyValueData *pkvd )
@@ -1078,6 +1082,10 @@ void CDoDControlPoint::KeyValue( KeyValueData *pkvd )
 		m_iDefaultOwner = atoi( pkvd->szValue ); pkvd->fHandled = TRUE;
 	} else if( FStrEq( pkvd->szKeyName, "point_points_for_cap" ) ) {
 		m_iPointsForCap = atoi( pkvd->szValue ); pkvd->fHandled = TRUE;
+	} else if( FStrEq( pkvd->szKeyName, "point_team_points" ) ) {
+		m_iTeamPoints = atoi( pkvd->szValue ); pkvd->fHandled = TRUE;
+	} else if( FStrEq( pkvd->szKeyName, "point_pointvalue" ) ) {
+		m_iTimePoints = atoi( pkvd->szValue ); pkvd->fHandled = TRUE;
 	} else if( FStrEq( pkvd->szKeyName, "point_name" ) ) {
 		strlcpy( m_szPointName, pkvd->szValue, sizeof( m_szPointName ) ); pkvd->fHandled = TRUE;
 	} else CPointEntity::KeyValue( pkvd );
@@ -1091,6 +1099,7 @@ void CDoDControlPoint::Spawn( void )
 	Dod_RegisterObjective( m_iPointIndex, DOD_OBJ_CAPTURE_POINT,
 		(DodTeam)m_iDefaultOwner, 10.0f, DOD_POINT_SCORE_PER_MINUTE );
 	Dod_SetObjectivePointsForCap( m_iPointIndex, m_iPointsForCap );
+	Dod_SetObjectiveTeamPoints( m_iPointIndex, m_iTeamPoints, m_iTimePoints );
 	SetThink( &CDoDControlPoint::Think );
 	pev->nextthink = gpGlobals->time + 0.25f;
 }
@@ -1372,8 +1381,8 @@ void CDoDRoundTimer::Think( void )
  * that team's capture target once (charlie: allies_capture_target = allieswin_mm). Capture events
  * come from the rules core (capture_serial); a team that already held every point at round start
  * (Axis on charlie) does not trigger anything, as in retail where only a capture completes it.
- * point_give_delay_time / point_pointvalue (periodic point score) are not used: charlie sets the
- * point value to 0, and the core awards the per-point score continuously. */
+ * point_give_delay_time is the delay of the timed award: every delay each point gives its owner its point_pointvalue
+ * (Dod_SetPointGiveDelay). */
 class CDoDControlPointMaster : public CPointEntity
 {
 public:
@@ -1400,7 +1409,9 @@ void CDoDControlPointMaster::KeyValue( KeyValueData *pkvd )
 		m_iszTarget[DOD_TEAM_ALLIES] = ALLOC_STRING( pkvd->szValue ); pkvd->fHandled = TRUE;
 	} else if( FStrEq( pkvd->szKeyName, "axis_capture_target" ) ) {
 		m_iszTarget[DOD_TEAM_AXIS] = ALLOC_STRING( pkvd->szValue ); pkvd->fHandled = TRUE;
-	} else if( FStrEq( pkvd->szKeyName, "cpm_group" ) || FStrEq( pkvd->szKeyName, "point_give_delay_time" ) ) {
+	} else if( FStrEq( pkvd->szKeyName, "point_give_delay_time" ) ) {
+		Dod_SetPointGiveDelay( (float)atof( pkvd->szValue ) ); pkvd->fHandled = TRUE;
+	} else if( FStrEq( pkvd->szKeyName, "cpm_group" ) ) {
 		pkvd->fHandled = TRUE;
 	} else CPointEntity::KeyValue( pkvd );
 }

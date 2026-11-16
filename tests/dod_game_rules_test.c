@@ -193,6 +193,8 @@ static void test_contested_capture_flip_and_round_win(void)
 		DOD_TEAM_UNASSIGNED, 2.0f, 60.0f));
 	assert(Dod_RegisterObjective(1, DOD_OBJ_CAPTURE_POINT,
 		DOD_TEAM_UNASSIGNED, 2.0f, 0.0f));
+	Dod_SetObjectiveTeamPoints(0, 5, 0);
+	Dod_SetObjectiveTeamPoints(1, 5, 0);
 	Dod_StartRound(0.0f);
 
 	/* Contested players do not advance capture progress. */
@@ -248,13 +250,13 @@ static void test_kill_scoring_and_timed_tie(void)
 	axis = Dod_GetPlayer(2);
 	assert(allies && allies->kills == 1 && allies->objective_score == 0);
 	assert(axis && axis->deaths == 1);
-	assert(Dod_GetState()->allies_score == 1);
+	assert(Dod_GetState()->allies_score == 0);	/* kills add nothing to the team score, as in retail */
 
 	/* Friendly kills count as a death but do not award an attacker kill/score. */
 	Dod_RecordKill(1, 3);
 	assert(Dod_GetPlayer(1)->kills == 1);
 	assert(Dod_GetPlayer(3)->deaths == 1);
-	assert(Dod_GetState()->allies_score == 1);
+	assert(Dod_GetState()->allies_score == 0);
 
 	Dod_StartRound(1.0f);
 	Dod_Think(1.1f);
@@ -492,6 +494,37 @@ static void tick_to_capture(int id, DodTeam team)
 	assert(guard < 100);
 }
 
+static void test_team_points(void)
+{
+	Dod_GameInit();
+	assert(Dod_PlayerConnect(1) && Dod_AssignPlayerTeam(1, DOD_TEAM_ALLIES));
+	/* retail defaults: capturing gives the team point_team_points (0), holding gives point_pointvalue (1) every 20 s */
+	assert(Dod_RegisterObjective(0, DOD_OBJ_CAPTURE_POINT, DOD_TEAM_UNASSIGNED, 1.0f, 0.0f));
+	assert(Dod_RegisterObjective(1, DOD_OBJ_CAPTURE_POINT, DOD_TEAM_AXIS, 1.0f, 0.0f));
+	assert(Dod_RegisterObjective(2, DOD_OBJ_CAPTURE_POINT, DOD_TEAM_UNASSIGNED, 1.0f, 0.0f));	/* keeps the round going */
+	Dod_SetObjectiveTeamPoints(2, 0, 0);
+	assert(Dod_GetObjective(0)->team_points == 0 && Dod_GetObjective(0)->time_points == 1);
+	Dod_StartRound(0.0f);
+	assert(Dod_TickObjective(0, 1, 0, 1.0f));
+	assert(Dod_GetState()->allies_score == 0 && Dod_GetState()->axis_score == 0);	/* no capture bonus by default */
+	Dod_Think(19.0f);
+	assert(Dod_GetState()->allies_score == 0 && Dod_GetState()->axis_score == 0);
+	Dod_Think(1.0f);	/* the first give delay: each owner gets one point per point it holds */
+	assert(Dod_GetState()->allies_score == 1 && Dod_GetState()->axis_score == 1);
+	/* the map sets the values and the delay */
+	Dod_SetObjectiveTeamPoints(0, 3, 4);
+	Dod_SetPointGiveDelay(5.0f);
+	Dod_Think(5.0f);
+	assert(Dod_GetState()->allies_score == 5 && Dod_GetState()->axis_score == 2);
+	assert(Dod_TickObjective(0, 0, 1, 1.0f));	/* Axis take it: its 3 team points */
+	assert(Dod_GetState()->axis_score == 5);
+	/* a point worth nothing over time gives nothing */
+	Dod_SetObjectiveTeamPoints(0, 0, 0);
+	Dod_Think(5.0f);
+	assert(Dod_GetState()->axis_score == 6 && Dod_GetState()->allies_score == 5);
+	Dod_GameShutdown();
+}
+
 static void test_match_loop(void)
 {
 	const DodGameRulesState *state;
@@ -518,7 +551,7 @@ static void test_match_loop(void)
 
 	/* Allies take both points: round one goes to Allies. */
 	Dod_RecordKill(1, 2);
-	assert(state->allies_score >= 1);
+	assert(state->allies_score == 0);	/* a kill adds nothing to the team score */
 	tick_to_capture(0, DOD_TEAM_ALLIES);
 	assert(state->phase == DOD_ROUND_ACTIVE && state->controlled_objectives[DOD_TEAM_ALLIES] == 1);
 	tick_to_capture(1, DOD_TEAM_ALLIES);
@@ -553,7 +586,7 @@ static void test_match_loop(void)
 	assert(state->match_serial == 0);
 
 	/* A timed-out round with a lead goes to the leader; a second win ends the match. */
-	Dod_RecordKill(1, 2);
+	Dod_AddTeamScore(DOD_TEAM_ALLIES, 1);	/* the lead, from a dod_score_ent: kills add none */
 	Dod_Think(300.0f);
 	assert(state->phase == DOD_ROUND_INTERMISSION && state->winner == DOD_TEAM_ALLIES);
 	assert(state->rounds_won[DOD_TEAM_ALLIES] == 2);
@@ -795,6 +828,7 @@ int main(void)
 	test_status_line();
 	test_player_line();
 	test_scoreboard();
+	test_team_points();
 	test_player_body();
 	test_loadouts();
 	test_contested_capture_flip_and_round_win();

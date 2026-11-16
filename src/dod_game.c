@@ -12,6 +12,8 @@ static DodGameRulesState g_dod_state;
 static DodPlayerState g_dod_players[DOD_MAX_PLAYERS + 1];
 static DodObjectiveState g_dod_objectives[DOD_MAX_OBJECTIVES];
 static float g_score_remainder[4];
+static float g_give_delay = 20.0f;	/* seconds between timed point awards */
+static float g_give_timer;
 static float g_round_seconds;
 static int g_rounds_to_win;
 static int g_dod_active;
@@ -92,6 +94,8 @@ void Dod_GameInit(void)
 	memset(g_dod_players, 0, sizeof(g_dod_players));
 	memset(g_dod_objectives, 0, sizeof(g_dod_objectives));
 	memset(g_score_remainder, 0, sizeof(g_score_remainder));
+	g_give_timer = 0.0f;
+	g_give_delay = 20.0f;
 	g_dod_state.phase = DOD_ROUND_WAITING;
 	g_dod_state.winner = DOD_TEAM_UNASSIGNED;
 	g_round_seconds = 0.0f;
@@ -151,6 +155,7 @@ void Dod_StartRound(float duration_seconds)
 	g_dod_state.round_time_remaining = duration_seconds > 0.0f ? duration_seconds : 0.0f;
 	g_dod_state.intermission_remaining = 0.0f;
 	memset(g_score_remainder, 0, sizeof(g_score_remainder));
+	g_give_timer = 0.0f;
 }
 
 void Dod_EndRoundDelayed(DodTeam winner, float restart_delay_seconds)
@@ -260,6 +265,16 @@ void Dod_Think(float frametime)
 				dod_add_team_score(objective->owner,
 					objective->score_per_minute * frametime / 60.0f);
 		}
+		/* the timed award of retail: every give delay each owned point gives its owner its point value */
+		g_give_timer += frametime;
+		if (g_give_delay > 0.0f && g_give_timer >= g_give_delay) {
+			g_give_timer -= g_give_delay;
+			for (i = 0; i < DOD_MAX_OBJECTIVES; ++i) {
+				const DodObjectiveState *objective = &g_dod_objectives[i];
+				if (objective->active && dod_valid_team(objective->owner) && objective->time_points > 0)
+					dod_add_team_score(objective->owner, (float)objective->time_points);
+			}
+		}
 	} else if (g_dod_state.phase == DOD_ROUND_INTERMISSION) {
 		g_dod_state.intermission_remaining -= frametime;
 		if (g_dod_state.intermission_remaining <= 0.0f) {
@@ -332,7 +347,6 @@ void Dod_RecordKill(int attacker_index, int victim_index)
 			return;
 		}
 		++attacker->kills;
-		dod_add_team_score(attacker->team, 1.0f);
 	}
 }
 
@@ -350,6 +364,20 @@ int Dod_PlayerScore(int player_index)
 {
 	const DodPlayerState *player = dod_valid_player(player_index) ? &g_dod_players[player_index] : 0;
 	return player && player->connected ? player->score : 0;
+}
+
+void Dod_SetObjectiveTeamPoints(int id, int team_points, int time_points)
+{
+	DodObjectiveState *objective = dod_find_objective(id);
+	if (objective) {
+		objective->team_points = team_points > 0 ? team_points : 0;
+		objective->time_points = time_points > 0 ? time_points : 0;
+	}
+}
+
+void Dod_SetPointGiveDelay(float seconds)
+{
+	g_give_delay = seconds > 0.0f ? seconds : 0.0f;
 }
 
 void Dod_SetObjectivePointsForCap(int id, int points)
@@ -790,6 +818,8 @@ int Dod_RegisterObjective(int id, DodObjectiveKind kind, DodTeam initial_owner,
 	objective->capture_seconds = capture_seconds > 0.0f ? capture_seconds : DOD_CAPTURE_SECONDS_DEFAULT;
 	objective->score_per_minute = score_per_minute > 0.0f ? score_per_minute : 0.0f;
 	objective->points_for_cap = 1;
+	objective->team_points = 0;
+	objective->time_points = 1;
 	dod_recount_objectives();
 	return 1;
 }
@@ -822,7 +852,7 @@ int Dod_TickObjective(int id, int allies_inside, int axis_inside, float frametim
 	objective->capturing_team = DOD_TEAM_UNASSIGNED;
 	objective->owner = team;
 	dod_recount_objectives();
-	dod_add_team_score(team, 5.0f);
+	dod_add_team_score(team, (float)objective->team_points);
 	++g_dod_state.capture_serial;
 	g_dod_state.last_capture_team = team;
 	if (!g_dod_state.master_driven && Dod_TeamOwnsAllObjectives(team))
