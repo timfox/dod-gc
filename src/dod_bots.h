@@ -276,8 +276,11 @@ typedef struct DodNav {
 	const unsigned char *edges;	/* edge_count * 2 bytes */
 	unsigned short *first;		/* node_count + 1: index of each node's first edge */
 	float *g;			/* A* scratch */
+	float *f;			/* g + estimate, the heap's key */
 	short *parent;
 	unsigned char *state;
+	unsigned short *heap;		/* binary min-heap of open nodes by f */
+	short *hpos;			/* where each open node sits in the heap */
 	int node_count, edge_count;
 	unsigned int bsp_size;		/* size of the BSP the graph was baked from */
 	int pen_from[8], pen_to[8];	/* edges a bot got stuck on, avoided for a while (shared by all bots) */
