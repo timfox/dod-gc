@@ -851,7 +851,13 @@ public:
 	void SetAreaDriven( float capture_seconds );
 	int PointIndex( void ) const { return m_iPointIndex; }
 	BOOL IsAreaDriven( void ) const { return m_bAreaDriven; }
+	/* The first area that links to this point supplies the volume bots stand in. */
+	void SetAreaBounds( const Vector &mins, const Vector &maxs, const int can_cap[3] );
+	void FillView( DodGCObjectiveView *view ) const;
 private:
+	Vector m_vecAreaMin, m_vecAreaMax;
+	int m_iAreaCanCap[3];
+	BOOL m_bHasBounds;
 	int m_iPointIndex;
 	int m_iDefaultOwner;
 	char m_szPointName[64];
@@ -866,6 +872,36 @@ CDoDControlPoint::CDoDControlPoint()
 	m_iDefaultOwner = DOD_TEAM_UNASSIGNED;
 	m_szPointName[0] = '\0';
 	m_bAreaDriven = FALSE;
+	m_bHasBounds = FALSE;
+	m_iAreaCanCap[0] = m_iAreaCanCap[DOD_TEAM_ALLIES] = m_iAreaCanCap[DOD_TEAM_AXIS] = 1;
+}
+
+void CDoDControlPoint::SetAreaBounds( const Vector &mins, const Vector &maxs, const int can_cap[3] )
+{
+	if( m_bHasBounds )
+		return;
+	m_bHasBounds = TRUE;
+	m_vecAreaMin = mins;
+	m_vecAreaMax = maxs;
+	m_iAreaCanCap[DOD_TEAM_ALLIES] = can_cap[DOD_TEAM_ALLIES];
+	m_iAreaCanCap[DOD_TEAM_AXIS] = can_cap[DOD_TEAM_AXIS];
+}
+
+void CDoDControlPoint::FillView( DodGCObjectiveView *view ) const
+{
+	view->can_cap[0] = view->can_cap[3] = 0;
+	if( m_bHasBounds ) {
+		view->mins = m_vecAreaMin;
+		view->maxs = m_vecAreaMax;
+		view->can_cap[DOD_TEAM_ALLIES] = m_iAreaCanCap[DOD_TEAM_ALLIES];
+		view->can_cap[DOD_TEAM_AXIS] = m_iAreaCanCap[DOD_TEAM_AXIS];
+	} else {
+		/* sphere capture (see Think): anyone may capture within 128 units */
+		view->mins = pev->origin - Vector( 128, 128, 128 );
+		view->maxs = pev->origin + Vector( 128, 128, 128 );
+		view->can_cap[DOD_TEAM_ALLIES] = view->can_cap[DOD_TEAM_AXIS] = 1;
+	}
+	view->center = ( view->mins + view->maxs ) * 0.5f;
 }
 
 void CDoDControlPoint::SetAreaDriven( float capture_seconds )
@@ -1016,6 +1052,7 @@ void CDoDCaptureArea::Think( void )
 		if( e ) {
 			m_pPoint = (CDoDControlPoint *)e;
 			m_pPoint->SetAreaDriven( m_flTimeToCap );
+			m_pPoint->SetAreaBounds( pev->absmin, pev->absmax, m_iCanCap );
 		}
 		ALERT( at_console, "DoD capture area target=%s point=%d time=%.0f absmin=%.0f,%.0f,%.0f absmax=%.0f,%.0f,%.0f\n",
 			m_iszTarget ? STRING( m_iszTarget ) : "-", m_pPoint ? m_pPoint->PointIndex() : -1, m_flTimeToCap,
@@ -1293,6 +1330,24 @@ void CDoDScoreEnt::Use( CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TYPE 
 			team == DOD_TEAM_ALLIES ? "Allies" : "Axis", m_flResetPlayersTime,
 			state->rounds_won[DOD_TEAM_ALLIES], state->rounds_won[DOD_TEAM_AXIS] );
 	}
+}
+
+int DodGC_ListObjectives( DodGCObjectiveView *out, int max )
+{
+	int count = 0;
+	CBaseEntity *entity = NULL;
+	while( count < max && ( entity = UTIL_FindEntityByClassname( entity, "dod_control_point" ) ) != NULL ) {
+		const CDoDControlPoint *point = (const CDoDControlPoint *)entity;
+		const DodObjectiveState *objective = Dod_GetObjective( point->PointIndex() );
+		if( !objective )
+			continue;
+		DodGCObjectiveView *view = &out[count++];
+		view->id = objective->id;
+		view->owner = objective->owner;
+		view->capturing = objective->capturing_team;
+		point->FillView( view );
+	}
+	return count;
 }
 
 void DodGC_ResetMapObjectives( void )

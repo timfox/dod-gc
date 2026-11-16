@@ -156,6 +156,16 @@ if [[ -n "$MAP_NAME" ]]; then
 	fi
 	cp -f "$bsp" "$LEAN/maps/${stem}.bsp"
 	echo "staged map: $bsp ($(du -h "$bsp" | awk '{print $1}'))"
+	# The bot waypoint graph baked from this BSP (tools/gen_waypoints.py), next to it. Without one the
+	# bots fall back to steering by look-ahead and cannot find stairs and ladders.
+	wpt="$DODGC_ROOT/data/waypoints/${stem}.wpt"
+	rm -f "$LEAN/maps/${stem}.wpt"
+	if [[ -f "$wpt" ]]; then
+		cp -f "$wpt" "$LEAN/maps/${stem}.wpt"
+		echo "staged waypoint graph: $wpt ($(stat -c %s "$wpt") bytes)"
+	else
+		echo "note: no waypoint graph for ${stem} (data/waypoints/${stem}.wpt); bots steer by look-ahead"
+	fi
 	# Complete menu music/UI + this map's soundscape WAVs (case/valve/substitutes).
 	MAP_AUDIO_ARGS=(--dod "$SRC" --valve "$VALVE" --lean "$LEAN" --map "$bsp")
 	if (( ALL_MAPS_AUDIO )); then

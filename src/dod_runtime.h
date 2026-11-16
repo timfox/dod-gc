@@ -21,6 +21,19 @@ public:
 	virtual int DeadPlayerAmmo( CBasePlayer *pPlayer );
 };
 
+/* A control point as the bots see it: who owns it, who is capturing it, who may capture it, and
+ * the volume a capturer has to stand in (its dod_capture_area, else a sphere around the point). */
+typedef struct DodGCObjectiveView {
+	int id;
+	DodTeam owner;
+	DodTeam capturing;
+	int can_cap[4];		/* indexed by DodTeam */
+	Vector center, mins, maxs;
+} DodGCObjectiveView;
+
+/* Fill up to max views, one per control point; returns the count. */
+int DodGC_ListObjectives( DodGCObjectiveView *out, int max );
+
 void DodGC_ResetMapObjectives( void );
 /* Put a bot on a team with a class: the same steps a human's menu choices take. */
 void DodGC_BotJoin( CBasePlayer *pPlayer, DodTeam team, DodClass player_class );
