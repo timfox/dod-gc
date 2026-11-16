@@ -130,14 +130,22 @@ static void DodGC_EnsurePlayer( CBasePlayer *pPlayer )
  * human does this (a bot never watches), and no death or frag is recorded. */
 static void DodGC_JoinSpectator( CBasePlayer *pPlayer )
 {
-	if( !pPlayer || DodBots_IsBot( pPlayer ) )
+	/* StartObserver -> RemoveAllItems -> UpdateClientData calls InitHUD again
+	 * (m_fGameHUDInitialized is only set after InitHUD returns), and IsObserver()
+	 * is still false at that point, so InitHUD came straight back here. With
+	 * dod_spectate 1 that recursed ~770 times and ran the 128 KiB main stack
+	 * down into the engine's file system statics. Ignore the nested call. */
+	static bool joining;
+	if( !pPlayer || DodBots_IsBot( pPlayer ) || joining )
 		return;
+	joining = true;
 	DodGC_ClearMenu( pPlayer );
 	if( !pPlayer->IsObserver() ) {
 		pPlayer->StartObserver( pPlayer->pev->origin, pPlayer->pev->v_angle );
 		pPlayer->pev->iuser1 = 0;	/* force Observer_SetMode to pick the mode and a target */
 		pPlayer->Observer_SetMode( DOD_SPEC_CHASE_FREE );
 	}
+	joining = false;
 	DodGC_EnsurePlayer( pPlayer );
 	ClientPrint( pPlayer->pev, HUD_PRINTTALK, "You are spectating. Fire/Aim: next/previous player, Jump: camera mode.\n" );
 }
