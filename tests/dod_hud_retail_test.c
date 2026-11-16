@@ -113,10 +113,12 @@ static void test_crosshair(void)
 		if (d[i].cell.sheet != DOD_SHEET_CROSS)
 			continue;
 		bars++;
-		if (d[i].cell.w == 10 && d[i].x < 320) assert(d[i].x == 320 - 4 - 10 + 2 && d[i].y == 240 - 1);
-		if (d[i].cell.w == 10 && d[i].x > 320) assert(d[i].x == 324);
-		if (d[i].cell.h == 10 && d[i].y < 240) assert(d[i].y == 240 - 4 - 10 + 2 && d[i].x == 319);
-		if (d[i].cell.w == 3 && d[i].cell.h == 3) assert(d[i].x == 319 && d[i].y == 239);
+		/* every piece is the 1-px line itself, on the centre row/column */
+		assert(d[i].cell.w == 1 || d[i].cell.h == 1);
+		if (d[i].cell.w == 10 && d[i].x < 320) assert(d[i].x == 320 - 4 - 10 + 2 && d[i].y == 240);
+		if (d[i].cell.w == 10 && d[i].x > 320) assert(d[i].x == 324 && d[i].y == 240);
+		if (d[i].cell.h == 10 && d[i].y < 240) assert(d[i].y == 240 - 4 - 10 + 2 && d[i].x == 320);
+		if (d[i].cell.w == 1 && d[i].cell.h == 1) assert(d[i].x == 320 && d[i].y == 240 && d[i].cell.y == 13);
 	}
 	assert(bars == 5);
 }

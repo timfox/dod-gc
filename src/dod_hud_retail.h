@@ -101,9 +101,13 @@ static const DodRetailCell dod_cell_healthbar = { DOD_SHEET_LAYOUT, 51, 110, 5, 
 static const DodRetailCell dod_cell_health_overlay = { DOD_SHEET_LAYOUT, 0, 111, 44, 47 };
 static const DodRetailCell dod_cell_reinforcements = { DOD_SHEET_LAYOUT, 81, 0, 129, 58 };
 static const DodRetailCell dod_cell_timer = { DOD_SHEET_LAYOUT, 0, 0, 80, 30 };
-static const DodRetailCell dod_cell_cross_horiz = { DOD_SHEET_CROSS, 36, 0, 10, 3 };
-static const DodRetailCell dod_cell_cross_vert = { DOD_SHEET_CROSS, 24, 0, 3, 10 };
-static const DodRetailCell dod_cell_cross_dot = { DOD_SHEET_CROSS, 24, 12, 3, 3 };
+/* cross_style_2_horiz 36,0,10,3 / _vert 24,0,3,10 / _dot 24,12,3,3 hold a
+ * 1-px line on their middle row/column and nothing else. Drawing the whole
+ * 3-px cell at half scale samples between rows and drops the line, so the
+ * cells are cropped to the opaque pixels and placed one pixel in. */
+static const DodRetailCell dod_cell_cross_horiz = { DOD_SHEET_CROSS, 36, 1, 10, 1 };
+static const DodRetailCell dod_cell_cross_vert = { DOD_SHEET_CROSS, 25, 0, 1, 10 };
+static const DodRetailCell dod_cell_cross_dot = { DOD_SHEET_CROSS, 25, 13, 1, 1 };
 
 /* timer_num_0..9: 1-5 on the row at y 95, 6-9 and 0 on the row at y 114. */
 static inline DodRetailCell Dod_RetailTimerDigit(int digit)
@@ -283,11 +287,13 @@ static inline int Dod_RetailHudLayoutText(const DodRetailInput *in, DodRetailDra
 		const int cx = in->screen_w / 2, cy = in->screen_h / 2;
 		const int w = in->crosshair_gap > 0 ? in->crosshair_gap : 4;
 		const DodRetailCell hz = dod_cell_cross_horiz, vt = dod_cell_cross_vert;
-		dod_retail_add(out, &n, max, dod_cell_cross_dot, cx - 1, cy - 1);
-		dod_retail_add(out, &n, max, hz, cx - w - hz.w + 2, cy - hz.h / 2);
-		dod_retail_add(out, &n, max, hz, cx + w, cy - hz.h / 2);
-		dod_retail_add(out, &n, max, vt, cx - 1, cy - w - vt.h + 2);
-		dod_retail_add(out, &n, max, vt, cx - 1, cy + w);
+		/* retail: dot at (cx-1, cy-1), bars at cy - 3/2 and cx - 1, all
+		 * 3-px cells whose line is one pixel in: hence cx / cy here. */
+		dod_retail_add(out, &n, max, dod_cell_cross_dot, cx, cy);
+		dod_retail_add(out, &n, max, hz, cx - w - hz.w + 2, cy);
+		dod_retail_add(out, &n, max, hz, cx + w, cy);
+		dod_retail_add(out, &n, max, vt, cx, cy - w - vt.h + 2);
+		dod_retail_add(out, &n, max, vt, cx, cy + w);
 	}
 	return n;
 }
