@@ -123,6 +123,39 @@ static void test_player_body(void)
 	assert(Dod_PlayerBodyValue("us-inf", DOD_CLASS_NONE, 4) == 0);
 }
 
+static void test_classify_spawns(void)
+{
+	/* dod_flash: Allies spawns west, Axis east; the Allied base point is Allies', the Axis base point is Axis' */
+	const float sx[6] = { -2400, -2304, -1840, 2056, 2248, 2432 }, sy[6] = { -880, -976, -1424, 336, 336, 512 };
+	const float px[3] = { -1776, 1170, -384 }, py[3] = { -352, -633, -496 };
+	const int owner[3] = { DOD_TEAM_ALLIES, DOD_TEAM_AXIS, DOD_TEAM_UNASSIGNED };
+	int team[6], i;
+	Dod_ClassifySpawns(sx, sy, 6, px, py, owner, 3, team);
+	for (i = 0; i < 3; ++i) assert(team[i] == DOD_TEAM_ALLIES);
+	for (i = 3; i < 6; ++i) assert(team[i] == DOD_TEAM_AXIS);
+	/* the order of the spawns does not matter */
+	{
+		const float rx[6] = { 2432, -2304, 2056, -1840, 2248, -2400 }, ry[6] = { 512, -976, 336, -1424, 336, -880 };
+		Dod_ClassifySpawns(rx, ry, 6, px, py, owner, 3, team);
+		assert(team[0] == DOD_TEAM_AXIS && team[1] == DOD_TEAM_ALLIES && team[2] == DOD_TEAM_AXIS && team[3] == DOD_TEAM_ALLIES);
+	}
+	/* charlie: the Axis hold every point, so their group is the one nearer to them */
+	{
+		const int axis_all[3] = { DOD_TEAM_AXIS, DOD_TEAM_AXIS, DOD_TEAM_AXIS };
+		const float qx[3] = { 1100, 1200, 900 }, qy[3] = { 0, 100, -100 };
+		const float ax[4] = { -1500, -1400, 1000, 1100 }, ay[4] = { 0, 50, 20, -30 };
+		int t[4];
+		Dod_ClassifySpawns(ax, ay, 4, qx, qy, axis_all, 3, t);
+		assert(t[0] == DOD_TEAM_ALLIES && t[1] == DOD_TEAM_ALLIES && t[2] == DOD_TEAM_AXIS && t[3] == DOD_TEAM_AXIS);
+		Dod_ClassifySpawns(ax, ay, 4, qx, qy, owner, 0, t);	/* no points: still two groups, the first spawn's is the Allies */
+		assert(t[0] == DOD_TEAM_ALLIES && t[1] == DOD_TEAM_ALLIES && t[2] == DOD_TEAM_AXIS);
+	}
+	/* a single spawn is the Allies'; nothing to classify is fine */
+	Dod_ClassifySpawns(sx, sy, 1, px, py, owner, 3, team);
+	assert(team[0] == DOD_TEAM_ALLIES);
+	Dod_ClassifySpawns(sx, sy, 0, px, py, owner, 3, team);
+}
+
 static void test_voice(void)
 {
 	char path[64];
@@ -895,6 +928,7 @@ int main(void)
 	test_retail_class_names();
 	test_status_line();
 	test_player_line();
+	test_classify_spawns();
 	test_voice();
 	test_scoreboard();
 	test_team_points();
