@@ -382,9 +382,20 @@ static void DodGC_PickClass( CBasePlayer *pPlayer, DodClass player_class )
 	}
 }
 
+static void DodGC_CycleWeapon( CBasePlayer *pPlayer, int step );
+
 BOOL CHalfLifeDoD::ClientCommand( CBasePlayer *pPlayer, const char *pcmd )
 {
 	const int index = DodGC_PlayerIndex( pPlayer );
+	if( FStrEq( pcmd, "dod_nextweapon" ) || FStrEq( pcmd, "dod_prevweapon" ) ) {
+		DodGC_CycleWeapon( pPlayer, FStrEq( pcmd, "dod_nextweapon" ) ? 1 : -1 );
+		return TRUE;
+	}
+	if( FStrEq( pcmd, "dod_lastweapon" ) ) {
+		if( !pPlayer->IsObserver() && pPlayer->IsAlive() )
+			pPlayer->SelectLastItem();
+		return TRUE;
+	}
 	if( FStrEq( pcmd, "dod_team" ) ) {
 		const DodTeam team = (DodTeam)Dod_TeamFromName( CMD_ARGV( 1 ) );
 		if( team == DOD_TEAM_SPECTATOR ) {
@@ -453,6 +464,28 @@ BOOL CHalfLifeDoD::ClientCommand( CBasePlayer *pPlayer, const char *pcmd )
 		}
 	}
 	return CHalfLifeTeamplay::ClientCommand( pPlayer, pcmd );
+}
+
+/* Weapon cycling for the pad. invnext / invprev / lastinv are client HUD commands that need the
+ * HUD's weapon list and selection overlay, which the lean GameCube client does not run, so the
+ * D-pad did nothing with them. The pad is bound to these server commands instead; they walk the
+ * carried weapons in slot order (melee, sidearm, primary, rocket, grenade) and select the next one. */
+static void DodGC_CycleWeapon( CBasePlayer *pPlayer, int step )
+{
+	CBasePlayerItem *list[16];
+	int count = 0, current = -1, i;
+	if( !pPlayer || pPlayer->IsObserver() || !pPlayer->IsAlive() )
+		return;
+	for( int slot = 0; slot < MAX_ITEM_TYPES; slot++ )
+		for( CBasePlayerItem *item = pPlayer->m_rgpPlayerItems[slot]; item && count < 16; item = item->m_pNext )
+			list[count++] = item;
+	if( count < 2 )
+		return;
+	for( i = 0; i < count; i++ )
+		if( list[i] == pPlayer->m_pActiveItem )
+			current = i;
+	i = ( ( current < 0 ? 0 : current ) + step + count ) % count;
+	pPlayer->SelectItem( STRING( list[i]->pev->classname ) );
 }
 
 void CHalfLifeDoD::InitHUD( CBasePlayer *pPlayer )
