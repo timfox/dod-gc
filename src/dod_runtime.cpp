@@ -771,6 +771,9 @@ static void DodGC_SendHud( void )
 			WRITE_BYTE( me ? (int)me->team : 0 );
 			WRITE_BYTE( me ? (int)me->player_class : 0 );
 			WRITE_BYTE( grenades > 255 ? 255 : grenades );
+			WRITE_BYTE( ( Dod_GetAlliesCountry() == DOD_COUNTRY_BRITISH ? DOD_HUD_KIT_BRITISH : 0 )
+				| ( Dod_TeamIsParatroopers( DOD_TEAM_ALLIES ) ? DOD_HUD_KIT_ALLIES_PARA : 0 )
+				| ( Dod_TeamIsParatroopers( DOD_TEAM_AXIS ) ? DOD_HUD_KIT_AXIS_PARA : 0 ) );
 		MESSAGE_END();
 	}
 }

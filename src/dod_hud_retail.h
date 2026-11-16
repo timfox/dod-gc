@@ -72,6 +72,17 @@ static const DodRetailClip dod_retail_clips[] = {
 	{ "mg42", DOD_CELL(BULLETS, 161, 123, 35, 133), DOD_CELL(EXTRAS, 181, 40, 64, 128), DOD_CELL(EXTRAS, 0, 132, 81, 65), 0.02300f, 0.03100f, 250 },
 	{ "pschreck", DOD_CELL(ROCKETS2, 0, 64, 128, 64), DOD_CELL(ROCKETS2, 128, 64, 128, 64), DOD_CELL(ROCKETS, 64, 0, 32, 128), 0.0f, 0.0f, 1 },
 	{ "luger", DOD_CELL(BULLETS, 143, 0, 44, 119), DOD_CELL(CLIPS, 143, 0, 44, 119), DOD_CELL(EXTRAS, 111, 192, 29, 64), 0.18908f, 0.07980f, 8 },
+	/* The British and paratrooper guns. The cells are hud.txt's clip_* entries; the bullet column share (x0, per) of the
+	 * ones the retail client table was not recovered for follows the stock gun with the same graphic: x0 as there and
+	 * per such that the clip's rounds fill the column the way the stock guns do (x0 + per * clip is about 0.97). */
+	{ "m1carbine", DOD_CELL(BULLETS, 0, 115, 54, 66), DOD_CELL(CLIPS, 0, 115, 54, 66), DOD_CELL(EXTRAS, 40, 196, 42, 57), 0.10000f, 0.05800f, 15 },
+	{ "grease", DOD_CELL(BULLETS, 58, 115, 36, 133), DOD_CELL(CLIPS, 58, 115, 36, 133), DOD_CELL(EXTRAS, 88, 190, 25, 66), 0.05000f, 0.02875f, 32 },
+	{ "fg42", DOD_CELL(BULLETS, 0, 0, 70, 115), DOD_CELL(CLIPS, 0, 0, 70, 115), DOD_CELL(EXTRAS, 82, 63, 40, 63), 0.24348f, 0.03478f, 20 },
+	{ "enfield", DOD_CELL(BULLETS, 91, 132, 45, 43), DOD_CELL(CLIPS, 91, 132, 45, 43), DOD_CELL(EXTRAS, 150, 0, 28, 29), 0.06977f, 0.09000f, 10 },
+	{ "sten", DOD_CELL(BULLETS, 107, 0, 37, 130), DOD_CELL(CLIPS, 107, 0, 37, 130), DOD_CELL(EXTRAS, 139, 183, 28, 73), 0.03800f, 0.02910f, 32 },
+	{ "bren", DOD_CELL(ROCKETS, 128, 160, 64, 96), DOD_CELL(ROCKETS, 192, 160, 64, 96), DOD_CELL(ROCKETS, 64, 138, 32, 54), 0.0f, 0.0f, 30 },
+	{ "webley", DOD_CELL(ROCKETS, 0, 73, 64, 64), DOD_CELL(ROCKETS, 0, 73, 64, 64), DOD_CELL(ROCKETS, 0, 138, 32, 46), 0.0f, 0.0f, 6 },
+	{ "piat", DOD_CELL(ROCKETS2, 0, 0, 128, 64), DOD_CELL(ROCKETS2, 128, 0, 128, 64), DOD_CELL(ROCKETS, 96, 0, 32, 128), 0.0f, 0.0f, 1 },
 };
 #undef DOD_CELL
 
@@ -92,6 +103,41 @@ static inline const DodRetailClip *Dod_RetailClipFor(const char *classname)
 		if (!strcmp(key, dod_retail_clips[i].key))
 			return &dod_retail_clips[i];
 	return 0;
+}
+
+/* The clip entry of a class name for a map's weapon variants (DodHudState.kit): the British and paratrooper guns carry the
+ * stock class names, so the HUD swaps to their clip graphics: British Allies garand/spring -> enfield, thompson -> sten,
+ * bar -> bren, bazooka -> piat, colt -> webley; paratrooper Allies garand -> m1carbine, thompson -> grease; paratrooper
+ * Axis k98 -> fg42. */
+static inline const DodRetailClip *Dod_RetailClipForKit(const char *classname, int kit)
+{
+	const char *key = classname;
+	static const struct { const char *stock, *variant; } british[] = {
+		{ "garand", "enfield" }, { "spring", "enfield" }, { "thompson", "sten" }, { "bar", "bren" },
+		{ "bazooka", "piat" }, { "colt", "webley" }
+	};
+	unsigned i;
+	if (!key)
+		return 0;
+	if (!strncmp(key, "weapon_dod_", 11))
+		key += 11;
+	else if (!strncmp(key, "weapon_", 7))
+		key += 7;
+	if (kit & 1) {
+		for (i = 0; i < sizeof(british) / sizeof(british[0]); i++)
+			if (!strcmp(key, british[i].stock)) {
+				key = british[i].variant;
+				break;
+			}
+	} else if (kit & 2) {
+		if (!strcmp(key, "garand"))
+			key = "m1carbine";
+		else if (!strcmp(key, "thompson"))
+			key = "grease";
+	}
+	if ((kit & 4) && !strcmp(key, "k98"))
+		key = "fg42";
+	return Dod_RetailClipFor(key);
 }
 
 /* hud.txt (640) records the retail HUD draws. */

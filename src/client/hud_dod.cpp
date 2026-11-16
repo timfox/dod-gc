@@ -77,6 +77,7 @@ int CHudDod::MsgFunc_DodHud( const char *pszName, int iSize, void *pbuf )
 	m_state.my_team = (unsigned char)READ_BYTE();
 	m_state.my_class = (unsigned char)READ_BYTE();
 	m_state.grenades = (unsigned char)READ_BYTE();
+	m_state.kit = (unsigned char)READ_BYTE();
 	m_flLastUpdate = m_flTimerBase = gEngfuncs.GetClientTime();
 	m_fHaveState = 1;
 	return 1;
@@ -210,7 +211,7 @@ int CHudDod::DrawRetail( float flTime )
 	pw = gHUD.m_Ammo.GetCurrentWeapon();
 	if( pw && pw->iClip >= 0 )
 	{
-		in.weapon = Dod_RetailClipFor( pw->szName );
+		in.weapon = Dod_RetailClipForKit( pw->szName, m_fHaveState ? m_state.kit : 0 );
 		in.clip = pw->iClip;
 		in.reserve = pw->iAmmoType > 0 ? gWR.CountAmmo( pw->iAmmoType ) : 0;
 	}
