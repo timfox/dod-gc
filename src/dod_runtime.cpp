@@ -845,11 +845,10 @@ void CHalfLifeDoD::ClientDisconnected( edict_t *pClient )
 	CHalfLifeMultiplay::ClientDisconnected( pClient );
 }
 
-/* The spawn points of the map and the side of each. A build that keeps info_player_allies / info_player_axis reads it from
- * the classname; the disc builds rewrite both to info_player_deathmatch (engine sv_game.c), so the sides are worked out
- * from where the spawns lie and which side's control points they are near (Dod_ClassifySpawns). */
+/* The spawn points of the map and the side of each: the engine keeps info_player_allies / info_player_axis when this DLL exports
+ * them; a DLL that only knows DM starts gets info_player_deathmatch with the side in v.team (1 Allies, 2 Axis), so that is the
+ * fallback. */
 #define DOD_MAX_SPAWNS 128
-#define DOD_BOT_MAX_OBJECTIVES_FOR_SPAWNS 16
 static edict_t *g_spawn_edict[DOD_MAX_SPAWNS];
 static int g_spawn_team[DOD_MAX_SPAWNS];
 static int g_spawn_count;
@@ -859,7 +858,7 @@ static void DodGC_LoadSpawns( void )
 	const char *map = STRING( gpGlobals->mapname );
 	static const char *const classes[3] = { "info_player_allies", "info_player_axis", "info_player_deathmatch" };
 	edict_t *spot;
-	int i, by_class = 0;
+	int i, by_class = 0, allies = 0, axis = 0;
 	if( g_spawn_map[0] && !strcmp( g_spawn_map, map ) )
 		return;
 	strncpy( g_spawn_map, map, sizeof( g_spawn_map ) - 1 );
@@ -873,32 +872,19 @@ static void DodGC_LoadSpawns( void )
 		}
 	}
 	if( !by_class ) {
-		float sx[DOD_MAX_SPAWNS], sy[DOD_MAX_SPAWNS], px[DOD_BOT_MAX_OBJECTIVES_FOR_SPAWNS], py[DOD_BOT_MAX_OBJECTIVES_FOR_SPAWNS];
-		int owners[DOD_BOT_MAX_OBJECTIVES_FOR_SPAWNS], points = 0;
-		DodGCObjectiveView views[DOD_BOT_MAX_OBJECTIVES_FOR_SPAWNS];
 		spot = NULL;
 		while( g_spawn_count < DOD_MAX_SPAWNS && !FNullEnt( spot = FIND_ENTITY_BY_STRING( spot, "classname", classes[2] ) ) ) {
-			sx[g_spawn_count] = spot->v.origin.x;
-			sy[g_spawn_count] = spot->v.origin.y;
-			g_spawn_edict[g_spawn_count++] = spot;
+			if( spot->v.team != DOD_TEAM_ALLIES && spot->v.team != DOD_TEAM_AXIS )
+				continue;	/* a plain DM start (no side) is nobody's spawn here */
+			g_spawn_edict[g_spawn_count] = spot;
+			g_spawn_team[g_spawn_count++] = spot->v.team;
 		}
-		points = DodGC_ListObjectives( views, DOD_BOT_MAX_OBJECTIVES_FOR_SPAWNS );
-		for( i = 0; i < points; i++ ) {
-			const DodObjectiveState *objective = Dod_GetObjective( views[i].id );
-			px[i] = views[i].center.x;
-			py[i] = views[i].center.y;
-			owners[i] = objective ? (int)objective->default_owner : 0;
-		}
-		Dod_ClassifySpawns( sx, sy, g_spawn_count, px, py, owners, points, g_spawn_team );
 	}
-	{
-		int allies = 0, axis = 0;
-		for( i = 0; i < g_spawn_count; i++ ) {
-			if( g_spawn_team[i] == DOD_TEAM_ALLIES ) allies++;
-			else axis++;
-		}
-		ALERT( at_console, "DoD spawns: %d Allies, %d Axis (%s)\n", allies, axis, by_class ? "by classname" : "by position" );
+	for( i = 0; i < g_spawn_count; i++ ) {
+		if( g_spawn_team[i] == DOD_TEAM_ALLIES ) allies++;
+		else axis++;
 	}
+	ALERT( at_console, "DoD spawns: %d Allies, %d Axis (%s)\n", allies, axis, by_class ? "by classname" : "by v.team" );
 }
 
 edict_t *CHalfLifeDoD::GetPlayerSpawnSpot( CBasePlayer *pPlayer )
