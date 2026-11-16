@@ -276,6 +276,32 @@ def nearest_cell(index, cells, x, y, z, max_xy=40.0, max_dz=24.0):
     return best
 
 
+def spawn_cells(cells, seeds, min_gap=96.0, hull=None):
+    """The dense cell under each player spawn (found by the hull's ground height when a hull is given), thinned so
+    that spawns within min_gap of one another share a cell. These become waypoints, so a bot that (re)spawns always
+    has a node it can walk straight to: the coverage radius alone leaves some spawns 100+ units from the nearest
+    node, behind a wall or a step."""
+    index = {}
+    for key in cells:
+        index.setdefault((key[0], key[1]), []).append(key)
+    chosen = []
+    for x, y, z in seeds:
+        gz = z
+        if hull is not None:
+            g = find_ground(hull, x, y, z + 4.0, z - 200.0)
+            if g is not None:
+                gz = g
+        key = nearest_cell(index, cells, x, y, gz, max_xy=48.0, max_dz=24.0) or \
+            nearest_cell(index, cells, x, y, gz, max_xy=96.0, max_dz=64.0)
+        if key is None or key in chosen:
+            continue
+        cx, cy, cz = cells[key]
+        if any(math.hypot(cells[k][0] - cx, cells[k][1] - cy) < min_gap and abs(cells[k][2] - cz) < 40.0 for k in chosen):
+            continue
+        chosen.append(key)
+    return chosen
+
+
 def ladder_links(bsp, hull, cells, cell):
     """[(bottom_key, top_key, height)] for every func_ladder: the floor cell at its foot and the one it tops out on."""
     index = {}
@@ -574,7 +600,8 @@ def main(argv=None):
     cells, edges = flood(hull, seeds, args.cell)
     print(f"dense floor: {len(cells)} cells from {len(seeds)} spawns", file=sys.stderr)
     links = ladder_links(bsp, hull, cells, args.cell)
-    forced = []
+    forced = spawn_cells(cells, seeds, hull=hull)
+    print(f"spawns: {len(seeds)} spawn points -> {len(forced)} forced waypoints", file=sys.stderr)
     for foot, top, height in links:
         edges.setdefault(foot, []).append((top, KIND_LADDER, height * 2.0))
         edges.setdefault(top, []).append((foot, KIND_LADDER, height * 1.5))

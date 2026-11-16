@@ -873,11 +873,12 @@ public:
 	int PointIndex( void ) const { return m_iPointIndex; }
 	BOOL IsAreaDriven( void ) const { return m_bAreaDriven; }
 	/* The first area that links to this point supplies the volume bots stand in. */
-	void SetAreaBounds( const Vector &mins, const Vector &maxs, const int can_cap[3] );
+	void SetAreaBounds( const Vector &mins, const Vector &maxs, const int can_cap[3], const int num_cap[3] );
 	void FillView( DodGCObjectiveView *view ) const;
 private:
 	Vector m_vecAreaMin, m_vecAreaMax;
 	int m_iAreaCanCap[3];
+	int m_iAreaNumCap[3];	/* players of a team needed inside to capture */
 	BOOL m_bHasBounds;
 	int m_iPointIndex;
 	int m_iDefaultOwner;
@@ -895,9 +896,10 @@ CDoDControlPoint::CDoDControlPoint()
 	m_bAreaDriven = FALSE;
 	m_bHasBounds = FALSE;
 	m_iAreaCanCap[0] = m_iAreaCanCap[DOD_TEAM_ALLIES] = m_iAreaCanCap[DOD_TEAM_AXIS] = 1;
+	m_iAreaNumCap[0] = m_iAreaNumCap[DOD_TEAM_ALLIES] = m_iAreaNumCap[DOD_TEAM_AXIS] = 1;
 }
 
-void CDoDControlPoint::SetAreaBounds( const Vector &mins, const Vector &maxs, const int can_cap[3] )
+void CDoDControlPoint::SetAreaBounds( const Vector &mins, const Vector &maxs, const int can_cap[3], const int num_cap[3] )
 {
 	if( m_bHasBounds )
 		return;
@@ -906,6 +908,8 @@ void CDoDControlPoint::SetAreaBounds( const Vector &mins, const Vector &maxs, co
 	m_vecAreaMax = maxs;
 	m_iAreaCanCap[DOD_TEAM_ALLIES] = can_cap[DOD_TEAM_ALLIES];
 	m_iAreaCanCap[DOD_TEAM_AXIS] = can_cap[DOD_TEAM_AXIS];
+	m_iAreaNumCap[DOD_TEAM_ALLIES] = num_cap[DOD_TEAM_ALLIES];
+	m_iAreaNumCap[DOD_TEAM_AXIS] = num_cap[DOD_TEAM_AXIS];
 }
 
 void CDoDControlPoint::FillView( DodGCObjectiveView *view ) const
@@ -916,11 +920,14 @@ void CDoDControlPoint::FillView( DodGCObjectiveView *view ) const
 		view->maxs = m_vecAreaMax;
 		view->can_cap[DOD_TEAM_ALLIES] = m_iAreaCanCap[DOD_TEAM_ALLIES];
 		view->can_cap[DOD_TEAM_AXIS] = m_iAreaCanCap[DOD_TEAM_AXIS];
+		view->num_cap[DOD_TEAM_ALLIES] = m_iAreaNumCap[DOD_TEAM_ALLIES];
+		view->num_cap[DOD_TEAM_AXIS] = m_iAreaNumCap[DOD_TEAM_AXIS];
 	} else {
 		/* sphere capture (see Think): anyone may capture within 128 units */
 		view->mins = pev->origin - Vector( 128, 128, 128 );
 		view->maxs = pev->origin + Vector( 128, 128, 128 );
 		view->can_cap[DOD_TEAM_ALLIES] = view->can_cap[DOD_TEAM_AXIS] = 1;
+		view->num_cap[DOD_TEAM_ALLIES] = view->num_cap[DOD_TEAM_AXIS] = 1;
 	}
 	view->center = ( view->mins + view->maxs ) * 0.5f;
 }
@@ -1074,7 +1081,7 @@ void CDoDCaptureArea::Think( void )
 		if( e ) {
 			m_pPoint = (CDoDControlPoint *)e;
 			m_pPoint->SetAreaDriven( m_flTimeToCap );
-			m_pPoint->SetAreaBounds( pev->absmin, pev->absmax, m_iCanCap );
+			m_pPoint->SetAreaBounds( pev->absmin, pev->absmax, m_iCanCap, m_iNumCap );
 		}
 		ALERT( at_console, "DoD capture area target=%s point=%d time=%.0f absmin=%.0f,%.0f,%.0f absmax=%.0f,%.0f,%.0f\n",
 			m_iszTarget ? STRING( m_iszTarget ) : "-", m_pPoint ? m_pPoint->PointIndex() : -1, m_flTimeToCap,

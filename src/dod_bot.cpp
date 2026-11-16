@@ -171,6 +171,7 @@ typedef struct DodBotState {
 	float track_since, last_fight_time, react_until;
 	float burst_until, pause_until;
 	float next_unseen_log, last_fire;
+	int was_alive;			/* for the death log */
 	int stage_role;			/* test scenario: 1 watcher (holds still, perceives), 2 idle and blind */
 	float stage_yaw;
 	int stage_sightings, stage_fire_frames;
@@ -433,6 +434,8 @@ static BOOL NetworkUp( void )
 static unsigned long long g_think_us_sum, g_think_us_max;
 static unsigned g_think_frames;
 
+static const char *const g_action_names[DOD_ACT_COUNT] = { "none", "reload", "attack", "seek", "cover", "regroup", "to-point", "capture", "guard" };
+
 static void PlanBots( void )
 {
 	int humans, bots, team_counts[4], bot_team_counts[4], special_counts[4][DOD_CLASS_COUNT], target;
@@ -444,6 +447,27 @@ static void PlanBots( void )
 		/* entities are the real ceiling for a crowded match (a respawn drops a weapon box); worth watching */
 		next_edict_log = gpGlobals->time + 10.0f;
 		ALERT( at_console, "DoD edicts: %d in use of %d (%d humans, %d bots)\n", g_engfuncs.pfnNumberOfEntities(), gpGlobals->maxEntities, humans, bots );
+		{
+			/* where each bot stands against its goal: the quickest way to see a bot that cannot get anywhere */
+			int bi;
+			for( bi = 1; bi <= gpGlobals->maxClients && bi <= DOD_BOT_MAX_SLOTS; bi++ )
+			{
+				CBasePlayer *pb = PlayerAt( bi );
+				DodBotState *sb = BotState( bi );
+				if( !pb || !sb || !DodBots_IsBot( pb ) )
+					continue;
+				if( !pb->IsAlive() )
+				{
+					ALERT( at_console, "DoD bot %s: dead\n", STRING( pb->pev->netname ) );
+					continue;
+				}
+				if( sb->has_goal && sb->goal_id >= 0 )
+					ALERT( at_console, "DoD bot %s: %s point %d, %.0f units (dz %.0f), route %d/%d, %s, health %.0f, at %.0f,%.0f,%.0f\n",
+						STRING( pb->pev->netname ), sb->goal_kind == DOD_BOT_GOAL_ATTACK ? "attacking" : "defending", sb->goal_id,
+						( sb->goal - pb->pev->origin ).Length2D(), sb->goal.z - pb->pev->origin.z, sb->path_idx, sb->path_len,
+						g_action_names[sb->behavior], pb->pev->health, pb->pev->origin.x, pb->pev->origin.y, pb->pev->origin.z );
+			}
+		}
 		if( g_think_frames )
 		{
 			ALERT( at_console, "DoD bots: think %.2f ms average, %.2f ms worst over %u frames (%d bots)\n",
@@ -894,7 +918,17 @@ static BOOL PlanPath( CBasePlayer *pBot, DodBotState *state )
 	g_plan_stamp = gpGlobals->time;
 	Dod_NavSetTime( &g_nav, gpGlobals->time );
 	ns = Dod_NavNearest( &g_nav, origin.x, origin.y, origin.z, starts, 6 );
-	ng = Dod_NavNearest( &g_nav, state->nav_pos.x, state->nav_pos.y, state->nav_pos.z, goals, 4 );
+	ng = 0;
+	if( state->has_goal && state->nav_id == state->goal_id )
+	{
+		/* an objective: route to a waypoint inside its capture volume when there is one (the node nearest the
+		 * centre can be well outside a big or odd-shaped volume) */
+		const float mins[3] = { state->goal_mins.x, state->goal_mins.y, state->goal_mins.z };
+		const float maxs[3] = { state->goal_maxs.x, state->goal_maxs.y, state->goal_maxs.z };
+		ng = Dod_NavInside( &g_nav, mins, maxs, DOD_BOT_IN_MARGIN, goals, 4 );
+	}
+	if( ng == 0 )
+		ng = Dod_NavNearest( &g_nav, state->nav_pos.x, state->nav_pos.y, state->nav_pos.z, goals, 4 );
 	for( pass = 0; pass < 2; pass++ )	/* a start node in sight first, then any */
 	{
 		for( i = 0; i < ns; i++ )
@@ -1076,7 +1110,6 @@ static BOOL NavTarget( CBasePlayer *pBot, DodBotState *state, Vector *target )
 #define DOD_BOT_NEAR_TEAM 450.0f
 
 static const char *const g_goal_names[DOD_GOAL_COUNT] = { "capture", "defend", "hunt", "cover", "reload", "regroup" };
-static const char *const g_action_names[DOD_ACT_COUNT] = { "none", "reload", "attack", "seek", "cover", "regroup", "to-point", "capture", "guard" };
 
 static void SetDest( DodBotState *state, const Vector &pos, int id )
 {
@@ -1430,7 +1463,15 @@ static void StageStep( void )
 	}
 	else if( stage == 2 )
 	{
+		static float next_status;
 		DodGCObjectiveView views[DOD_BOT_MAX_OBJECTIVES];
+		if( g_stage_phase > 0 && now >= next_status )
+		{
+			next_status = now + 1.0f;
+			ALERT( at_console, "DoD STAGE capture status: Allies bot %s at %.0f,%.0f,%.0f; Axis bot %s at %.0f,%.0f,%.0f\n", allies->IsAlive() ? "alive" : "DEAD",
+				allies->pev->origin.x, allies->pev->origin.y, allies->pev->origin.z, axis->IsAlive() ? "alive" : "DEAD", axis->pev->origin.x,
+				axis->pev->origin.y, axis->pev->origin.z );
+		}
 		const int count = DodGC_ListObjectives( views, DOD_BOT_MAX_OBJECTIVES );
 		int pick = -1, node[2], n;
 		float x, y, z;
@@ -1438,10 +1479,12 @@ static void StageStep( void )
 		{
 		case 0:
 			for( i = 0; i < count; i++ )
-				ALERT( at_console, "DoD STAGE capture: point %d owner %d, Allies may capture %d, Axis may capture %d\n", views[i].id, (int)views[i].owner,
-					views[i].can_cap[DOD_TEAM_ALLIES], views[i].can_cap[DOD_TEAM_AXIS] );
-			for( i = 0; i < count; i++ )	/* a point both may capture shows a contest; else any the Allies may take */
-				if( views[i].owner != DOD_TEAM_ALLIES && views[i].can_cap[DOD_TEAM_ALLIES] && views[i].can_cap[DOD_TEAM_AXIS] )
+				ALERT( at_console, "DoD STAGE capture: point %d owner %d, Allies may capture %d (need %d), Axis may capture %d (need %d)\n", views[i].id,
+					(int)views[i].owner, views[i].can_cap[DOD_TEAM_ALLIES], views[i].num_cap[DOD_TEAM_ALLIES], views[i].can_cap[DOD_TEAM_AXIS],
+					views[i].num_cap[DOD_TEAM_AXIS] );
+			for( i = 0; i < count; i++ )	/* a point both may capture, one player each, shows a contest; else any the Allies may take */
+				if( views[i].owner != DOD_TEAM_ALLIES && views[i].can_cap[DOD_TEAM_ALLIES] && views[i].can_cap[DOD_TEAM_AXIS] &&
+					views[i].num_cap[DOD_TEAM_ALLIES] <= 1 && views[i].num_cap[DOD_TEAM_AXIS] <= 1 )
 				{
 					pick = i;
 					break;
@@ -1457,7 +1500,13 @@ static void StageStep( void )
 				return;
 			ALERT( at_console, "DoD STAGE capture: using point %d (%s)\n", views[pick].id,
 				views[pick].can_cap[DOD_TEAM_AXIS] ? "both teams may capture: a contest is possible" : "Axis may not capture here: a defender inside must not block" );
-			n = Dod_NavNearest( &g_nav, views[pick].center.x, views[pick].center.y, views[pick].center.z, node, 2 );
+			{
+				const float mins[3] = { views[pick].mins.x, views[pick].mins.y, views[pick].mins.z };
+				const float maxs[3] = { views[pick].maxs.x, views[pick].maxs.y, views[pick].maxs.z };
+				n = Dod_NavInside( &g_nav, mins, maxs, 0.0f, node, 2 );	/* a waypoint inside the area, not just near its centre */
+			}
+			if( n < 1 )
+				n = Dod_NavNearest( &g_nav, views[pick].center.x, views[pick].center.y, views[pick].center.z, node, 2 );
 			if( n < 1 )
 				return;
 			g_stage_point = views[pick].id;
@@ -1474,9 +1523,9 @@ static void StageStep( void )
 			if( now < g_stage_until )
 				break;
 			Dod_NavNodePos( &g_nav, g_stage_node_a, &x, &y, &z );
-			StagePlace( axis, Vector( x + 24.0f, y, z ), 180.0f );
+			StagePlace( axis, Vector( x, y + 40.0f, z ), 180.0f );
 			ALERT( at_console, "DoD STAGE capture: Axis bot steps into the same area (contest)\n" );
-			g_stage_until = now + 5.0f;
+			g_stage_until = now + 8.0f;
 			g_stage_phase = 2;
 			break;
 		case 2:
@@ -1523,6 +1572,15 @@ static void RunBot( int index, CBasePlayer *pBot )
 	TraceResult tr;
 	BOOL floor_trust = TRUE;
 
+	if( !pBot->IsAlive() && state->was_alive )
+	{
+		/* once per death: where, what hit it last, and the damage kinds (to tell a firefight from a hazard or a fall) */
+		edict_t *inflictor = pBot->pev->dmg_inflictor;
+		ALERT( at_console, "DoD bot %s: died at %.0f,%.0f,%.0f, last hit by %s (damage bits 0x%x, last damage %.0f)\n", STRING( pBot->pev->netname ),
+			pBot->pev->origin.x, pBot->pev->origin.y, pBot->pev->origin.z,
+			inflictor && !FNullEnt( inflictor ) ? STRING( inflictor->v.classname ) : "nothing", pBot->m_bitsDamageType, pBot->pev->dmg_take );
+	}
+	state->was_alive = pBot->IsAlive();
 	if( !pBot->IsAlive() )
 	{
 		/* A dead player respawns on a fire press after the death delay. */
@@ -1659,6 +1717,7 @@ static void RunBot( int index, CBasePlayer *pBot )
 		in.clip_empty = weapon && weapon->m_iClip == 0;
 	}
 
+	BOOL path_follow = FALSE;
 	if( fight )
 	{
 		const DodBotSkill sk = BotSkill();
@@ -1712,6 +1771,7 @@ static void RunBot( int index, CBasePlayer *pBot )
 		{
 			Vector target = state->nav_pos;
 			const BOOL on_path = NavTarget( pBot, state, &target );
+			path_follow = on_path && !state->ladder_dir;
 			if( state->ladder_dir )
 			{
 				/* climbing: face the ladder's far end, look up (or down) and push forward */
@@ -1736,11 +1796,15 @@ static void RunBot( int index, CBasePlayer *pBot )
 				state->heading = state->steer_yaw;
 			}
 		}
-		state->yaw = Dod_BotTurn( state->yaw, state->heading, 120.0f * dt );
+		/* Following a route the view has to be able to swing round a node that is off to the side: at 220 units/s and
+		 * 120 degrees/s the turning circle is ~105 units, wider than the node reach, so the bot orbited it. */
+		state->yaw = Dod_BotTurn( state->yaw, state->heading, ( path_follow ? 300.0f : 120.0f ) * dt );
 		state->pitch = Dod_BotTurn( state->pitch, state->ladder_dir > 0 ? -50.0f : ( state->ladder_dir < 0 ? 50.0f : 0.0f ), 120.0f * dt );
 	}
 
 	move = Dod_BotDecide( &in );
+	if( path_follow && !fight && fabsf( Dod_BotAngleDelta( state->yaw, state->heading ) ) > 45.0f )
+		move.forward = fminf( move.forward, 0.3f );	/* point at the node first, then run at it */
 	seg.mark();
 	if( state->nav_has && !fight && !state->nav_arrived )
 		move.turn_away = 0;	/* the steering picks the way round; a random turn only undoes it */

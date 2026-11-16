@@ -394,6 +394,17 @@ static void test_nav(void)
 	count = Dod_NavPath(&nav, 0, 4, path, DOD_NAV_MAX_PATH);
 	assert(count == 4 && path[2] == 2);
 
+	/* nodes inside a capture volume, nearest the centre first; none when nothing is inside */
+	{
+		const float mins[3] = { 150.0f, -50.0f, -50.0f }, maxs[3] = { 250.0f, 50.0f, 50.0f };
+		const float far_mins[3] = { 5000.0f, 5000.0f, 5000.0f }, far_maxs[3] = { 5100.0f, 5100.0f, 5100.0f };
+		int inside[4];
+		assert(Dod_NavInside(&nav, mins, maxs, 16.0f, inside, 4) == 1);	/* node 2 (200,0,0); node 4 is 200 up, past the vertical limit */
+		assert(inside[0] == 2);
+		assert(Dod_NavInside(&nav, far_mins, far_maxs, 16.0f, inside, 4) == 0);
+		assert(Dod_NavInside(NULL, mins, maxs, 16.0f, inside, 4) == 0);
+	}
+
 	/* nearest nodes, nearest first */
 	count = Dod_NavNearest(&nav, 190.0f, 0.0f, 190.0f, near, 4);
 	assert(count == 4 && near[0] == 4 && near[1] == 3 && near[2] == 2);

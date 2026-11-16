@@ -302,6 +302,10 @@ int Dod_NavNearest(const DodNav *nav, float x, float y, float z, int *out, int m
 void Dod_NavPenalize(DodNav *nav, int from, int to, float until);
 int Dod_NavPenalized(const DodNav *nav, int from, int to);
 void Dod_NavSetTime(DodNav *nav, float now);
+/* Up to max nodes inside a capture volume (the box grown by margin sideways and 72 vertically), nearest to its
+ * centre first; returns how many. A bot heading for a point should route to one of these, not to the node nearest
+ * the centre, which can lie outside a large or odd-shaped volume. */
+int Dod_NavInside(const DodNav *nav, const float mins[3], const float maxs[3], float margin, int *out, int max);
 /* A* from one node to another. Fills path (from first to last, inclusive) and returns its length, or 0 when
  * there is no path or it is longer than max_path. */
 int Dod_NavPath(DodNav *nav, int from, int to, int *path, int max_path);

@@ -150,6 +150,19 @@ class ThinningTest(unittest.TestCase):
         self.assertIn((0, G.KIND_LADDER), [(t, k) for t, k, _c in adj[1]])
 
 
+class SpawnCellTest(unittest.TestCase):
+    def test_each_spawn_gets_a_cell_and_close_spawns_share_one(self):
+        cells = {(i, 0, 1): (i * 32.0, 0.0, 36.0) for i in range(20)}
+        seeds = [(0.0, 0.0, 36.0), (40.0, 0.0, 36.0), (320.0, 0.0, 36.0), (900.0, 0.0, 36.0)]
+        keys = G.spawn_cells(cells, seeds, min_gap=96.0)
+        self.assertEqual([cells[k][0] for k in keys], [0.0, 320.0])   # the 2nd is within 96 of the 1st; the 4th is off the map
+
+    def test_a_spawn_on_another_floor_is_kept_separate(self):
+        cells = {(0, 0, 1): (0.0, 0.0, 36.0), (0, 0, 9): (0.0, 0.0, 300.0)}
+        keys = G.spawn_cells(cells, [(0.0, 0.0, 36.0), (0.0, 0.0, 300.0)], min_gap=96.0)
+        self.assertEqual(sorted(cells[k][2] for k in keys), [36.0, 300.0])
+
+
 class LadderLinkTest(unittest.TestCase):
     def test_a_ladder_joins_the_floor_at_its_foot_to_the_floor_it_tops_out_on(self):
         # floor z=0 (hull origin 36) for x<200; a platform at z=200 (origin 236) behind a wall plane at x=300
