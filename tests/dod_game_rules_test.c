@@ -593,6 +593,26 @@ static void test_map_driven_round_flow(void)
 	Dod_GameInit();
 }
 
+static void test_hurt_zone_team_flags(void)
+{
+	/* flash's spawn-protection zones: 64 keeps the Axis out of the Allies' base, 128 the Allies out of the Axis'.
+	 * Before the filter existed every zone killed everyone, including players spawning in their own base. */
+	assert(Dod_HurtAppliesToTeam(DOD_HURT_AXIS_ONLY, DOD_TEAM_AXIS));
+	assert(!Dod_HurtAppliesToTeam(DOD_HURT_AXIS_ONLY, DOD_TEAM_ALLIES));
+	assert(Dod_HurtAppliesToTeam(DOD_HURT_ALLIES_ONLY, DOD_TEAM_ALLIES));
+	assert(!Dod_HurtAppliesToTeam(DOD_HURT_ALLIES_ONLY, DOD_TEAM_AXIS));
+	/* the stock flags around them do not matter; no team flag, or both, hurts everyone */
+	assert(Dod_HurtAppliesToTeam(0, DOD_TEAM_ALLIES) && Dod_HurtAppliesToTeam(0, DOD_TEAM_AXIS));
+	assert(Dod_HurtAppliesToTeam(1 | 2 | 16, DOD_TEAM_ALLIES));
+	assert(Dod_HurtAppliesToTeam(DOD_HURT_AXIS_ONLY | DOD_HURT_ALLIES_ONLY, DOD_TEAM_AXIS));
+	assert(Dod_HurtAppliesToTeam(DOD_HURT_AXIS_ONLY | 16, DOD_TEAM_AXIS) && !Dod_HurtAppliesToTeam(DOD_HURT_ALLIES_ONLY | 1, DOD_TEAM_AXIS));
+	/* avalanche's zone (129 = target-only + Allies-only) */
+	assert(Dod_HurtAppliesToTeam(129, DOD_TEAM_ALLIES) && !Dod_HurtAppliesToTeam(129, DOD_TEAM_AXIS));
+	/* a spectator or unassigned player is not hurt by a team zone, but is by a plain one */
+	assert(!Dod_HurtAppliesToTeam(DOD_HURT_AXIS_ONLY, DOD_TEAM_SPECTATOR) && !Dod_HurtAppliesToTeam(DOD_HURT_ALLIES_ONLY, DOD_TEAM_UNASSIGNED));
+	assert(Dod_HurtAppliesToTeam(0, DOD_TEAM_SPECTATOR));
+}
+
 int main(void)
 {
 	test_players_and_weapon_models();
@@ -606,5 +626,6 @@ int main(void)
 	test_weapon_table();
 	test_match_loop();
 	test_map_driven_round_flow();
+	test_hurt_zone_team_flags();
 	return 0;
 }

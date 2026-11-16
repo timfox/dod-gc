@@ -729,3 +729,14 @@ const DodObjectiveState *Dod_GetObjective(int id)
 {
 	return dod_find_objective(id);
 }
+
+int Dod_HurtAppliesToTeam(int spawnflags, DodTeam team)
+{
+	const int axis_only = (spawnflags & DOD_HURT_AXIS_ONLY) != 0;
+	const int allies_only = (spawnflags & DOD_HURT_ALLIES_ONLY) != 0;
+	if (axis_only == allies_only)
+		return 1;
+	if (team != DOD_TEAM_ALLIES && team != DOD_TEAM_AXIS)
+		return 0;
+	return axis_only ? team == DOD_TEAM_AXIS : team == DOD_TEAM_ALLIES;
+}

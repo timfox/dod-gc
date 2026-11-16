@@ -181,6 +181,20 @@ def integrate_weapons(dlls: Path) -> None:
 		'\tDodWeapons_PrecacheAll();\n')
 
 
+def integrate_trigger_hurt(dlls: Path) -> None:
+	"""trigger_hurt honours DoD's team flags (64 hurts Axis only, 128 Allies only): without it the spawn-protection
+	zones on maps like dod_flash hurt everyone, killing players that spawn inside their own base."""
+	triggers = dlls / "triggers.cpp"
+	replace_once(triggers,
+		'\tif( ( pev->spawnflags & SF_TRIGGER_HURT_NO_CLIENTS ) && pOther->IsPlayer() )\n\t\treturn;\n',
+		'\tif( ( pev->spawnflags & SF_TRIGGER_HURT_NO_CLIENTS ) && pOther->IsPlayer() )\n\t\treturn;\n'
+		'\t{\n'
+		'\t\textern BOOL DodGC_TriggerHurtApplies( int spawnflags, CBaseEntity *pOther );\n'
+		'\t\tif( !DodGC_TriggerHurtApplies( pev->spawnflags, pOther ) )\n'
+		'\t\t\treturn;\t/* a DoD team zone that is not for this player\'s side */\n'
+		'\t}\n')
+
+
 def integrate_grenades(dlls: Path) -> None:
 	"""DoD hand grenades: models, fuse, damage and a budgeted explosion."""
 	hand = dlls / "handgrenade.cpp"
@@ -469,6 +483,7 @@ def main() -> int:
 	):
 		integrate_weapon(dlls / filename, class_name, kind, animation, event, legacy_model, models)
 	integrate_grenades(dlls)
+	integrate_trigger_hurt(dlls)
 	integrate_weapons(dlls)
 	integrate_dod_hud(client)
 	integrate_spectator_camera(client)
