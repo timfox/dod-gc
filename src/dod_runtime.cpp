@@ -7,6 +7,7 @@
 #include "gamerules.h"
 #include "teamplay_gamerules.h"
 #include "dod_runtime.h"
+#include "usercmd.h"
 #include "client.h"
 #include "dod_hud.h"
 #include "dod_game.h"
@@ -352,6 +353,7 @@ static void DodGC_ApplyClass( CBasePlayer *pPlayer, DodClass player_class )
 		DodBots_SetGranting( FALSE );
 	}
 	DodGC_ApplyBody( pPlayer );
+	Dod_StaminaReset( index );
 	{
 		/* the sub-models of the retail player model that make up this class (see Dod_PlayerBodyValue) */
 		const char *model = DodGC_BodyForTeam( DodGC_TeamForPlayer( pPlayer ) );
@@ -969,6 +971,7 @@ static void DodGC_SendHud( void )
 			WRITE_BYTE( ( Dod_GetAlliesCountry() == DOD_COUNTRY_BRITISH ? DOD_HUD_KIT_BRITISH : 0 )
 				| ( Dod_TeamIsParatroopers( DOD_TEAM_ALLIES ) ? DOD_HUD_KIT_ALLIES_PARA : 0 )
 				| ( Dod_TeamIsParatroopers( DOD_TEAM_AXIS ) ? DOD_HUD_KIT_AXIS_PARA : 0 ) );
+			WRITE_BYTE( Dod_PlayerStamina( i ) );
 		MESSAGE_END();
 	}
 }
@@ -1130,12 +1133,52 @@ static void DodGC_TrimEdicts( BOOL all )
 
 static float g_dod_next_trim;
 
+/* Stamina and sprint for every human playing: a double tap of forward sprints, and the speed the engine's player move
+ * uses is the player's maxspeed (the pad's stick sets forward; bots run their own movement). */
+/* The newest usercmd of each player (CmdStart, patched in by the integrator): the stick's forwardmove is not a button. */
+static float g_dod_cmd_forward[DOD_MAX_PLAYERS + 1];
+void DodGC_UserCmd( CBasePlayer *pPlayer, const struct usercmd_s *cmd )
+{
+	const int index = DodGC_PlayerIndex( pPlayer );
+	if( cmd && index >= 1 && index <= DOD_MAX_PLAYERS )
+		g_dod_cmd_forward[index] = cmd->forwardmove;
+}
+
+static void DodGC_UpdateMovement( void )
+{
+	static int last_buttons[DOD_MAX_PLAYERS + 1];
+	static float last_time;
+	const float dt = gpGlobals->time - last_time;
+	int i;
+	last_time = gpGlobals->time;
+	for( i = 1; i <= gpGlobals->maxClients && i <= DOD_MAX_PLAYERS; i++ ) {
+		CBasePlayer *player = (CBasePlayer *)UTIL_PlayerByIndex( i );
+		int buttons, jumped;
+		if( !player || !player->IsPlayer() || ( player->pev->flags & FL_FAKECLIENT ) )
+			continue;
+		buttons = player->pev->button;
+		jumped = ( buttons & IN_JUMP ) && !( last_buttons[i] & IN_JUMP ) && ( player->pev->flags & FL_ONGROUND );
+		last_buttons[i] = buttons;
+		if( player->IsObserver() || player->pev->deadflag != DEAD_NO )
+			continue;
+		const Vector flat( player->pev->velocity.x, player->pev->velocity.y, 0.0f );
+		static int was_sprinting[DOD_MAX_PLAYERS + 1];
+		player->pev->maxspeed = Dod_StaminaThink( i, gpGlobals->time, dt > 0.0f && dt < 0.5f ? dt : 0.0f,
+			( buttons & IN_FORWARD ) != 0 || g_dod_cmd_forward[i] > 60.0f, jumped, flat.Length() > 40.0f );
+		if( Dod_PlayerSprinting( i ) != was_sprinting[i] ) {
+			was_sprinting[i] = Dod_PlayerSprinting( i );
+			ALERT( at_console, "DoD sprint %s: %s, stamina %d, speed %.0f\n", was_sprinting[i] ? "on" : "off", STRING( player->pev->netname ), Dod_PlayerStamina( i ), flat.Length() );
+		}
+	}
+}
+
 void CHalfLifeDoD::Think( void )
 {
 	CHalfLifeTeamplay::Think();
 	Dod_Think( gpGlobals->frametime );
 	DodBots_Think();
 	DodGC_SpectatorThink();
+	DodGC_UpdateMovement();
 	if( gpGlobals->time >= g_dod_next_trim ) {
 		g_dod_next_trim = gpGlobals->time + 1.0f;
 		DodGC_TrimEdicts( FALSE );
@@ -1177,7 +1220,7 @@ void CHalfLifeDoD::Think( void )
 	DodGC_RefreshBoards();
 	if( CVAR_GET_FLOAT( "cl_dodhud" ) != 0.0f ) {
 		if( gpGlobals->time >= g_dod_next_hud ) {
-			g_dod_next_hud = gpGlobals->time + 0.5f;
+			g_dod_next_hud = gpGlobals->time + 0.25f;
 			DodGC_SendHud();
 		}
 	} else if( gpGlobals->time >= g_dod_next_status ) {

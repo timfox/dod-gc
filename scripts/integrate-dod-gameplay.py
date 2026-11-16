@@ -225,6 +225,14 @@ def integrate_voice_menu(dlls: Path) -> None:
 		'        // temporary flashlight for level designers\n')
 
 
+def integrate_usercmd(dlls: Path) -> None:
+	"""The pad's analog stick moves the player through usercmd.forwardmove without setting IN_FORWARD, so the game cannot see a
+	double tap of forward in pev->button. CmdStart hands every usercmd to the game's DodGC_UserCmd."""
+	replace_once(dlls / "client.cpp",
+		'\tpl->random_seed = random_seed;\n}\n',
+		'\tpl->random_seed = random_seed;\n\t{\n\t\textern void DodGC_UserCmd( CBasePlayer *pPlayer, const struct usercmd_s *cmd );\n\t\tDodGC_UserCmd( pl, cmd );\n\t}\n}\n')
+
+
 def integrate_grenades(dlls: Path) -> None:
 	"""DoD hand grenades: models, fuse, damage and a budgeted explosion."""
 	hand = dlls / "handgrenade.cpp"
@@ -516,6 +524,7 @@ def main() -> int:
 	integrate_trigger_hurt(dlls)
 	integrate_default_items(dlls)
 	integrate_voice_menu(dlls)
+	integrate_usercmd(dlls)
 	integrate_weapons(dlls)
 	integrate_dod_hud(client)
 	integrate_spectator_camera(client)

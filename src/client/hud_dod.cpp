@@ -88,6 +88,7 @@ int CHudDod::MsgFunc_DodHud( const char *pszName, int iSize, void *pbuf )
 	m_state.my_class = (unsigned char)READ_BYTE();
 	m_state.grenades = (unsigned char)READ_BYTE();
 	m_state.kit = (unsigned char)READ_BYTE();
+	m_state.stamina = (unsigned char)READ_BYTE();
 	m_flLastUpdate = m_flTimerBase = gEngfuncs.GetClientTime();
 	m_fHaveState = 1;
 	return 1;
@@ -303,7 +304,7 @@ int CHudDod::DrawRetail( float flTime )
 	in.screen_w = 640;
 	in.screen_h = 480;
 	in.health = gHUD.m_Health.m_iHealth;
-	in.stamina = 100.0f;	/* the server has no stamina yet: full tube */
+	in.stamina = m_fHaveState ? (float)m_state.stamina : 100.0f;
 	in.spectating = g_iUser1 != 0;
 	in.dead = in.health <= 0;
 	in.show_reinforcements = 0;

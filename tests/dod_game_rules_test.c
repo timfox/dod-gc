@@ -156,6 +156,62 @@ static void test_classify_spawns(void)
 	Dod_ClassifySpawns(sx, sy, 0, px, py, owner, 3, team);
 }
 
+static void test_stamina(void)
+{
+	float now = 100.0f, speed;
+	int i;
+	Dod_GameInit();
+	assert(Dod_PlayerConnect(1));
+	assert(Dod_PlayerStamina(1) == 100 && !Dod_PlayerSprinting(1));
+	/* walking: run speed, no sprint */
+	speed = Dod_StaminaThink(1, now, 0.1f, 1, 0, 1);
+	assert(speed == DOD_RUN_SPEED && !Dod_PlayerSprinting(1));
+	now += 0.1f; Dod_StaminaThink(1, now, 0.1f, 0, 0, 0);	/* release */
+	now += 0.1f; speed = Dod_StaminaThink(1, now, 0.1f, 1, 0, 1);	/* press again inside the window: sprint */
+	assert(speed == DOD_SPRINT_SPEED && Dod_PlayerSprinting(1));
+	/* the sprint drains, 22 a second */
+	for (i = 0; i < 10; ++i) { now += 0.1f; Dod_StaminaThink(1, now, 0.1f, 1, 0, 1); }
+	assert(Dod_PlayerStamina(1) >= 76 && Dod_PlayerStamina(1) <= 78);
+	/* releasing forward ends the sprint; a slow second press is no double tap */
+	now += 0.1f; Dod_StaminaThink(1, now, 0.1f, 0, 0, 1);
+	assert(!Dod_PlayerSprinting(1));
+	now += 0.5f; speed = Dod_StaminaThink(1, now, 0.1f, 1, 0, 1);
+	assert(speed == DOD_RUN_SPEED && !Dod_PlayerSprinting(1));
+	/* no refill during the rest, then it refills */
+	{
+		const int before = Dod_PlayerStamina(1);
+		now += 0.2f; Dod_StaminaThink(1, now, 0.2f, 1, 0, 1);
+		assert(Dod_PlayerStamina(1) == before);
+		for (i = 0; i < 20; ++i) { now += 0.5f; Dod_StaminaThink(1, now, 0.5f, 1, 0, 1); }
+		assert(Dod_PlayerStamina(1) == 100);
+	}
+	/* a jump costs 8 */
+	now += 0.1f; Dod_StaminaThink(1, now, 0.1f, 1, 1, 1);
+	assert(Dod_PlayerStamina(1) == 92);
+	/* running dry ends the sprint and locks it until the tube has refilled to 25 */
+	Dod_StaminaReset(1);
+	now += 1.0f; Dod_StaminaThink(1, now, 0.1f, 1, 0, 1);
+	now += 0.1f; Dod_StaminaThink(1, now, 0.1f, 0, 0, 1);
+	now += 0.1f; Dod_StaminaThink(1, now, 0.1f, 1, 0, 1);
+	assert(Dod_PlayerSprinting(1));
+	for (i = 0; i < 60 && Dod_PlayerSprinting(1); ++i) { now += 0.1f; Dod_StaminaThink(1, now, 0.1f, 1, 0, 1); }
+	assert(!Dod_PlayerSprinting(1) && Dod_PlayerStamina(1) == 0);
+	now += 0.1f; Dod_StaminaThink(1, now, 0.1f, 0, 0, 1);
+	now += 0.1f; speed = Dod_StaminaThink(1, now, 0.1f, 1, 0, 1);
+	assert(speed == DOD_RUN_SPEED);	/* locked: the double tap does nothing */
+	/* standing against a wall is not sprinting */
+	Dod_StaminaReset(1);
+	now += 1.0f; Dod_StaminaThink(1, now, 0.1f, 1, 0, 1);
+	now += 0.1f; Dod_StaminaThink(1, now, 0.1f, 0, 0, 0);
+	now += 0.1f; speed = Dod_StaminaThink(1, now, 0.1f, 1, 0, 0);
+	assert(speed == DOD_SPRINT_SPEED);	/* the speed has not built yet: the sprint starts */
+	now += 0.5f; speed = Dod_StaminaThink(1, now, 0.5f, 1, 0, 0);	/* still not moving half a second later: it ends */
+	assert(speed == DOD_RUN_SPEED && !Dod_PlayerSprinting(1));
+	/* unknown players are harmless */
+	assert(Dod_StaminaThink(0, now, 0.1f, 1, 0, 1) == DOD_RUN_SPEED && Dod_PlayerStamina(99) == 0);
+	Dod_GameShutdown();
+}
+
 static void test_voice(void)
 {
 	char path[64];
@@ -929,6 +985,7 @@ int main(void)
 	test_status_line();
 	test_player_line();
 	test_classify_spawns();
+	test_stamina();
 	test_voice();
 	test_scoreboard();
 	test_team_points();
