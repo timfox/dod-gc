@@ -12,9 +12,12 @@ Scan of retail `dod_*.bsp` entity lumps against `gamecube_server_entity_exports.
 
 | Class | Maps / count | Retail meaning | Ours | GC deviation (why) |
 |---|---|---|---|---|
-| `dod_capture_area` | charlie 8, avalanche 5, anzio 2 | Brush trigger; players of the capturing team inside it capture a point over `area_time_to_cap` seconds (`area_axis_numcap`/`area_allies_numcap` needed, `area_*_cancap` gating, fires `area_*_startcap`/`area_*_endcap`/`target`, optional `master`) | **missing** (`No spawn function`) | none intended |
-| `dod_point_relay` | charlie 4 | Relay between capture events and map logic | **missing** | none |
-| `dod_round_timer` | charlie 1 | Round clock entity | **missing** (clock is in the rules core) | none |
+| `dod_capture_area` | charlie 8, avalanche 5, anzio 2 | Brush trigger; players of the capturing team inside it capture a point over `area_time_to_cap` seconds (`area_axis_numcap`/`area_allies_numcap` needed, `area_*_cancap` gating, fires `area_*_startcap`/`area_*_endcap`/`target`, optional `master`) | **done**: brush trigger drives the named `dod_control_point`; captures seen in Dolphin | none |
+| `dod_point_relay` | charlie 4 | Relay between capture events and map logic | **partial**: forwards uses; `dod_relay_team` filter not applied | none |
+| `dod_round_timer` | charlie 1 | Round clock entity | **done**: sets the round clock every round and fires its target on timeout (charlie: `axiswin_mm`) | none |
+| `dod_control_point_master` | charlie 1 | Fires a team's capture target when it holds every point | **done** (charlie: `allieswin_mm`); `point_give_delay_time` ignored | none |
+| `dod_score_ent` | charlie 2 | Team points; with `score_resetplayerstime` a round win and restart delay | **done**; `score_nextmapdelay` (map change) not implemented | none |
+| `multi_manager` | charlie 15 | Map logic chaining (win managers) | needs engine: dropped by the CapFaces optional-entity filter (xash3d-gc #111 keeps it) | `trigger_relay`, `trigger_auto`, `ambient_generic` still dropped for the edict tip (460) |
 | `dod_location` | caen 21 | Named area for the HUD location text | **missing** | HUD text only |
 | `info_initial_player_axis/allies` | avalanche 16 | Spawn points used at round start | **missing** (falls back to `info_player_*`) | none |
 | `particle_shooter` | charlie 17, caen 7 | Particle emitter | **missing** | optional: particles are budgeted on GC (24 particles, 8 beams, 8 tempents) |
@@ -30,7 +33,8 @@ Scan of retail `dod_*.bsp` entity lumps against `gamecube_server_entity_exports.
 | Retail | Ours | GC deviation |
 |---|---|---|
 | Team play rules (`CHalfLifeTeamplay` + DoD) | `CHalfLifeDoD`, `mp_teamplay` forced for the dod gamedir; **done** | none |
-| Rounds, score, objectives, round clock | rules core (`dod_game.c`) with host tests; **partial** (objectives are the simplified ones above) | none |
+| Rounds, score, objectives, round clock | rules core (`dod_game.c`) with host tests; map-driven win by holding every point or by timeout, team score, round restart and match end **done** (seen in Dolphin on charlie with #111) | none |
+| Dead player drops a weapon box; gibs linger | **deviation**: no weapon box drop, gibs removed after 6 s, gibs/boxes swept at round restart | GC edict tip 460 with ~425 used by charlie; drops ran the pool out and stalled the game |
 | Class selection menu (VGUI) | text menu (`DAY OF DEFEAT - CHOOSE A SIDE`); **partial** | lean HUD, no VGUI |
 | Scoreboard, objective HUD, map | `dod_score` text, `cl_dodhud` flags/clock; **partial** | lean HUD memory |
 | Bots (retail has none; community bots) | `dod_bot.cpp`, team-balanced, respawn; **done** | up to 2 bots (3 slots) for memory |

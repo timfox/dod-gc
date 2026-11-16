@@ -24,6 +24,26 @@ GATE_VARIANTS = (
 )
 
 
+class StubRemovalTest(unittest.TestCase):
+	"""The DoD runtime defines dod_control_point, dod_control_point_master and dod_score_ent; the
+	hlsdk stubs for them must go (replace_once cannot remove: an empty replacement is "already in")."""
+
+	def test_remove_once_deletes_a_stub_and_is_idempotent(self):
+		with tempfile.TemporaryDirectory() as directory:
+			path = Path(directory) / "subs.cpp"
+			stub = "LINK_ENTITY_TO_CLASS( dod_score_ent, CPointEntity )\n"
+			path.write_text("a\n" + stub + "b\n")
+			INTEGRATOR.remove_once(path, stub)
+			self.assertEqual(path.read_text(), "a\nb\n")
+			INTEGRATOR.remove_once(path, stub)
+			self.assertEqual(path.read_text(), "a\nb\n")
+
+	def test_integrator_removes_the_three_stubs(self):
+		text = SCRIPT.read_text()
+		for name in ("dod_control_point", "dod_control_point_master", "dod_score_ent"):
+			self.assertIn(f'"{name}"', text)
+
+
 class StaticEdictGateTest(unittest.TestCase):
 	def test_legacy_and_intermediate_gates_get_menu_map_load_path(self):
 		for gate in GATE_VARIANTS:

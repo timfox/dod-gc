@@ -527,6 +527,72 @@ static void test_match_loop(void)
 	Dod_GameInit();
 }
 
+static void test_map_driven_round_flow(void)
+{
+	const DodGameRulesState *state;
+	int i;
+
+	/* Master-driven: owning every point reports a capture but the map ends the round. */
+	Dod_GameInit();
+	state = Dod_GetState();
+	assert(!state->master_driven && !state->timer_driven);
+	assert(Dod_RegisterObjective(1, DOD_OBJ_CAPTURE_POINT, DOD_TEAM_AXIS, 1.0f, 0.0f));
+	assert(Dod_RegisterObjective(2, DOD_OBJ_CAPTURE_POINT, DOD_TEAM_AXIS, 1.0f, 0.0f));
+	Dod_SetMasterDriven(1);
+	Dod_StartRound(0.0f);
+	assert(Dod_TeamOwnsAllObjectives(DOD_TEAM_AXIS) && !Dod_TeamOwnsAllObjectives(DOD_TEAM_ALLIES));
+	assert(Dod_TickObjective(1, 1, 0, 1.0f));
+	assert(state->capture_serial == 1 && state->last_capture_team == DOD_TEAM_ALLIES);
+	assert(!Dod_TeamOwnsAllObjectives(DOD_TEAM_ALLIES));
+	assert(Dod_TickObjective(2, 1, 0, 1.0f));
+	assert(state->capture_serial == 2 && Dod_TeamOwnsAllObjectives(DOD_TEAM_ALLIES));
+	assert(state->phase == DOD_ROUND_ACTIVE);	/* the core did not end it */
+
+	/* The map's dod_score_ent: points, then a round end with its own restart delay. */
+	Dod_AddTeamScore(DOD_TEAM_ALLIES, 50);
+	assert(state->allies_score >= 50);
+	Dod_EndRoundDelayed(DOD_TEAM_ALLIES, 5.0f);
+	assert(state->phase == DOD_ROUND_INTERMISSION && state->winner == DOD_TEAM_ALLIES);
+	assert(state->rounds_won[DOD_TEAM_ALLIES] == 1);
+	assert(state->intermission_remaining == 5.0f);
+	Dod_AddTeamScore(DOD_TEAM_AXIS, 50);	/* nothing scores between rounds */
+	assert(state->axis_score == 0);
+	for (i = 0; i < 4; ++i)
+		Dod_Think(1.0f);
+	assert(state->phase == DOD_ROUND_INTERMISSION && state->restart_serial == 0);
+	Dod_Think(1.5f);
+	assert(state->phase == DOD_ROUND_ACTIVE && state->restart_serial == 1);
+	assert(Dod_TeamOwnsAllObjectives(DOD_TEAM_AXIS));	/* points back to their default owners */
+	assert(state->allies_score == 0 && state->axis_score == 0);
+	assert(state->master_driven);	/* the flag survives the restart */
+
+	/* A second delayed end uses the default intermission when no delay is given. */
+	Dod_EndRoundDelayed(DOD_TEAM_AXIS, 0.0f);
+	assert(state->intermission_remaining == DOD_INTERMISSION_SECONDS);
+	Dod_GameInit();
+
+	/* Timer-driven: the clock running out reports a timeout instead of ending the round. */
+	state = Dod_GetState();
+	Dod_StartRound(600.0f);
+	Dod_SetRoundClock(720.0f);
+	assert(state->round_time_remaining == 720.0f);
+	Dod_SetTimerDriven(1);
+	Dod_Think(719.0f);
+	assert(state->round_time_remaining > 0.0f && state->timeout_serial == 0);
+	Dod_Think(2.0f);
+	assert(state->phase == DOD_ROUND_ACTIVE && state->timeout_serial == 1 && state->round_time_remaining == 0.0f);
+	Dod_Think(1.0f);
+	assert(state->timeout_serial == 1);	/* reported once */
+	Dod_EndRoundDelayed(DOD_TEAM_AXIS, 10.0f);
+	assert(state->winner == DOD_TEAM_AXIS && state->intermission_remaining == 10.0f);
+	Dod_Think(10.5f);
+	assert(state->phase == DOD_ROUND_ACTIVE && state->round_time_remaining == 720.0f);	/* clock restarts */
+	Dod_SetTimerDriven(0);
+	Dod_Think(721.0f);
+	assert(state->phase == DOD_ROUND_INTERMISSION);	/* without a timer the core ends it by score */
+	Dod_GameInit();
+}
+
 int main(void)
 {
 	test_players_and_weapon_models();
@@ -539,5 +605,6 @@ int main(void)
 	test_grenades();
 	test_weapon_table();
 	test_match_loop();
+	test_map_driven_round_flow();
 	return 0;
 }
