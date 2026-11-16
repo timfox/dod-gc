@@ -211,6 +211,35 @@ static void FreeNav( void )
 	g_nav_map[0] = '\0';
 }
 
+/* The map's damage zones for route planning: every trigger_hurt that is live from the start and hurts someone
+ * (spawn-protection zones, minefields), with the teams it hurts (trigger_hurt's DoD team flags). A bot's route
+ * avoids the ones that would hurt its own team. */
+static void LoadHazards( void )
+{
+	edict_t *pent = NULL;
+	int zones = 0;
+	while( !FNullEnt( pent = FIND_ENTITY_BY_STRING( pent, "classname", "trigger_hurt" ) ) )
+	{
+		const entvars_t *v = &pent->v;
+		int mask = 0, team;
+		if( ( v->spawnflags & ( 1 | 2 ) ) || v->dmg < 20.0f )
+			continue;	/* target-only or start-off (switched on later), or too weak to matter */
+		for( team = DOD_TEAM_ALLIES; team <= DOD_TEAM_AXIS; team++ )
+			if( Dod_HurtAppliesToTeam( v->spawnflags, (DodTeam)team ) )
+				mask |= 1 << team;
+		if( !mask || v->absmax == v->absmin )
+			continue;
+		{
+			const float mins[3] = { v->absmin.x, v->absmin.y, v->absmin.z };
+			const float maxs[3] = { v->absmax.x, v->absmax.y, v->absmax.z };
+			Dod_NavAddHazard( &g_nav, mins, maxs, mask );
+			zones++;
+		}
+	}
+	if( zones )
+		ALERT( at_console, "DoD nav: %d damage zones to route around\n", zones );
+}
+
 static void EnsureNav( void )
 {
 	const char *map = STRING( gpGlobals->mapname );
@@ -236,6 +265,7 @@ static void EnsureNav( void )
 		return;
 	}
 	ALERT( at_console, "DoD nav: %s %d waypoints, %d edges (%d bytes)\n", path, g_nav.node_count, g_nav.edge_count, len );
+	LoadHazards();
 }
 
 static void FreeBotState( void )
@@ -674,7 +704,7 @@ static void PickGoal( CBasePlayer *pBot, DodBotState *state )
 	const float now = gpGlobals->time;
 	int count, i, kind = DOD_BOT_GOAL_NONE, id;
 
-	int rank = 0, team_bots = 0, held = 0;
+	int rank = 0, team_bots = 0, held = 0, team_alive = 0;
 	const DodTeam my_team = TeamOf( pBot );
 	state->next_goal = now + 2.0f;
 	count = DodGC_ListObjectives( views, DOD_BOT_MAX_OBJECTIVES );
@@ -692,6 +722,12 @@ static void PickGoal( CBasePlayer *pBot, DodBotState *state )
 		team_bots++;
 	}
 	state->role = Dod_BotRole( rank, team_bots, held );
+	for( i = 1; i <= gpGlobals->maxClients; i++ )
+	{
+		CBasePlayer *pAlive = PlayerAt( i );
+		if( pAlive && pAlive->IsAlive() && TeamOf( pAlive ) == my_team )
+			team_alive++;
+	}
 	state->team_bots = team_bots;
 	for( i = 0; i < count; i++ )
 	{
@@ -702,6 +738,10 @@ static void PickGoal( CBasePlayer *pBot, DodBotState *state )
 		info[i].distance = ( views[i].center - pBot->pev->origin ).Length2D();
 		info[i].blocked = Dod_BotBlockHas( state->block_id, state->block_until, 3, views[i].id, now );
 		info[i].crowd = 0;
+		info[i].need = views[i].num_cap[my_team] > 0 ? views[i].num_cap[my_team] : 1;
+		/* a point that needs more players than the team has alive cannot be taken: leave it alone */
+		if( info[i].need > team_alive )
+			info[i].blocked = 1;
 		{
 			int j;
 			for( j = 1; j <= gpGlobals->maxClients && j <= DOD_BOT_MAX_SLOTS; j++ )
@@ -918,6 +958,7 @@ static BOOL PlanPath( CBasePlayer *pBot, DodBotState *state )
 	}
 	g_plan_stamp = gpGlobals->time;
 	Dod_NavSetTime( &g_nav, gpGlobals->time );
+	Dod_NavSetAvoidTeam( &g_nav, TeamOf( pBot ) );
 	ns = Dod_NavNearest( &g_nav, origin.x, origin.y, origin.z, starts, 6 );
 	ng = 0;
 	if( state->has_goal && state->nav_id == state->goal_id )
