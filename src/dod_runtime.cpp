@@ -61,6 +61,11 @@ static int g_dod_joined[DOD_MAX_PLAYERS + 1];
 static int g_dod_pending_team[DOD_MAX_PLAYERS + 1];
 static int g_dod_winner_announced;
 static float g_dod_next_status;
+/* Voice lines: nobody speaks more than once every 2 s, automatic lines (bots spotting, grenades) once every 8 s. */
+#define DOD_VOICE_COOLDOWN 2.0f
+#define DOD_VOICE_AUTO_COOLDOWN 8.0f
+static float g_dod_voice_next[DOD_MAX_PLAYERS + 1];
+static float g_dod_voice_auto_next[DOD_MAX_PLAYERS + 1];
 /* Scoreboard on the lean HUD (D-pad right, "dod_score"): shown for DOD_BOARD_SECONDS, refreshed once a second,
  * and pressed again it goes away. */
 #define DOD_BOARD_SECONDS 8.0f
@@ -550,6 +555,31 @@ static void DodGC_CreditCapture( DodTeam team, int point_index, const Vector &ce
 	}
 }
 
+BOOL DodGC_Voice( CBasePlayer *pPlayer, int voice, BOOL automatic )
+{
+	char path[64];
+	const int index = DodGC_PlayerIndex( pPlayer );
+	const DodTeam team = pPlayer ? DodGC_TeamForPlayer( pPlayer ) : DOD_TEAM_UNASSIGNED;
+	if( !pPlayer || index < 1 || index > DOD_MAX_PLAYERS || pPlayer->pev->deadflag != DEAD_NO || pPlayer->IsObserver() )
+		return FALSE;
+	if( gpGlobals->time < g_dod_voice_next[index] || ( automatic && gpGlobals->time < g_dod_voice_auto_next[index] ) )
+		return FALSE;
+	if( !Dod_VoiceSound( voice, team, Dod_GetAlliesCountry() == DOD_COUNTRY_BRITISH, path, sizeof( path ) ) )
+		return FALSE;
+	g_dod_voice_next[index] = gpGlobals->time + DOD_VOICE_COOLDOWN;
+	if( automatic )
+		g_dod_voice_auto_next[index] = gpGlobals->time + DOD_VOICE_AUTO_COOLDOWN;
+	PRECACHE_SOUND( path );	/* loaded when first spoken, like the weapon sounds */
+	EMIT_SOUND_DYN( ENT( pPlayer->pev ), CHAN_VOICE, path, 1.0f, ATTN_NORM, 0, 100 );
+	ALERT( at_console, "DoD voice %s: %s\n", STRING( pPlayer->pev->netname ), Dod_VoiceLabel( voice ) );
+	return TRUE;
+}
+
+void DodGC_VoiceAuto( CBasePlayer *pPlayer, const char *name )
+{
+	DodGC_Voice( pPlayer, Dod_VoiceFind( name ), TRUE );
+}
+
 static void DodGC_CycleWeapon( CBasePlayer *pPlayer, int step );
 
 BOOL CHalfLifeDoD::ClientCommand( CBasePlayer *pPlayer, const char *pcmd )
@@ -576,6 +606,12 @@ BOOL CHalfLifeDoD::ClientCommand( CBasePlayer *pPlayer, const char *pcmd )
 	}
 	if( FStrEq( pcmd, "spectate" ) ) {
 		DodGC_JoinSpectator( pPlayer );
+		return TRUE;
+	}
+	if( !strncmp( pcmd, "voice_", 6 ) ) {
+		const int voice = Dod_VoiceFind( pcmd + 6 );
+		if( voice >= 0 && voice < DOD_VOICE_MENU_COUNT )
+			DodGC_Voice( pPlayer, voice, FALSE );
 		return TRUE;
 	}
 	if( FStrEq( pcmd, "dod_score" ) ) {

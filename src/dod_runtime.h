@@ -39,6 +39,10 @@ int DodGC_ListObjectives( DodGCObjectiveView *out, int max );
 BOOL DodGC_TriggerHurtApplies( int spawnflags, CBaseEntity *pOther );
 
 void DodGC_ResetMapObjectives( void );
+/* A voice line (Dod_VoiceFind names: "enemyahead", "fireinhole"...) from a living player of a side, in that side's
+ * voice, with a per-player cooldown so a bot or a grenade spree does not chatter. Returns TRUE when it played. */
+BOOL DodGC_Voice( CBasePlayer *pPlayer, int voice, BOOL automatic );
+void DodGC_VoiceAuto( CBasePlayer *pPlayer, const char *name );
 /* Put a bot on a team with a class: the same steps a human's menu choices take. */
 void DodGC_BotJoin( CBasePlayer *pPlayer, DodTeam team, DodClass player_class );
 
