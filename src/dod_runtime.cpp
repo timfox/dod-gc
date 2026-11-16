@@ -304,6 +304,8 @@ void DodGC_BotJoin( CBasePlayer *pPlayer, DodTeam team, DodClass player_class )
 	DodGC_ApplyClass( pPlayer, player_class );
 }
 
+static void DodGC_CycleWeapon( CBasePlayer *pPlayer, int step );
+
 BOOL CHalfLifeDoD::ClientCommand( CBasePlayer *pPlayer, const char *pcmd )
 {
 	const int index = DodGC_PlayerIndex( pPlayer );
