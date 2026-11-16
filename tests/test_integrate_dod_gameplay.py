@@ -232,7 +232,8 @@ class WeaponHookIntegrationTest(unittest.TestCase):
 	WEAPONS = ('#include "gamerules.h"\n\nvoid W_Precache( void )\n{\n'
 		'\tUTIL_PrecacheOtherWeapon( "weapon_crowbar" );\n'
 		'\t// hand grenade\n\tUTIL_PrecacheOtherWeapon("weapon_handgrenade");\n'
-		'#if !OEM_BUILD\n\tUTIL_PrecacheOtherWeapon( "weapon_snark" );\n#endif\n}\n')
+		'#if !OEM_BUILD\n\tUTIL_PrecacheOtherWeapon( "weapon_snark" );\n#endif\n}\n'
+		'\nvoid CBasePlayerWeapon::SendWeaponAnim( int iAnim, int skiplocal, int body )\n{\n\tif( UseDecrement() )\n\t\tskiplocal = 0;\n}\n')
 
 	def integrate(self, body):
 		with tempfile.TemporaryDirectory() as directory:
@@ -249,6 +250,11 @@ class WeaponHookIntegrationTest(unittest.TestCase):
 		self.assertIn('#include "dod_weapon.h"', text)
 		self.assertEqual(text.count("DodWeapons_PrecacheAll();"), 1)
 		self.assertLess(text.index('"weapon_handgrenade"'), text.index("DodWeapons_PrecacheAll();"))
+
+	def test_send_weapon_anim_remaps_first(self):
+		text = self.integrate(self.WEAPONS)
+		self.assertEqual(text.count("DodGC_RemapWeaponAnim( STRING( pev->classname ), iAnim )"), 1)
+		self.assertLess(text.index("DodGC_RemapWeaponAnim( STRING"), text.index("if( UseDecrement() )"))
 
 	def test_missing_anchor_fails_loudly(self):
 		with tempfile.TemporaryDirectory() as directory:

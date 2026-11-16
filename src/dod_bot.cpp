@@ -96,7 +96,8 @@ static cvar_t dod_bots = { "dod_bots", "1", FCVAR_SERVER };
 #endif
 static cvar_t dod_bot_skill = { "dod_bot_skill", "1", FCVAR_SERVER };
 static cvar_t dod_bots_online = { "dod_bots_online", "0", FCVAR_SERVER };
-/* Test scenarios (dev only): 1 = an enemy behind a wall inside the view cone, then in the open; 2 = a contested capture. */
+/* Test scenarios (dev only): 1 = an enemy behind a wall inside the view cone, then in the open; 2 = a contested capture;
+ * 3 = put the human on the Allies as a rifleman (weapon animation checks). */
 static cvar_t dod_bot_stage = { "dod_bot_stage", "0", FCVAR_SERVER };
 
 /* The most bots ever; the free slots are the real limit. */
@@ -1376,6 +1377,28 @@ static void StageStep( void )
 	static float armed_at;
 	if( !stage || g_stage_phase >= 9 )
 		return;
+	if( stage == 3 )
+	{
+		/* put the human on the Allies as a rifleman so the pad can fire, reload and cycle weapons (view model checks) */
+		static float arm;
+		if( !arm )
+			arm = now + 14.0f;
+		if( now >= arm )
+		{
+			for( i = 1; i <= gpGlobals->maxClients; i++ )
+			{
+				CBasePlayer *p = PlayerAt( i );
+				if( p && !DodBots_IsBot( p ) )
+				{
+					DodGC_BotJoin( p, DOD_TEAM_ALLIES, DOD_CLASS_RIFLEMAN );
+					ALERT( at_console, "DoD STAGE weapons: the human joined the Allies as a rifleman\n" );
+					g_stage_phase = 9;
+					break;
+				}
+			}
+		}
+		return;
+	}
 	for( i = 1; i <= gpGlobals->maxClients && i <= DOD_BOT_MAX_SLOTS; i++ )
 	{
 		CBasePlayer *p = PlayerAt( i );

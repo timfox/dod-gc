@@ -134,6 +134,36 @@ static DodTeam DodGC_TeamForPlayer( CBasePlayer *pPlayer )
 	return (DodTeam)Dod_TeamFromName( pPlayer->m_szTeamName );
 }
 
+/* Called by SendWeaponAnim (patched in by the integrator): the number a weapon asks for becomes the sequence its
+ * retail view model has. Outside a DoD game the stock numbers stand. */
+int DodGC_RemapWeaponAnim( const char *classname, int anim )
+{
+	/* each distinct (weapon, asked, sent) is logged once: enough to see every weapon's fire, reload and draw */
+	static char seen_class[64][24];
+	static short seen_anim[64], seen_sent[64];
+	static int seen_count;
+	int mapped, i;
+	if( !Dod_GameIsActive() )
+		return anim;
+	mapped = Dod_RemapAnim( classname, anim );
+	if( mapped != anim && classname && seen_count < 64 )
+	{
+		for( i = 0; i < seen_count; i++ )
+			if( !strncmp( seen_class[i], classname, sizeof( seen_class[0] ) - 1 ) && seen_anim[i] == anim && seen_sent[i] == mapped )
+				break;
+		if( i == seen_count )
+		{
+			strncpy( seen_class[i], classname, sizeof( seen_class[0] ) - 1 );
+			seen_class[i][sizeof( seen_class[0] ) - 1] = '\0';
+			seen_anim[i] = (short)anim;
+			seen_sent[i] = (short)mapped;
+			seen_count++;
+			ALERT( at_console, "DoD anim: %s asked for %d, sends %d\n", classname, anim, mapped );
+		}
+	}
+	return mapped;
+}
+
 /* trigger_hurt's DoD team flags (see Dod_HurtAppliesToTeam); called from CBaseTrigger::HurtTouch by the integrator's patch. */
 BOOL DodGC_TriggerHurtApplies( int spawnflags, CBaseEntity *pOther )
 {

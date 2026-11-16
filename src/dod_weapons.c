@@ -154,3 +154,121 @@ int Dod_WeaponMayFire(const DodWeaponDef *def, int trigger_was_held)
 		return 1;
 	return !trigger_was_held;
 }
+
+/* ---------------------------------------------------------------- view model animations */
+
+typedef struct DodViewAnims {
+	const char *model;
+	signed char idle, idle_empty, fire_count, fire[3], fire_empty, reload, draw, holster, pinpull;
+} DodViewAnims;
+
+static const DodViewAnims g_view_anims[] = {
+#include "dod_viewanims.h"
+};
+
+static const DodViewAnims *view_anims(const char *view_model)
+{
+	size_t i;
+	if (!view_model)
+		return 0;
+	for (i = 0; i < sizeof(g_view_anims) / sizeof(g_view_anims[0]); ++i)
+		if (!strcmp(g_view_anims[i].model, view_model))
+			return &g_view_anims[i];
+	return 0;
+}
+
+int Dod_ViewAnim(const char *view_model, DodAnimRole role, int variant)
+{
+	const DodViewAnims *a = view_anims(view_model);
+	int v;
+	if (!a)
+		return -1;
+	switch (role) {
+	case DOD_ANIM_IDLE: return a->idle;
+	case DOD_ANIM_IDLE_EMPTY: return a->idle_empty >= 0 ? a->idle_empty : a->idle;
+	case DOD_ANIM_FIRE:
+		if (a->fire_count <= 0)
+			return -1;
+		v = variant < 0 ? 0 : variant % a->fire_count;
+		return a->fire[v];
+	case DOD_ANIM_FIRE_EMPTY:
+		return a->fire_empty >= 0 ? a->fire_empty : (a->fire_count > 0 ? a->fire[0] : -1);
+	case DOD_ANIM_RELOAD: return a->reload;
+	case DOD_ANIM_DRAW: return a->draw;
+	case DOD_ANIM_HOLSTER: return a->holster;
+	case DOD_ANIM_PINPULL: return a->pinpull;
+	default: return -1;
+	}
+}
+
+/* The stock HL1 numbers the crowbar and hand grenade code sends (dlls/crowbar.cpp, handgrenade.cpp). */
+enum { STOCK_CROWBAR_IDLE = 0, STOCK_CROWBAR_DRAW, STOCK_CROWBAR_HOLSTER, STOCK_CROWBAR_ATTACK1HIT, STOCK_CROWBAR_ATTACK1MISS,
+	STOCK_CROWBAR_ATTACK2MISS, STOCK_CROWBAR_ATTACK2HIT, STOCK_CROWBAR_ATTACK3MISS, STOCK_CROWBAR_ATTACK3HIT };
+enum { STOCK_GRENADE_IDLE = 0, STOCK_GRENADE_FIDGET, STOCK_GRENADE_PINPULL, STOCK_GRENADE_THROW1, STOCK_GRENADE_THROW2,
+	STOCK_GRENADE_THROW3, STOCK_GRENADE_HOLSTER, STOCK_GRENADE_DRAW };
+
+static int pick(int found, int idle)
+{
+	return found >= 0 ? found : idle;
+}
+
+int Dod_RemapAnim(const char *classname, int anim)
+{
+	const DodWeaponDef *def;
+	const char *model;
+	int idle, mapped;
+	if (!classname)
+		return anim;
+	if (!strcmp(classname, "weapon_crowbar")) {
+		/* every DoD melee model has the same four sequences: idle, two slashes, draw */
+		model = "models/v_amerk.mdl";
+		idle = Dod_ViewAnim(model, DOD_ANIM_IDLE, 0);
+		switch (anim) {
+		case STOCK_CROWBAR_IDLE: return idle;
+		case STOCK_CROWBAR_DRAW: return pick(Dod_ViewAnim(model, DOD_ANIM_DRAW, 0), idle);
+		case STOCK_CROWBAR_HOLSTER: return idle;
+		case STOCK_CROWBAR_ATTACK2MISS:
+		case STOCK_CROWBAR_ATTACK2HIT: return pick(Dod_ViewAnim(model, DOD_ANIM_FIRE, 1), idle);
+		case STOCK_CROWBAR_ATTACK1HIT:
+		case STOCK_CROWBAR_ATTACK1MISS:
+		case STOCK_CROWBAR_ATTACK3MISS:
+		case STOCK_CROWBAR_ATTACK3HIT: return pick(Dod_ViewAnim(model, DOD_ANIM_FIRE, 0), idle);
+		default: return idle;
+		}
+	}
+	if (!strcmp(classname, "weapon_handgrenade")) {
+		model = "models/v_grenade.mdl";	/* the stick grenade and Mills bomb share its layout */
+		idle = Dod_ViewAnim(model, DOD_ANIM_IDLE, 0);
+		switch (anim) {
+		case STOCK_GRENADE_IDLE:
+		case STOCK_GRENADE_FIDGET: return idle;
+		case STOCK_GRENADE_PINPULL: return pick(Dod_ViewAnim(model, DOD_ANIM_PINPULL, 0), idle);
+		case STOCK_GRENADE_THROW1:
+		case STOCK_GRENADE_THROW2:
+		case STOCK_GRENADE_THROW3: return pick(Dod_ViewAnim(model, DOD_ANIM_FIRE, 0), idle);
+		case STOCK_GRENADE_HOLSTER: return pick(Dod_ViewAnim(model, DOD_ANIM_HOLSTER, 0), idle);
+		case STOCK_GRENADE_DRAW: return pick(Dod_ViewAnim(model, DOD_ANIM_DRAW, 0), idle);
+		default: return idle;
+		}
+	}
+	def = Dod_FindWeaponDef(classname);
+	if (!def || !def->view_model[0])
+		return anim;
+	model = def->view_model;
+	idle = Dod_ViewAnim(model, DOD_ANIM_IDLE, 0);
+	if (idle < 0)
+		return anim;	/* a model the table does not know: leave the number alone */
+	switch (anim) {
+	case DOD_GENERIC_ANIM_IDLE: return idle;
+	case DOD_GENERIC_ANIM_FIRE1:
+	case DOD_GENERIC_ANIM_FIRE1 + 1:
+	case DOD_GENERIC_ANIM_FIRE1 + 2: mapped = Dod_ViewAnim(model, DOD_ANIM_FIRE, anim - DOD_GENERIC_ANIM_FIRE1); break;
+	case DOD_GENERIC_ANIM_RELOAD: mapped = Dod_ViewAnim(model, DOD_ANIM_RELOAD, 0); break;
+	case DOD_GENERIC_ANIM_DRAW: mapped = Dod_ViewAnim(model, DOD_ANIM_DRAW, 0); break;
+	case DOD_GENERIC_ANIM_HOLSTER: mapped = Dod_ViewAnim(model, DOD_ANIM_HOLSTER, 0); break;
+	case DOD_GENERIC_ANIM_IDLE_EMPTY: mapped = Dod_ViewAnim(model, DOD_ANIM_IDLE_EMPTY, 0); break;
+	case DOD_GENERIC_ANIM_FIRE_EMPTY: mapped = Dod_ViewAnim(model, DOD_ANIM_FIRE_EMPTY, 0); break;
+	default: return anim;
+	}
+	return pick(mapped, idle);
+}
