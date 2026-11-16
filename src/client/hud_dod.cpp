@@ -102,21 +102,42 @@ int CHudDod::MsgFunc_DodBoard( const char *pszName, int iSize, void *pbuf )
 
 void CHudDod::DrawBoard( void )
 {
-	char line[96];
+	/* A centred panel, as the retail scoreboard: the title, then a team header with its score and the team's players
+	 * ranked, name and class on the left and Score/Kills/Deaths against the right edge. */
+	char line[96], left[96];
 	const char *p = m_szBoard;
 	const int line_h = gHUD.m_scrinfo.iCharHeight > 0 ? gHUD.m_scrinfo.iCharHeight : 12;
-	const int x = 12, w = ScreenWidth > 0 ? ScreenWidth : 320;
-	int y = 28, rows = 1;
+	const int w = ScreenWidth > 0 ? ScreenWidth : 320, h = ScreenHeight > 0 ? ScreenHeight : 240;
+	const int pw = w - 24 < 288 ? w - 24 : 288, pad = 8;
+	int rows = 0, gaps = 0, ph, x0, y0, y;
 
 	if( !m_fBoardShown || gEngfuncs.GetClientTime() - m_flBoardTime > 3.0f )
 		return;
 	for( const char *q = p; *q; q++ )
-		if( *q == '\n' ) rows++;
-	/* Dark backing so the text reads over any scene. */
-	gEngfuncs.pfnFillRGBABlend( x - 6, y - 4, w - 2 * ( x - 6 ), rows * line_h + 8, 0, 0, 0, 150 );
+	{
+		if( *q == '\n' && q[1] == '\n' ) gaps++;
+		else if( *q == '\n' && q[1] ) rows++;
+	}
+	rows++;	/* the first line has no newline before it */
+	ph = ( rows + 1 ) * line_h + gaps * ( line_h / 2 ) + 2 * pad;	/* + the title */
+	x0 = ( w - pw ) / 2;
+	y0 = ( h - ph ) / 2;
+	if( y0 < 8 ) y0 = 8;
+	gEngfuncs.pfnFillRGBABlend( x0, y0, pw, ph, 0, 0, 0, 170 );
+	/* a 1 px border */
+	gEngfuncs.pfnFillRGBABlend( x0, y0, pw, 1, 200, 200, 200, 160 );
+	gEngfuncs.pfnFillRGBABlend( x0, y0 + ph - 1, pw, 1, 200, 200, 200, 160 );
+	gEngfuncs.pfnFillRGBABlend( x0, y0, 1, ph, 200, 200, 200, 160 );
+	gEngfuncs.pfnFillRGBABlend( x0 + pw - 1, y0, 1, ph, 200, 200, 200, 160 );
+	y = y0 + pad;
+	{
+		const char *title = "SCOREBOARD";
+		gHUD.DrawHudString( x0 + ( pw - gHUD.DrawHudStringLen( title )) / 2, y, x0 + pw, title, 255, 255, 255 );
+		y += line_h;
+	}
 	while( *p )
 	{
-		int n = 0, r = 255, g = 255, b = 255;
+		int n = 0, r = 255, g = 255, b = 255, split = -1, i;
 
 		while( p[n] && p[n] != '\n' && n < (int)sizeof( line ) - 1 )
 		{
@@ -130,7 +151,28 @@ void CHudDod::DrawBoard( void )
 		if( !strncmp( line, "Allies", 6 )) { r = 140; g = 230; b = 140; }
 		else if( !strncmp( line, "Axis", 4 )) { r = 235; g = 130; b = 130; }
 		else if( line[0] == '>' ) { r = 255; g = 230; b = 90; }
-		gHUD.DrawHudString( x, y, w - x, line, r, g, b );
+		/* where the right-hand part starts: the score after a team name, S.. K.. D.. after a player */
+		if( !strncmp( line, "Allies", 6 ) || !strncmp( line, "Axis", 4 ))
+		{
+			for( i = 0; line[i]; i++ )
+				if( line[i] == ' ' && line[i + 1] == ' ' ) { split = i; break; }
+		}
+		else
+		{
+			for( i = n - 1; i > 1; i-- )
+				if( line[i] == 'S' && line[i - 1] == ' ' && line[i - 2] == ' ' ) { split = i - 2; break; }
+		}
+		if( split > 0 )
+		{
+			const char *right = line + split;
+			while( *right == ' ' ) right++;
+			strncpy( left, line, split );
+			left[split] = 0;
+			gHUD.DrawHudString( x0 + pad, y, x0 + pw - pad, left, r, g, b );
+			gHUD.DrawHudStringReverse( x0 + pw - pad, y, x0 + pad, right, r, g, b );
+		}
+		else
+			gHUD.DrawHudString( x0 + pad, y, x0 + pw - pad, line, r, g, b );
 		y += line_h;
 	}
 }
