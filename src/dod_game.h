@@ -241,6 +241,13 @@ int Dod_FormatPlayerLine(int player_index, const char *name, char *buffer, int s
  * look cloned. Other models (the paratrooper ones) get 0. */
 int Dod_PlayerBodyValue(const char *model, DodClass player_class, int player_index);
 
+/* Which side each spawn point belongs to. The disc builds rewrite info_player_allies/info_player_axis to
+ * info_player_deathmatch, so the game cannot read it from the classname: the spawns are split in two groups by position
+ * (2-means) and each group goes to the side whose control points (by default owner) are nearer. team_out[i] is
+ * DOD_TEAM_ALLIES or DOD_TEAM_AXIS for spawn i. Without points the group of the first spawn is the Allies. */
+void Dod_ClassifySpawns(const float *sx, const float *sy, int count, const float *px, const float *py,
+	const int *owner, int points, int *team_out);
+
 /* Voice commands (retail voice_* commands and the lines players call by themselves). Each has a sound per side; the
  * first DOD_VOICE_MENU_COUNT are on the voice menu, the rest are called automatically. */
 #define DOD_VOICE_MENU_COUNT 11

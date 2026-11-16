@@ -4,6 +4,7 @@
 
 #include <ctype.h>
 #include <stdio.h>
+#include <math.h>
 #include <string.h>
 
 #define DOD_CAPTURE_SECONDS_DEFAULT 10.0f
@@ -740,6 +741,63 @@ int Dod_PlayerBodyValue(const char *model, DodClass player_class, int player_ind
 		return 0;
 	}
 	return part + 6 * helmet + 48 * head + 336 * gear;
+}
+
+void Dod_ClassifySpawns(const float *sx, const float *sy, int count, const float *px, const float *py,
+	const int *owner, int points, int *team_out)
+{
+	float cx[2], cy[2], far_d = -1.0f;
+	int group[256], i, iter;
+	float dist_to[2][3];	/* [group][0 unused, 1 Allies-owned, 2 Axis-owned]: summed distance to those points */
+	int owned[3] = { 0, 0, 0 };
+	int allies_group;
+	if (!team_out || count <= 0)
+		return;
+	if (count > 256)
+		count = 256;
+	cx[0] = sx[0]; cy[0] = sy[0];
+	cx[1] = sx[0]; cy[1] = sy[0];
+	for (i = 1; i < count; ++i) {	/* the second seed: the spawn farthest from the first */
+		const float dx = sx[i] - sx[0], dy = sy[i] - sy[0], d = dx * dx + dy * dy;
+		if (d > far_d) { far_d = d; cx[1] = sx[i]; cy[1] = sy[i]; }
+	}
+	for (iter = 0; iter < 8; ++iter) {
+		float sumx[2] = { 0, 0 }, sumy[2] = { 0, 0 };
+		int num[2] = { 0, 0 };
+		for (i = 0; i < count; ++i) {
+			const float d0 = (sx[i] - cx[0]) * (sx[i] - cx[0]) + (sy[i] - cy[0]) * (sy[i] - cy[0]);
+			const float d1 = (sx[i] - cx[1]) * (sx[i] - cx[1]) + (sy[i] - cy[1]) * (sy[i] - cy[1]);
+			group[i] = d1 < d0 ? 1 : 0;
+			sumx[group[i]] += sx[i]; sumy[group[i]] += sy[i]; ++num[group[i]];
+		}
+		for (i = 0; i < 2; ++i)
+			if (num[i]) { cx[i] = sumx[i] / (float)num[i]; cy[i] = sumy[i] / (float)num[i]; }
+	}
+	memset(dist_to, 0, sizeof(dist_to));
+	for (i = 0; i < points; ++i) {
+		int g;
+		if (owner[i] != DOD_TEAM_ALLIES && owner[i] != DOD_TEAM_AXIS)
+			continue;
+		++owned[owner[i]];
+		for (g = 0; g < 2; ++g) {
+			const float dx = px[i] - cx[g], dy = py[i] - cy[g];
+			dist_to[g][owner[i]] += sqrtf(dx * dx + dy * dy);
+		}
+	}
+	if (owned[DOD_TEAM_ALLIES] && owned[DOD_TEAM_AXIS]) {
+		/* the group that is nearer the Allies' points and farther from the Axis' points */
+		const float a = dist_to[0][DOD_TEAM_ALLIES] / (float)owned[DOD_TEAM_ALLIES] - dist_to[0][DOD_TEAM_AXIS] / (float)owned[DOD_TEAM_AXIS];
+		const float b = dist_to[1][DOD_TEAM_ALLIES] / (float)owned[DOD_TEAM_ALLIES] - dist_to[1][DOD_TEAM_AXIS] / (float)owned[DOD_TEAM_AXIS];
+		allies_group = a <= b ? 0 : 1;
+	} else if (owned[DOD_TEAM_ALLIES]) {
+		allies_group = dist_to[0][DOD_TEAM_ALLIES] <= dist_to[1][DOD_TEAM_ALLIES] ? 0 : 1;
+	} else if (owned[DOD_TEAM_AXIS]) {
+		allies_group = dist_to[0][DOD_TEAM_AXIS] <= dist_to[1][DOD_TEAM_AXIS] ? 1 : 0;	/* the Axis group is the nearer */
+	} else {
+		allies_group = group[0];
+	}
+	for (i = 0; i < count; ++i)
+		team_out[i] = group[i] == allies_group ? DOD_TEAM_ALLIES : DOD_TEAM_AXIS;
 }
 
 static const struct { const char *cmd, *label, *us, *brit, *ger; } g_voices[] = {

@@ -62,6 +62,7 @@ static int g_dod_joined[DOD_MAX_PLAYERS + 1];
 static int g_dod_pending_team[DOD_MAX_PLAYERS + 1];
 static int g_dod_winner_announced;
 static float g_dod_next_status;
+static char g_spawn_map[64];	/* the map whose spawn points are cached (DodGC_LoadSpawns) */
 /* Voice lines: nobody speaks more than once every 2 s, automatic lines (bots spotting, grenades) once every 8 s. */
 #define DOD_VOICE_COOLDOWN 2.0f
 #define DOD_VOICE_AUTO_COOLDOWN 8.0f
@@ -375,6 +376,7 @@ CHalfLifeDoD::CHalfLifeDoD()
 		g_dod_cvars_registered = TRUE;
 	}
 	Dod_GameInit();
+	g_spawn_map[0] = '\0';	/* the spawn points of the last map are gone */
 	/* before the weapons precache: the British maps give the Allies the British kit (see dod_weapons.h) */
 	Dod_SetAlliesCountry( Dod_AlliesCountryForMap( STRING( gpGlobals->mapname ) ) );
 	ALERT( at_console, "DoD: the Allies are %s on %s\n", Dod_GetAlliesCountry() == DOD_COUNTRY_BRITISH ? "British" : "American",
@@ -799,6 +801,17 @@ void CHalfLifeDoD::PlayerSpawn( CBasePlayer *pPlayer )
 	DodGC_EnsurePlayer( pPlayer );
 	if( pPlayer->IsObserver() )
 		return;
+	/* The GameCube SDK's CBasePlayer::Spawn takes the base spawn spot (not this rules class's) on the -gcnewgame route, so a
+	 * respawned Axis bot appeared on an Allied spawn, inside the Allies' spawn-protection zone, and died there. Put the
+	 * player on a spawn of their own side here, whichever route spawned them. */
+	{
+		const DodTeam side = DodGC_TeamForPlayer( pPlayer );
+		if( side == DOD_TEAM_ALLIES || side == DOD_TEAM_AXIS ) {
+			edict_t *spot = GetPlayerSpawnSpot( pPlayer );
+			if( spot )
+				UTIL_SetOrigin( pPlayer->pev, pPlayer->pev->origin );
+		}
+	}
 	const int index = DodGC_PlayerIndex( pPlayer );
 	if( !DodBots_IsBot( pPlayer ) && index >= 1 && index <= DOD_MAX_PLAYERS && !g_dod_joined[index]
 		&& CVAR_GET_FLOAT( "dod_spectate" ) == 0.0f ) {
@@ -830,31 +843,88 @@ void CHalfLifeDoD::ClientDisconnected( edict_t *pClient )
 	CHalfLifeMultiplay::ClientDisconnected( pClient );
 }
 
+/* The spawn points of the map and the side of each. A build that keeps info_player_allies / info_player_axis reads it from
+ * the classname; the disc builds rewrite both to info_player_deathmatch (engine sv_game.c), so the sides are worked out
+ * from where the spawns lie and which side's control points they are near (Dod_ClassifySpawns). */
+#define DOD_MAX_SPAWNS 128
+#define DOD_BOT_MAX_OBJECTIVES_FOR_SPAWNS 16
+static edict_t *g_spawn_edict[DOD_MAX_SPAWNS];
+static int g_spawn_team[DOD_MAX_SPAWNS];
+static int g_spawn_count;
+
+static void DodGC_LoadSpawns( void )
+{
+	const char *map = STRING( gpGlobals->mapname );
+	static const char *const classes[3] = { "info_player_allies", "info_player_axis", "info_player_deathmatch" };
+	edict_t *spot;
+	int i, by_class = 0;
+	if( g_spawn_map[0] && !strcmp( g_spawn_map, map ) )
+		return;
+	strncpy( g_spawn_map, map, sizeof( g_spawn_map ) - 1 );
+	g_spawn_count = 0;
+	for( i = 0; i < 2; i++ ) {
+		spot = NULL;
+		while( g_spawn_count < DOD_MAX_SPAWNS && !FNullEnt( spot = FIND_ENTITY_BY_STRING( spot, "classname", classes[i] ) ) ) {
+			g_spawn_edict[g_spawn_count] = spot;
+			g_spawn_team[g_spawn_count++] = i == 0 ? DOD_TEAM_ALLIES : DOD_TEAM_AXIS;
+			by_class = 1;
+		}
+	}
+	if( !by_class ) {
+		float sx[DOD_MAX_SPAWNS], sy[DOD_MAX_SPAWNS], px[DOD_BOT_MAX_OBJECTIVES_FOR_SPAWNS], py[DOD_BOT_MAX_OBJECTIVES_FOR_SPAWNS];
+		int owners[DOD_BOT_MAX_OBJECTIVES_FOR_SPAWNS], points = 0;
+		DodGCObjectiveView views[DOD_BOT_MAX_OBJECTIVES_FOR_SPAWNS];
+		spot = NULL;
+		while( g_spawn_count < DOD_MAX_SPAWNS && !FNullEnt( spot = FIND_ENTITY_BY_STRING( spot, "classname", classes[2] ) ) ) {
+			sx[g_spawn_count] = spot->v.origin.x;
+			sy[g_spawn_count] = spot->v.origin.y;
+			g_spawn_edict[g_spawn_count++] = spot;
+		}
+		points = DodGC_ListObjectives( views, DOD_BOT_MAX_OBJECTIVES_FOR_SPAWNS );
+		for( i = 0; i < points; i++ ) {
+			const DodObjectiveState *objective = Dod_GetObjective( views[i].id );
+			px[i] = views[i].center.x;
+			py[i] = views[i].center.y;
+			owners[i] = objective ? (int)objective->default_owner : 0;
+		}
+		Dod_ClassifySpawns( sx, sy, g_spawn_count, px, py, owners, points, g_spawn_team );
+	}
+	{
+		int allies = 0, axis = 0;
+		for( i = 0; i < g_spawn_count; i++ ) {
+			if( g_spawn_team[i] == DOD_TEAM_ALLIES ) allies++;
+			else axis++;
+		}
+		ALERT( at_console, "DoD spawns: %d Allies, %d Axis (%s)\n", allies, axis, by_class ? "by classname" : "by position" );
+	}
+}
+
 edict_t *CHalfLifeDoD::GetPlayerSpawnSpot( CBasePlayer *pPlayer )
 {
 	const DodTeam team = DodGC_TeamForPlayer( pPlayer );
-	const char *classname = team == DOD_TEAM_AXIS ? "info_player_axis" : "info_player_allies";
-	int count = 0;
-	CBaseEntity *spot = NULL;
-	CBaseEntity *chosen = NULL;
-	while( ( spot = UTIL_FindEntityByClassname( spot, classname ) ) != NULL )
-		++count;
+	int count = 0, i;
+	edict_t *chosen = NULL;
+	DodGC_LoadSpawns();
+	for( i = 0; i < g_spawn_count; i++ )
+		if( g_spawn_team[i] == (int)team )
+			count++;
 	if( count > 0 ) {
 		int pick = RANDOM_LONG( 0, count - 1 );
-		spot = NULL;
-		while( ( spot = UTIL_FindEntityByClassname( spot, classname ) ) != NULL ) {
-			if( pick-- == 0 ) { chosen = spot; break; }
+		for( i = 0; i < g_spawn_count; i++ ) {
+			if( g_spawn_team[i] != (int)team )
+				continue;
+			if( pick-- == 0 ) { chosen = g_spawn_edict[i]; break; }
 		}
 	}
 	if( !chosen )
 		return CHalfLifeTeamplay::GetPlayerSpawnSpot( pPlayer );
-	pPlayer->pev->origin = chosen->pev->origin + Vector( 0, 0, 1 );
+	pPlayer->pev->origin = chosen->v.origin + Vector( 0, 0, 1 );
 	pPlayer->pev->v_angle = g_vecZero;
 	pPlayer->pev->velocity = g_vecZero;
-	pPlayer->pev->angles = chosen->pev->angles;
+	pPlayer->pev->angles = chosen->v.angles;
 	pPlayer->pev->punchangle = g_vecZero;
 	pPlayer->pev->fixangle = TRUE;
-	return chosen->edict();
+	return chosen;
 }
 
 /* The numbers the client sprite HUD draws, one message per human client. */

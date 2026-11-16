@@ -244,6 +244,7 @@ static void LoadHazards( void )
 			const float mins[3] = { v->absmin.x, v->absmin.y, v->absmin.z };
 			const float maxs[3] = { v->absmax.x, v->absmax.y, v->absmax.z };
 			Dod_NavAddHazard( &g_nav, mins, maxs, mask );
+			ALERT( at_console, "DoD nav: damage zone %d: (%.0f %.0f %.0f) to (%.0f %.0f %.0f) hurts mask %d, dmg %.0f, flags %d\n", zones, mins[0], mins[1], mins[2], maxs[0], maxs[1], maxs[2], mask, v->dmg, v->spawnflags );
 			zones++;
 		}
 	}
@@ -756,6 +757,20 @@ static void PickGoal( CBasePlayer *pBot, DodBotState *state )
 		info[i].blocked = Dod_BotBlockHas( state->block_id, state->block_until, 3, views[i].id, now );
 		info[i].crowd = 0;
 		info[i].need = views[i].num_cap[my_team] > 0 ? views[i].num_cap[my_team] : 1;
+		/* a point whose capture volume lies in a damage zone that would hurt this bot's team (the enemy's spawn protection
+		 * on a map like dod_flash) cannot be taken: the walk there ends in a trigger_hurt kill, so it is not a goal */
+		if( g_nav.zone_count )
+		{
+			const Vector &c = views[i].center;
+			if( Dod_NavInHazardMargin( &g_nav, my_team, c.x, c.y, c.z, 0.0f ) ||
+				Dod_NavInHazardMargin( &g_nav, my_team, views[i].mins.x, views[i].mins.y, c.z, 0.0f ) ||
+				Dod_NavInHazardMargin( &g_nav, my_team, views[i].maxs.x, views[i].maxs.y, c.z, 0.0f ) )
+			{
+				if( !info[i].blocked )
+					ALERT( at_console, "DoD bot %s: point %d lies in a damage zone that would hurt its team, not a goal\n", STRING( pBot->pev->netname ), views[i].id );
+				info[i].blocked = 1;
+			}
+		}
 		/* a point that needs more players than the team has alive cannot be taken: leave it alone */
 		if( info[i].need > team_alive )
 			info[i].blocked = 1;
@@ -1698,8 +1713,8 @@ static void RunBot( int index, CBasePlayer *pBot )
 			const unsigned long long t0 = BotClockUs();
 			( *g_engfuncs.pfnRunPlayerMove )( pBot->edict(), viewangles, 0, 0, 0, buttons, 0, msec );
 			if( buttons && pBot->IsAlive() )
-				ALERT( at_console, "DoD bot %s: respawned, the spawn took %.0f ms\n", STRING( pBot->pev->netname ),
-					(double)( BotClockUs() - t0 ) / 1000.0 );
+				ALERT( at_console, "DoD bot %s: respawned as team %d at %.0f %.0f %.0f, the spawn took %.0f ms\n", STRING( pBot->pev->netname ), (int)TeamOf( pBot ),
+					pBot->pev->origin.x, pBot->pev->origin.y, pBot->pev->origin.z, (double)( BotClockUs() - t0 ) / 1000.0 );
 		}
 		state->yaw = state->want_yaw = pBot->pev->v_angle.y;
 		state->pitch = state->want_pitch = pBot->pev->v_angle.x;
@@ -1920,6 +1935,7 @@ static void RunBot( int index, CBasePlayer *pBot )
 		}
 	}
 	seg.mark();
+	BOOL zone_stop = FALSE;	/* the zone guard is holding the bot back this frame: no jump either */
 	if( g_nav.zone_count )
 	{
 		/* Never walk into a damage zone that hurts this team (spawn-protection zones, minefields): the route costs
@@ -1945,6 +1961,7 @@ static void RunBot( int index, CBasePlayer *pBot )
 				move.forward = -( vdir.x * fwd.x + vdir.y * fwd.y );
 				move.side = -( vdir.x * right.x + vdir.y * right.y );
 				move.jump = 0;
+				zone_stop = TRUE;
 				if( gpGlobals->time >= next_note )
 				{
 					next_note = gpGlobals->time + 20.0f;
@@ -1962,7 +1979,7 @@ static void RunBot( int index, CBasePlayer *pBot )
 		move.jump = 0;
 		move.turn_away = 0;
 	}
-	if( state->want_jump && !fight )
+	if( state->want_jump && !fight && !zone_stop )
 		buttons |= IN_JUMP;
 	if( ( state->nav_arrived && !fight ) || ( state->behavior == DOD_ACT_RELOAD && !state->ladder_dir ) )
 	{
