@@ -166,6 +166,43 @@ static void test_clip_ammo(void)
 	assert(!find(d, n, DOD_SHEET_CLIPS, 0, 183));
 }
 
+static void test_objective_icons(void)
+{
+	DodRetailInput in = base();
+	DodRetailDraw d[DOD_RETAIL_MAX_DRAWS];
+	int n;
+
+	in.num_points = 3;
+	in.owner[0] = 1;
+	in.owner[1] = 0;
+	in.owner[2] = 2;
+	in.seconds_left = 90;
+	n = Dod_RetailHudLayout(&in, d, DOD_RETAIL_MAX_DRAWS);
+	assert(find(d, n, DOD_SHEET_OBJ_ALLIES, 0, 0)->x == 82);
+	assert(find(d, n, DOD_SHEET_OBJ_NEUTRAL, 0, 0)->x == 116);
+	assert(find(d, n, DOD_SHEET_OBJ_AXIS, 0, 0)->x == 150);
+	assert(find(d, n, DOD_SHEET_OBJ_AXIS, 0, 0)->y == 2);
+
+	/* no timer: start at x 10; spectating: below the spectator bar */
+	in.seconds_left = -1;
+	in.spectating = 1;
+	n = Dod_RetailHudLayout(&in, d, DOD_RETAIL_MAX_DRAWS);
+	assert(find(d, n, DOD_SHEET_OBJ_ALLIES, 0, 0)->x == 10);
+	assert(find(d, n, DOD_SHEET_OBJ_ALLIES, 0, 0)->y == 108);
+
+	/* the server's max clip divides the reserve */
+	in = base();
+	in.weapon = Dod_RetailClipFor("weapon_dod_garand");
+	in.clip = 8;
+	in.reserve = 20;
+	in.max_clip = 10;
+	{
+		DodRetailText t;
+		Dod_RetailHudLayoutText(&in, d, DOD_RETAIL_MAX_DRAWS, &t);
+		assert(t.count == 2);
+	}
+}
+
 int main(void)
 {
 	test_panel_full_health();
@@ -174,5 +211,6 @@ int main(void)
 	test_timer_digits();
 	test_crosshair();
 	test_clip_ammo();
+	test_objective_icons();
 	return 0;
 }

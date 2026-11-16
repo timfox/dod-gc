@@ -24,6 +24,9 @@ typedef enum {
 	DOD_SHEET_EXTRAS,	/* sprites/clip_extras.spr */
 	DOD_SHEET_ROCKETS,	/* sprites/rockets.spr */
 	DOD_SHEET_ROCKETS2,	/* sprites/rockets2.spr */
+	DOD_SHEET_OBJ_NEUTRAL,	/* sprites/obj_icons/icon_obj_neutral.spr (32x32) */
+	DOD_SHEET_OBJ_ALLIES,	/* sprites/obj_icons/icon_obj_allies.spr */
+	DOD_SHEET_OBJ_AXIS,	/* sprites/obj_icons/icon_obj_axis.spr */
 	DOD_SHEET_COUNT
 } DodRetailSheet;
 
@@ -35,6 +38,9 @@ static const char *const dod_retail_sheet_files[DOD_SHEET_COUNT] = {
 	"sprites/clip_extras.spr",
 	"sprites/rockets.spr",
 	"sprites/rockets2.spr",
+	"sprites/obj_icons/icon_obj_neutral.spr",
+	"sprites/obj_icons/icon_obj_allies.spr",
+	"sprites/obj_icons/icon_obj_axis.spr",
 };
 
 /* CHudAmmo's weapon table (retail CHudAmmo::VidInit): the clip graphics of
@@ -118,7 +124,8 @@ typedef struct DodRetailDraw {
 	int x, y;
 } DodRetailDraw;
 
-#define DOD_RETAIL_MAX_DRAWS 20
+#define DOD_RETAIL_MAX_POINTS 12	/* CObjectiveIcons draws up to 12 areas */
+#define DOD_RETAIL_MAX_DRAWS (20 + DOD_RETAIL_MAX_POINTS)
 
 typedef struct DodRetailInput {
 	int screen_w, screen_h;
@@ -133,6 +140,9 @@ typedef struct DodRetailInput {
 	const DodRetailClip *weapon;	/* held weapon's clip graphics, or 0 */
 	int clip;		/* rounds in the clip, < 0: none */
 	int reserve;		/* rounds carried outside the clip */
+	int max_clip;		/* retail: the WeaponList max clip; <= 0 (HL WeaponList has none): the table's */
+	int num_points;		/* capture points on the objective bar */
+	int owner[DOD_RETAIL_MAX_POINTS];	/* 0 neutral, 1 Allies, 2 Axis */
 } DodRetailInput;
 
 /* The "x N" spare-clip count retail prints beside the extra-clip graphic. */
@@ -211,7 +221,8 @@ static inline int Dod_RetailHudLayoutText(const DodRetailInput *in, DodRetailDra
 		const int fh = DOD_RETAIL_FONT_H;
 		const int tx = in->screen_w - w->full.w - w->extra.w - 45;
 		const int base = in->screen_h - fh - fh / 2;
-		const int spare = w->clip > 0 ? in->reserve / w->clip : 0;
+		const int per_clip = in->max_clip > 0 ? in->max_clip : w->clip;
+		const int spare = per_clip > 0 ? in->reserve / per_clip : 0;
 
 		dod_retail_add(out, &n, max, w->empty, tx, base - w->full.h + fh);
 		if (w->per > 0.0f) {
@@ -248,6 +259,23 @@ static inline int Dod_RetailHudLayoutText(const DodRetailInput *in, DodRetailDra
 		dod_retail_add(out, &n, max, Dod_RetailTimerDigit(minutes % 10), 24, digit_y);
 		dod_retail_add(out, &n, max, Dod_RetailTimerDigit(seconds / 10), 44, digit_y);
 		dod_retail_add(out, &n, max, Dod_RetailTimerDigit(seconds % 10), 58, digit_y);
+	}
+
+	/* Objective icons (CObjectiveIcons::Draw): one 32x32 flag per area,
+	 * 34 apart, right of the timer plate (x 82) or from x 10 without it. */
+	if (in->num_points > 0) {
+		const int count = in->num_points < DOD_RETAIL_MAX_POINTS ? in->num_points : DOD_RETAIL_MAX_POINTS;
+		const int icon_y = in->spectating ? (int)(2.0f * (54.0f * in->screen_h / 480.0f) + 0.5f)
+			: (int)(2.0f * in->screen_h / 480.0f + 0.5f);
+		int i, x = in->seconds_left >= 0 ? 82 : 10;
+		for (i = 0; i < count; i++, x += 34) {
+			DodRetailCell icon = { DOD_SHEET_OBJ_NEUTRAL, 0, 0, 32, 32 };
+			if (in->owner[i] == 1)
+				icon.sheet = DOD_SHEET_OBJ_ALLIES;
+			else if (in->owner[i] == 2)
+				icon.sheet = DOD_SHEET_OBJ_AXIS;
+			dod_retail_add(out, &n, max, icon, x, icon_y);
+		}
 	}
 
 	/* Dynamic crosshair (cl_xhair_style 0): dot plus four bars w px out. */

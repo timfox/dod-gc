@@ -144,6 +144,14 @@ if [[ "${DODGC_STAGE_RETAIL_HUD:-1}" == "1" && -f "$SRC/sprites/hud.txt" ]]; the
 		fi
 	done < <(awk 'NF >= 7 && $2 ~ /^[0-9]+$/ { print $3 }' "$SRC/sprites/hud.txt" | sort -u)
 	echo "staged retail DoD HUD: sprites/hud.txt + $retail_hud sheets"
+	# Objective bar flags (CObjectiveIcons): the generic neutral/Allies/Axis
+	# trio, 32x32 each (about 3 KB apiece).
+	mkdir -p "$LEAN/sprites/obj_icons"
+	for state in neutral allies axis; do
+		if [[ -f "$SRC/sprites/obj_icons/icon_obj_$state.spr" ]]; then
+			cp -f "$SRC/sprites/obj_icons/icon_obj_$state.spr" "$LEAN/sprites/obj_icons/"
+		fi
+	done
 fi
 
 # DoD UI / title art (no loading-screen wallpaper farms).

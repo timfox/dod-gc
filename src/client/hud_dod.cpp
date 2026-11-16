@@ -120,6 +120,14 @@ int CHudDod::DrawRetail( float flTime )
 		in.seconds_left = left > 0 ? left : 0;
 	}
 
+	/* Capture points from the DodHud message, left to right. */
+	if( m_fHaveState )
+	{
+		in.num_points = m_state.num_points < DOD_HUD_MAX_POINTS ? m_state.num_points : DOD_HUD_MAX_POINTS;
+		for( i = 0; i < in.num_points; i++ )
+			in.owner[i] = Dod_HudOwnerOf( m_state.owners, i );
+	}
+
 	/* Clip ammo: the held weapon's magazine graphic and spare clips. */
 	pw = gHUD.m_Ammo.GetCurrentWeapon();
 	if( pw && pw->iClip >= 0 )
