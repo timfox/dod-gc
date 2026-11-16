@@ -1,3 +1,4 @@
+#include "dod_hud.h"
 #include "dod_hud_retail.h"
 
 #include <assert.h>
@@ -134,6 +135,31 @@ static void test_clip_ammo(void)
 
 	assert(g && g->clip == 8);
 	assert(Dod_RetailClipFor("weapon_dod_k98") && !Dod_RetailClipFor("weapon_dod_knife"));
+	/* the variants: stock guns with no kit, the British and paratrooper guns with theirs */
+	assert(Dod_RetailClipForKit("weapon_dod_garand", 0) == Dod_RetailClipFor("weapon_dod_garand"));
+	assert(!strcmp(Dod_RetailClipForKit("weapon_dod_garand", DOD_HUD_KIT_BRITISH)->key, "enfield"));
+	assert(!strcmp(Dod_RetailClipForKit("weapon_dod_spring", DOD_HUD_KIT_BRITISH)->key, "enfield"));
+	assert(!strcmp(Dod_RetailClipForKit("weapon_dod_thompson", DOD_HUD_KIT_BRITISH)->key, "sten"));
+	assert(!strcmp(Dod_RetailClipForKit("weapon_dod_bar", DOD_HUD_KIT_BRITISH)->key, "bren"));
+	assert(!strcmp(Dod_RetailClipForKit("weapon_dod_bazooka", DOD_HUD_KIT_BRITISH)->key, "piat"));
+	assert(!strcmp(Dod_RetailClipForKit("weapon_dod_colt", DOD_HUD_KIT_BRITISH)->key, "webley"));
+	assert(!strcmp(Dod_RetailClipForKit("weapon_dod_garand", DOD_HUD_KIT_ALLIES_PARA)->key, "m1carbine"));
+	assert(!strcmp(Dod_RetailClipForKit("weapon_dod_thompson", DOD_HUD_KIT_ALLIES_PARA)->key, "grease"));
+	assert(!strcmp(Dod_RetailClipForKit("weapon_dod_bar", DOD_HUD_KIT_ALLIES_PARA)->key, "bar"));
+	assert(!strcmp(Dod_RetailClipForKit("weapon_dod_k98", DOD_HUD_KIT_AXIS_PARA)->key, "fg42"));
+	assert(!strcmp(Dod_RetailClipForKit("weapon_dod_k98", DOD_HUD_KIT_ALLIES_PARA)->key, "k98"));	/* Allies paras do not change the Axis */
+	assert(!strcmp(Dod_RetailClipForKit("weapon_dod_garand", DOD_HUD_KIT_BRITISH | DOD_HUD_KIT_ALLIES_PARA)->key, "enfield"));
+	assert(!strcmp(Dod_RetailClipForKit("weapon_dod_mg42", DOD_HUD_KIT_AXIS_PARA)->key, "mg42") && !Dod_RetailClipForKit(0, 1));
+	/* every clip entry is sane: cells inside a sheet, the column share inside 1 */
+	{
+		unsigned n;
+		for (n = 0; n < sizeof(dod_retail_clips) / sizeof(dod_retail_clips[0]); n++) {
+			const DodRetailClip *c = &dod_retail_clips[n];
+			assert(c->full.w > 0 && c->full.h > 0 && c->clip > 0);
+			if (c->clip <= 100)	/* the belt-fed guns (30cal, mg42) count differently */
+				assert(c->x0 + c->per * (float)c->clip <= 1.02f);
+		}
+	}
 	in.weapon = g;
 	in.clip = 4;
 	in.reserve = 16;
