@@ -30,6 +30,58 @@ static inline unsigned long long gettime( void )
 }
 #define DOD_BOT_TICKS_TO_US( t ) ( (t) * 1000ULL / 40500ULL )
 #endif
+
+/* Where a long bot frame goes: the worst single call of each phase since the last log line (console time; zero
+ * off the GameCube). */
+enum { DOD_PH_PLAN, DOD_PH_PERCEIVE, DOD_PH_THINK, DOD_PH_GOAL, DOD_PH_MOVE, DOD_PH_STEER, DOD_PH_COUNT };
+static unsigned long long g_phase_max_us[DOD_PH_COUNT];
+
+static inline unsigned long long BotClockUs( void )
+{
+#if defined( __GAMECUBE__ )
+	return DOD_BOT_TICKS_TO_US( gettime() );
+#else
+	return 0;
+#endif
+}
+
+/* One RunBot call in four segments: A start..obstacle traces, B perception and planning, C decisions and steering,
+ * D the rest (the player move). The worst of each, and of the whole call, since the last log line. */
+static unsigned long long g_seg_max_us[5];
+
+struct SegTimer
+{
+	unsigned long long t[4];
+	int n;
+	SegTimer() : n( 0 ) { t[0] = BotClockUs(); }
+	void mark( void ) { if( n < 3 ) t[++n] = BotClockUs(); }
+	~SegTimer()
+	{
+		const unsigned long long end = BotClockUs();
+		int i;
+		for( i = 0; i < 4; i++ )
+		{
+			const unsigned long long a = t[i], b = i < n ? t[i + 1] : ( i == n ? end : 0 );
+			if( i <= n && b - a > g_seg_max_us[i] )
+				g_seg_max_us[i] = b - a;
+		}
+		if( end - t[0] > g_seg_max_us[4] )
+			g_seg_max_us[4] = end - t[0];
+	}
+};
+
+struct PhaseTimer
+{
+	int phase;
+	unsigned long long t0;
+	explicit PhaseTimer( int p ) : phase( p ), t0( BotClockUs() ) {}
+	~PhaseTimer()
+	{
+		const unsigned long long d = BotClockUs() - t0;
+		if( d > g_phase_max_us[phase] )
+			g_phase_max_us[phase] = d;
+	}
+};
 #include <string.h>
 
 /* dod_bots: bots on top of the humans, filling free slots (0 = none). On
@@ -396,6 +448,15 @@ static void PlanBots( void )
 		{
 			ALERT( at_console, "DoD bots: think %.2f ms average, %.2f ms worst over %u frames (%d bots)\n",
 				(double)g_think_us_sum / (double)g_think_frames / 1000.0, (double)g_think_us_max / 1000.0, g_think_frames, bots );
+			ALERT( at_console, "DoD bots: worst single call (ms): plan %.1f, perceive %.1f, think %.1f, goal %.1f, player move %.1f, steer %.1f\n",
+				(double)g_phase_max_us[DOD_PH_PLAN] / 1000.0, (double)g_phase_max_us[DOD_PH_PERCEIVE] / 1000.0,
+				(double)g_phase_max_us[DOD_PH_THINK] / 1000.0, (double)g_phase_max_us[DOD_PH_GOAL] / 1000.0,
+				(double)g_phase_max_us[DOD_PH_MOVE] / 1000.0, (double)g_phase_max_us[DOD_PH_STEER] / 1000.0 );
+			ALERT( at_console, "DoD bots: worst RunBot segments (ms): start-to-obstacles %.1f, perceive+think %.1f, decisions %.1f, player move %.1f; whole call %.1f\n",
+				(double)g_seg_max_us[0] / 1000.0, (double)g_seg_max_us[1] / 1000.0, (double)g_seg_max_us[2] / 1000.0,
+				(double)g_seg_max_us[3] / 1000.0, (double)g_seg_max_us[4] / 1000.0 );
+			memset( g_seg_max_us, 0, sizeof( g_seg_max_us ) );
+			memset( g_phase_max_us, 0, sizeof( g_phase_max_us ) );
 			g_think_us_sum = g_think_us_max = 0;
 			g_think_frames = 0;
 		}
@@ -458,6 +519,7 @@ static DodBotSkill BotSkill( void )
  * rough position, never a clean one, and only make the bot go and look. */
 static CBasePlayer *Perceive( CBasePlayer *pBot, DodBotState *state, float *distance )
 {
+	PhaseTimer timer( DOD_PH_PERCEIVE );
 	const float now = gpGlobals->time;
 	if( now >= state->next_percept )
 	{
@@ -581,6 +643,7 @@ static BOOL InsideGoal( const DodBotState *state, const Vector &origin )
 
 static void PickGoal( CBasePlayer *pBot, DodBotState *state )
 {
+	PhaseTimer timer( DOD_PH_GOAL );
 	DodGCObjectiveView views[DOD_BOT_MAX_OBJECTIVES];
 	DodBotObjectiveInfo info[DOD_BOT_MAX_OBJECTIVES];
 	const float now = gpGlobals->time;
@@ -756,8 +819,15 @@ static float FreeRun( CBasePlayer *pBot, float yaw, float max_dist, BOOL floor_t
 	return 0.0f;
 }
 
+/* The local obstacle-avoiding steer (no usable route): up to a dozen heading probes of a few traces each, which is
+ * tens of milliseconds on the console. Only one bot steers in a given frame (the others keep their last heading and
+ * try next frame), and each bot only every DOD_BOT_STEER_PERIOD seconds. */
+#define DOD_BOT_STEER_PERIOD 0.4f
+static float g_steer_stamp = -1.0f;
+
 static float SteerYaw( CBasePlayer *pBot, DodBotState *state, const Vector &goal, BOOL floor_trust )
 {
+	PhaseTimer timer( DOD_PH_STEER );
 	const Vector origin = pBot->pev->origin;
 	const float want = YawTo( origin, goal );
 	/* Never look further than the target: a heading that runs straight past it must not lose to one that
@@ -765,7 +835,7 @@ static float SteerYaw( CBasePlayer *pBot, DodBotState *state, const Vector &goal
 	const float cap = fminf( DOD_BOT_LOOKAHEAD, ( goal - origin ).Length2D() + 16.0f );
 	float best_score = 1e9f, best_off = 0.0f;
 	int off;
-	for( off = -180; off < 180; off += 20 )
+	for( off = -180; off < 180; off += 30 )
 	{
 		const float yaw = want + (float)off;
 		const float run = FreeRun( pBot, yaw, cap, floor_trust );
@@ -813,6 +883,7 @@ static float g_plan_stamp = -1.0f;
 
 static BOOL PlanPath( CBasePlayer *pBot, DodBotState *state )
 {
+	PhaseTimer timer( DOD_PH_PLAN );
 	int starts[6], goals[4], tmp[DOD_NAV_MAX_PATH], ns, ng, i, j, k, pass, len, searches = 0;
 	const Vector origin = pBot->pev->origin;
 	if( gpGlobals->time <= g_plan_stamp )
@@ -1051,6 +1122,7 @@ static Vector PickCover( CBasePlayer *pBot, DodBotState *state )
 
 static void BotThink( CBasePlayer *pBot, DodBotState *state, CBasePlayer *enemy )
 {
+	PhaseTimer timer( DOD_PH_THINK );
 	const float now = gpGlobals->time;
 	const DodTeam team = TeamOf( pBot );
 	unsigned ws = 0;
@@ -1428,6 +1500,7 @@ static void StageStep( void )
 
 static void RunBot( int index, CBasePlayer *pBot )
 {
+	SegTimer seg;
 	DodBotState *state = BotState( index );
 	if( !state )
 		return;
@@ -1461,7 +1534,15 @@ static void RunBot( int index, CBasePlayer *pBot )
 		viewangles[0] = pBot->pev->v_angle.x;
 		viewangles[1] = pBot->pev->v_angle.y;
 		viewangles[2] = 0.0f;
-		( *g_engfuncs.pfnRunPlayerMove )( pBot->edict(), viewangles, 0, 0, 0, buttons, 0, msec );
+		{
+			/* the fire press that respawns a dead bot runs the whole player spawn (spawn spot, map targets, weapons,
+			 * model binds): worth a line, it is the longest frame a bot causes */
+			const unsigned long long t0 = BotClockUs();
+			( *g_engfuncs.pfnRunPlayerMove )( pBot->edict(), viewangles, 0, 0, 0, buttons, 0, msec );
+			if( buttons && pBot->IsAlive() )
+				ALERT( at_console, "DoD bot %s: respawned, the spawn took %.0f ms\n", STRING( pBot->pev->netname ),
+					(double)( BotClockUs() - t0 ) / 1000.0 );
+		}
 		state->yaw = pBot->pev->v_angle.y;
 		state->pitch = pBot->pev->v_angle.x;
 		state->has_goal = 0;
@@ -1549,9 +1630,11 @@ static void RunBot( int index, CBasePlayer *pBot )
 		}
 	}
 
+	seg.mark();
 	enemy = Perceive( pBot, state, &enemy_distance );
 	BotThink( pBot, state, enemy );
 	UpdateArrival( pBot, state );
+	seg.mark();
 	/* shoot only when the plan says so (or there is no plan yet); a bot taking cover or reloading does not stand and trade */
 	const BOOL fight = enemy != NULL && ( state->behavior == DOD_ACT_ATTACK || state->behavior == DOD_ACT_NONE );
 	{
@@ -1644,10 +1727,11 @@ static void RunBot( int index, CBasePlayer *pBot )
 			}
 			else if( gpGlobals->time >= state->hold_heading_until )
 			{
-				if( gpGlobals->time >= state->next_steer )
+				if( gpGlobals->time >= state->next_steer && gpGlobals->time > g_steer_stamp )
 				{
+					g_steer_stamp = gpGlobals->time;
 					state->steer_yaw = SteerYaw( pBot, state, on_path ? target : state->nav_pos, floor_trust );
-					state->next_steer = gpGlobals->time + 0.25f;
+					state->next_steer = gpGlobals->time + DOD_BOT_STEER_PERIOD;
 				}
 				state->heading = state->steer_yaw;
 			}
@@ -1657,6 +1741,7 @@ static void RunBot( int index, CBasePlayer *pBot )
 	}
 
 	move = Dod_BotDecide( &in );
+	seg.mark();
 	if( state->nav_has && !fight && !state->nav_arrived )
 		move.turn_away = 0;	/* the steering picks the way round; a random turn only undoes it */
 	if( state->ladder_dir && !fight )
@@ -1767,7 +1852,10 @@ static void RunBot( int index, CBasePlayer *pBot )
 	pBot->pev->v_angle.z = 0.0f;
 	pBot->pev->angles.x = viewangles[0] * ( 1.0f / 3.0f );
 	pBot->pev->angles.y = viewangles[1];
-	( *g_engfuncs.pfnRunPlayerMove )( pBot->edict(), viewangles, move.forward * speed, move.side * speed, 0, buttons, 0, msec );
+	{
+		PhaseTimer timer( DOD_PH_MOVE );
+		( *g_engfuncs.pfnRunPlayerMove )( pBot->edict(), viewangles, move.forward * speed, move.side * speed, 0, buttons, 0, msec );
+	}
 }
 
 
