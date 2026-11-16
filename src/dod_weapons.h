@@ -96,6 +96,21 @@ int Dod_ReloadAmount(const DodWeaponDef *def, int clip, int reserve);
 /* Whether the trigger may fire again: auto always, semi/bolt only on a new pull. */
 int Dod_WeaponMayFire(const DodWeaponDef *def, int trigger_was_held);
 
+/* ---------------------------------------------------------------- Allied country
+ * On the British maps (dod_caen, dod_flash, dod_jagd: info_doddetect detect_allies_country 1) the Allies carry the
+ * British kit: Lee-Enfield, Sten, Bren, scoped Lee-Enfield, PIAT, Webley, Fairbairn knife, Mills bomb. Weapon ids are
+ * scarce (the engine allows 32), and the American guns never appear on those maps, so the British weapons reuse their
+ * ids and class names: Dod_GetWeaponDef returns the British definition for the same id. */
+typedef enum {
+	DOD_COUNTRY_US = 0,
+	DOD_COUNTRY_BRITISH
+} DodAlliesCountry;
+
+void Dod_SetAlliesCountry(DodAlliesCountry country);
+DodAlliesCountry Dod_GetAlliesCountry(void);
+/* The Allied country of a retail map, by name; anything else (custom maps included) is American. */
+DodAlliesCountry Dod_AlliesCountryForMap(const char *mapname);
+
 /* ---------------------------------------------------------------- view model animations
  * The game code sends generic animation numbers; every retail view model orders its sequences differently, so
  * SendWeaponAnim translates them (tools/gen_viewanims.py names the sequence each role uses in each model). */

@@ -27,7 +27,7 @@ static const DodWeaponDef g_weapons[DOD_WEAPON_COUNT] = {
 		24.0f, 0.09f, 0.045f, 0.9f, 3500.0f, 2.4f, 0.0f, 0, 2, 1, 15,
 		"weapons/thompson_shoot.wav", "weapons/tommy_reload_clipin.wav" },
 	[DOD_WEAPON_BAR] = { DOD_WEAPON_BAR, "weapon_dod_bar", "BAR", A, DOD_FIRE_AUTO, DOD_HLID(DOD_WEAPON_BAR),
-		"models/v_bren.mdl", "models/p_bren.mdl", "dod_30-06", 200, 20, 160,
+		"models/v_bar.mdl", "models/p_barbu.mdl", "dod_30-06", 200, 20, 160,
 		38.0f, 0.12f, 0.030f, 1.4f, 5500.0f, 2.6f, 0.0f, 0, 2, 2, 15,
 		"weapons/bar_shoot.wav", "weapons/garand_reload_clipin.wav" },
 	[DOD_WEAPON_BROWNING] = { DOD_WEAPON_BROWNING, "weapon_dod_30cal", "30cal", A, DOD_FIRE_AUTO, DOD_HLID(DOD_WEAPON_BROWNING),
@@ -80,10 +80,65 @@ static const DodWeaponId g_class_primary[2][DOD_CLASS_COUNT] = {
 	  DOD_WEAPON_K98_SCOPED, DOD_WEAPON_MG42, DOD_WEAPON_PSCHRECK }
 };
 
+/* The British kit: the same ids, class names, slots and ammo pools as the American guns they stand in for (the table
+ * above names them), with the British models, sounds and numbers. The stats are plausible, not retail data. */
+static const DodWeaponDef g_british[DOD_WEAPON_COUNT] = {
+	[DOD_WEAPON_GARAND] = { DOD_WEAPON_GARAND, "weapon_dod_garand", "Lee-Enfield", A, DOD_FIRE_BOLT, DOD_HLID(DOD_WEAPON_GARAND),
+		"models/v_enfield.mdl", "models/p_enfield.mdl", "dod_30-06", 200, 10, 50,
+		80.0f, 1.0f, 0.012f, 2.0f, 6000.0f, 3.2f, 0.0f, 0, 2, 0, 15,
+		"weapons/enfield_shoot.wav", "weapons/garand_reload_clipin.wav" },
+	[DOD_WEAPON_SPRINGFIELD] = { DOD_WEAPON_SPRINGFIELD, "weapon_dod_spring", "Scoped Lee-Enfield", A, DOD_FIRE_BOLT, DOD_HLID(DOD_WEAPON_SPRINGFIELD),
+		"models/v_enfield_scoped.mdl", "models/p_enfields.mdl", "dod_30-06", 200, 10, 50,
+		95.0f, 1.4f, 0.030f, 3.0f, 8192.0f, 3.2f, 20.0f, 0, 2, 3, 15,
+		"weapons/enfieldsniper_shoot.wav", "weapons/garand_reload_clipin.wav" },
+	[DOD_WEAPON_THOMPSON] = { DOD_WEAPON_THOMPSON, "weapon_dod_thompson", "Sten", A, DOD_FIRE_AUTO, DOD_HLID(DOD_WEAPON_THOMPSON),
+		"models/v_sten.mdl", "models/p_sten.mdl", "dod_45", 250, 32, 192,
+		21.0f, 0.10f, 0.045f, 0.9f, 3000.0f, 2.3f, 0.0f, 0, 2, 1, 15,
+		"weapons/sten_shoot.wav", "weapons/tommy_reload_clipin.wav" },
+	[DOD_WEAPON_BAR] = { DOD_WEAPON_BAR, "weapon_dod_bar", "Bren", A, DOD_FIRE_AUTO, DOD_HLID(DOD_WEAPON_BAR),
+		"models/v_bren.mdl", "models/p_bren.mdl", "dod_30-06", 200, 30, 150,
+		36.0f, 0.125f, 0.030f, 1.3f, 5500.0f, 3.0f, 0.0f, 0, 2, 2, 15,
+		"weapons/bren_shoot.wav", "weapons/garand_reload_clipin.wav" },
+	[DOD_WEAPON_BAZOOKA] = { DOD_WEAPON_BAZOOKA, "weapon_dod_bazooka", "PIAT", A, DOD_FIRE_ROCKET, DOD_HLID(DOD_WEAPON_BAZOOKA),
+		"models/v_piat.mdl", "models/p_piat.mdl", "dod_rocket", 20, 1, 4,
+		140.0f, 1.5f, 0.0f, 4.0f, 8192.0f, 4.0f, 0.0f, 0, 3, 0, 20,
+		"weapons/piat_shoot.wav", "weapons/bazookareload.wav" },
+	[DOD_WEAPON_COLT] = { DOD_WEAPON_COLT, "weapon_dod_colt", "Webley", A, DOD_FIRE_SEMI, DOD_HLID(DOD_WEAPON_COLT),
+		"models/v_webley.mdl", "models/p_webley.mdl", "dod_45", 250, 6, 18,
+		33.0f, 0.30f, 0.030f, 1.3f, 3000.0f, 3.0f, 0.0f, 0, 1, 0, 10,
+		"weapons/webley_shoot.wav", "weapons/colt_reload_clipin.wav" },
+};
+
+static DodAlliesCountry g_allies_country = DOD_COUNTRY_US;
+
+void Dod_SetAlliesCountry(DodAlliesCountry country)
+{
+	g_allies_country = country == DOD_COUNTRY_BRITISH ? DOD_COUNTRY_BRITISH : DOD_COUNTRY_US;
+}
+
+DodAlliesCountry Dod_GetAlliesCountry(void)
+{
+	return g_allies_country;
+}
+
+DodAlliesCountry Dod_AlliesCountryForMap(const char *mapname)
+{
+	static const char *const british[] = { "dod_caen", "dod_flash", "dod_jagd" };
+	size_t i;
+	if (!mapname)
+		return DOD_COUNTRY_US;
+	for (i = 0; i < sizeof(british) / sizeof(british[0]); ++i)
+		if (!strcmp(mapname, british[i]))
+			return DOD_COUNTRY_BRITISH;
+	return DOD_COUNTRY_US;
+}
+
 const DodWeaponDef *Dod_GetWeaponDef(DodWeaponId id)
 {
 	if (id <= DOD_WEAPON_NONE || id >= DOD_WEAPON_COUNT)
 		return 0;
+	if (g_allies_country == DOD_COUNTRY_BRITISH && g_british[id].id == id)
+		return &g_british[id];
 	return &g_weapons[id];
 }
 
@@ -94,7 +149,7 @@ const DodWeaponDef *Dod_FindWeaponDef(const char *classname)
 		return 0;
 	for (i = DOD_WEAPON_NONE + 1; i < DOD_WEAPON_COUNT; i++) {
 		if (strcmp(g_weapons[i].classname, classname) == 0)
-			return &g_weapons[i];
+			return Dod_GetWeaponDef((DodWeaponId)i);
 	}
 	return 0;
 }

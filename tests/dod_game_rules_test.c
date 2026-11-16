@@ -656,6 +656,72 @@ static void test_view_animations(void)
 	assert(Dod_ViewAnim("models/v_nothing.mdl", DOD_ANIM_IDLE, 0) == -1 && Dod_ViewAnim(0, DOD_ANIM_IDLE, 0) == -1);
 }
 
+static void test_british_kit(void)
+{
+	DodLoadout load;
+	DodGrenadeDef grenade;
+	const char *view, *player_model;
+	int id, team_ok = 1;
+	/* American by default; only the retail British maps switch */
+	Dod_SetAlliesCountry(DOD_COUNTRY_US);
+	assert(Dod_GetAlliesCountry() == DOD_COUNTRY_US);
+	assert(Dod_AlliesCountryForMap("dod_charlie") == DOD_COUNTRY_US && Dod_AlliesCountryForMap("dod_avalanche") == DOD_COUNTRY_US);
+	assert(Dod_AlliesCountryForMap("dod_flash") == DOD_COUNTRY_BRITISH && Dod_AlliesCountryForMap("dod_caen") == DOD_COUNTRY_BRITISH);
+	assert(Dod_AlliesCountryForMap("dod_jagd") == DOD_COUNTRY_BRITISH && Dod_AlliesCountryForMap(0) == DOD_COUNTRY_US);
+	assert(Dod_AlliesCountryForMap("custom_map") == DOD_COUNTRY_US);
+	assert(strcmp(Dod_GetWeaponDef(DOD_WEAPON_GARAND)->title, "M1 Garand") == 0);
+	/* the US BAR wears the BAR's models now (they were the British Bren's) */
+	assert(strcmp(Dod_GetWeaponDef(DOD_WEAPON_BAR)->view_model, "models/v_bar.mdl") == 0);
+
+	Dod_SetAlliesCountry(DOD_COUNTRY_BRITISH);
+	/* the British guns stand in for the American ones: same ids, class names, slots, ammo pools and team */
+	for (id = DOD_WEAPON_NONE + 1; id < DOD_WEAPON_COUNT; ++id) {
+		const DodWeaponDef *def = Dod_GetWeaponDef((DodWeaponId)id);
+		Dod_SetAlliesCountry(DOD_COUNTRY_US);
+		{
+			const DodWeaponDef *us = Dod_GetWeaponDef((DodWeaponId)id);
+			if (def != us) {
+				const DodWeaponDef *brit;
+				Dod_SetAlliesCountry(DOD_COUNTRY_BRITISH);
+				brit = Dod_GetWeaponDef((DodWeaponId)id);
+				team_ok &= brit->id == us->id && brit->hl_id == us->hl_id && brit->team == DOD_TEAM_ALLIES && us->team == DOD_TEAM_ALLIES &&
+					strcmp(brit->classname, us->classname) == 0 && strcmp(brit->ammo, us->ammo) == 0 && brit->slot == us->slot &&
+					brit->position == us->position && Dod_ViewAnim(brit->view_model, DOD_ANIM_IDLE, 0) >= 0 &&
+					Dod_ViewAnim(brit->view_model, DOD_ANIM_FIRE, 0) >= 0;
+			}
+		}
+		Dod_SetAlliesCountry(DOD_COUNTRY_BRITISH);
+	}
+	assert(team_ok);
+	assert(strcmp(Dod_ClassWeaponDef(DOD_TEAM_ALLIES, DOD_CLASS_RIFLEMAN)->title, "Lee-Enfield") == 0);
+	assert(Dod_ClassWeaponDef(DOD_TEAM_ALLIES, DOD_CLASS_RIFLEMAN)->mode == DOD_FIRE_BOLT && Dod_ClassWeaponDef(DOD_TEAM_ALLIES, DOD_CLASS_RIFLEMAN)->clip == 10);
+	assert(strcmp(Dod_ClassWeaponDef(DOD_TEAM_ALLIES, DOD_CLASS_ASSAULT)->title, "Sten") == 0);
+	assert(strcmp(Dod_ClassWeaponDef(DOD_TEAM_ALLIES, DOD_CLASS_SUPPORT)->title, "Bren") == 0);
+	assert(strcmp(Dod_ClassWeaponDef(DOD_TEAM_ALLIES, DOD_CLASS_SNIPER)->title, "Scoped Lee-Enfield") == 0);
+	assert(Dod_ClassWeaponDef(DOD_TEAM_ALLIES, DOD_CLASS_SNIPER)->scope_fov > 0.0f);
+	assert(strcmp(Dod_ClassWeaponDef(DOD_TEAM_ALLIES, DOD_CLASS_ROCKET)->title, "PIAT") == 0);
+	assert(strcmp(Dod_ClassSidearmDef(DOD_TEAM_ALLIES, DOD_CLASS_SUPPORT)->title, "Webley") == 0);
+	assert(strcmp(Dod_ClassWeaponDef(DOD_TEAM_ALLIES, DOD_CLASS_MG)->title, "30cal") == 0);	/* no British replacement on disc */
+	/* the Axis are untouched */
+	assert(strcmp(Dod_ClassWeaponDef(DOD_TEAM_AXIS, DOD_CLASS_RIFLEMAN)->title, "Kar98k") == 0);
+	assert(strcmp(Dod_ClassSidearmDef(DOD_TEAM_AXIS, DOD_CLASS_SUPPORT)->title, "Luger") == 0);
+	/* names, loadouts, models */
+	assert(strcmp(Dod_TeamClassWeapon(DOD_TEAM_ALLIES, DOD_CLASS_ASSAULT), "Sten") == 0 && strcmp(Dod_TeamClassWeapon(DOD_TEAM_AXIS, DOD_CLASS_ASSAULT), "MP40") == 0);
+	assert(Dod_GetLoadout(DOD_TEAM_ALLIES, DOD_CLASS_RIFLEMAN, &load) && strcmp(load.weapon, "Lee-Enfield") == 0 && load.clip_size == 10);
+	assert(Dod_FindWeaponDef("weapon_dod_garand") == Dod_GetWeaponDef(DOD_WEAPON_GARAND) && strcmp(Dod_FindWeaponDef("weapon_dod_garand")->title, "Lee-Enfield") == 0);
+	assert(Dod_GetGrenade(DOD_TEAM_ALLIES, &grenade) && strcmp(grenade.view_model, "models/v_mills.mdl") == 0 && strcmp(grenade.world_model, "models/w_mills.mdl") == 0);
+	assert(Dod_GetGrenade(DOD_TEAM_AXIS, &grenade) && strcmp(grenade.view_model, "models/v_stick.mdl") == 0);
+	/* the animation remap follows the British models: the Lee-Enfield's reload is 2, the Sten's draw 2, the PIAT's launch 6 */
+	assert(Dod_RemapAnim("weapon_dod_garand", DOD_GENERIC_ANIM_RELOAD) == 2 && Dod_RemapAnim("weapon_dod_garand", DOD_GENERIC_ANIM_DRAW) == 3);
+	assert(Dod_RemapAnim("weapon_dod_thompson", DOD_GENERIC_ANIM_DRAW) == 2 && Dod_RemapAnim("weapon_dod_bazooka", DOD_GENERIC_ANIM_FIRE1) == 6);
+
+	/* back to American for the tests after this one */
+	Dod_SetAlliesCountry(DOD_COUNTRY_US);
+	assert(strcmp(Dod_ClassWeaponDef(DOD_TEAM_ALLIES, DOD_CLASS_RIFLEMAN)->title, "M1 Garand") == 0);
+	assert(Dod_GetGrenade(DOD_TEAM_ALLIES, &grenade) && strcmp(grenade.view_model, "models/v_grenade.mdl") == 0);
+	(void)view; (void)player_model;
+}
+
 int main(void)
 {
 	test_players_and_weapon_models();
@@ -671,5 +737,6 @@ int main(void)
 	test_map_driven_round_flow();
 	test_hurt_zone_team_flags();
 	test_view_animations();
+	test_british_kit();
 	return 0;
 }

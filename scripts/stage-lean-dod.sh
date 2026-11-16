@@ -395,12 +395,28 @@ PY
 		v_bazooka.mdl v_panzerschreck.mdl w_bazooka_rocket.mdl \
 		p_bren.mdl p_stg44.mdl p_spring.mdl p_30cal.mdl p_mg42pr.mdl p_bazooka.mdl p_pschreck.mdl \
 		p_colt.mdl p_luger.mdl p_amerk.mdl p_spade.mdl \
+		v_bar.mdl p_barbu.mdl \
 		p_garand.mdl p_mp40.mdl p_k98.mdl p_tommy.mdl; do
 		if [[ -f "$SRC/models/$m" ]]; then
 			cp -f "$SRC/models/$m" "$LEAN/models/"
 			cap_vm=$((cap_vm + 1))
 		fi
 	done
+	# The British maps (src/dod_weapons.c Dod_AlliesCountryForMap) give the Allies the British kit; stage its models
+	# for those maps only, so the American discs stay as small as they were.
+	case "$stem" in
+		dod_caen|dod_flash|dod_jagd)
+			for m in v_enfield.mdl v_enfield_scoped.mdl v_sten.mdl v_piat.mdl v_webley.mdl v_mills.mdl v_fairbairn.mdl \
+				p_enfield.mdl p_enfields.mdl p_sten.mdl p_piat.mdl p_webley.mdl p_mills.mdl p_fairbairn.mdl \
+				w_mills.mdl w_piat_rocket.mdl; do
+				if [[ -f "$SRC/models/$m" ]]; then
+					cp -f "$SRC/models/$m" "$LEAN/models/"
+					cap_vm=$((cap_vm + 1))
+				fi
+			done
+			echo "staged the British kit MDLs for $stem"
+			;;
+	esac
 	echo "staged CapFaces team weapon + grenade MDLs: $cap_vm files"
 
 	if (( FULL_MAP )); then
