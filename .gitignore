@@ -62,3 +62,8 @@ web/
 web-*
 # Python verification helpers
 __pycache__/
+
+# Engine / SDK come from .deps/ (scripts/fetch-sources.sh) or DODGC_ENGINE / DODGC_HLSDK, never from symlinks here
+/.deps/
+/engine
+/hlsdk-portable

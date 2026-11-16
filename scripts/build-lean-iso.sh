@@ -203,6 +203,11 @@ VMIN="${DODGC_LEAN_VALVE:-$XASH3D_GC_ISO_CACHE/valve-menu-min}"
 [[ -d "$LEAN" ]] || { echo "error: lean DoD tree missing: $LEAN" >&2; exit 1; }
 [[ -d "$VMIN" ]] || { echo "error: lean valve tree missing: $VMIN" >&2; exit 1; }
 
+# What this disc was built from: the short form goes on the disc (the engine prints it in the boot
+# log), the full report next to the other artifacts.
+bash "$SCRIPT_DIR/build-info.sh" --short > "$LEAN/build-info.txt"
+bash "$SCRIPT_DIR/build-info.sh" > "$DODGC_OUT/build-info.txt"
+
 pack() {
 	local mode=$1
 	local out=$2
