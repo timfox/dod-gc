@@ -132,6 +132,52 @@ int Dod_BotChooseObjective(const DodBotObjectiveInfo *list, int count, DodTeam t
 void Dod_BotBlockAdd(int *ids, float *untils, int slots, int id, float until, float now);
 int Dod_BotBlockHas(const int *ids, const float *untils, int slots, int id, float now);
 
+/* ---------------------------------------------------------------- navigation graph
+ * Bots find their way with a waypoint graph baked offline from the map's player hull (tools/gen_waypoints.py,
+ * data/waypoints/<map>.wpt, staged next to the BSP): nodes are floor positions, edges are walks, jumps, drops
+ * and ladders between neighbouring nodes. The format is big-endian; see the tool for the layout. The search
+ * is A* over the graph. Everything here is engine-independent so it can be host-tested. */
+#define DOD_NAV_MAX_PATH 80
+
+typedef enum {
+	DOD_NAV_WALK = 0,
+	DOD_NAV_JUMP = 1,	/* up to ~45 units: the bot jumps */
+	DOD_NAV_DROP = 2,	/* one way: walk off a ledge */
+	DOD_NAV_LADDER = 3	/* climb: both ways, between a ladder's foot and its top */
+} DodNavKind;
+
+typedef struct DodNav {
+	const unsigned char *nodes;	/* node_count * 7 bytes, inside the loaded file */
+	const unsigned char *edges;	/* edge_count * 2 bytes */
+	unsigned short *first;		/* node_count + 1: index of each node's first edge */
+	float *g;			/* A* scratch */
+	short *parent;
+	unsigned char *state;
+	int node_count, edge_count;
+	unsigned int bsp_size;		/* size of the BSP the graph was baked from */
+	int pen_from[8], pen_to[8];	/* edges a bot got stuck on, avoided for a while (shared by all bots) */
+	float pen_until[8], now;
+	int pen_next;
+} DodNav;
+
+/* Parse a .wpt image into a zeroed or freed DodNav. The data must stay alive while the DodNav is used.
+ * Returns 1 on success, 0 on a bad file (nothing stays allocated then). */
+int Dod_NavLoad(DodNav *nav, const unsigned char *data, int len);
+void Dod_NavFree(DodNav *nav);
+void Dod_NavNodePos(const DodNav *nav, int node, float *x, float *y, float *z);
+/* The kind of the edge from one node to another, or -1 when there is none. */
+int Dod_NavEdgeKind(const DodNav *nav, int from, int to);
+/* Up to max node indexes nearest to (x, y, z), nearest first; returns how many. */
+int Dod_NavNearest(const DodNav *nav, float x, float y, float z, int *out, int max);
+/* Edges that proved impassable cost much more until `until` (the search still uses them when nothing else
+ * connects). from == -1 marks a node as a bad place to start from. Dod_NavSetTime gives the search the clock. */
+void Dod_NavPenalize(DodNav *nav, int from, int to, float until);
+int Dod_NavPenalized(const DodNav *nav, int from, int to);
+void Dod_NavSetTime(DodNav *nav, float now);
+/* A* from one node to another. Fills path (from first to last, inclusive) and returns its length, or 0 when
+ * there is no path or it is longer than max_path. */
+int Dod_NavPath(DodNav *nav, int from, int to, int *path, int max_path);
+
 /* ---------------------------------------------------------------- spectator
  * A spectator is the local human watching a bot match. It takes the human's own
  * client slot (GoldSrc has no slotless spectator; HLTV also needs one), so the

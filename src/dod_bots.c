@@ -2,6 +2,8 @@
 #include "dod_bots.h"
 
 #include <math.h>
+#include <stdlib.h>
+#include <string.h>
 
 int Dod_BotTargetCount(int requested, int max_clients, int humans, int hard_cap)
 {
@@ -274,6 +276,222 @@ int Dod_BotBlockHas(const int *ids, const float *untils, int slots, int id, floa
 		if (ids[i] == id && untils[i] > now)
 			return 1;
 	return 0;
+}
+
+/* ---------------------------------------------------------------- navigation graph */
+
+static unsigned nav_be16(const unsigned char *p)
+{
+	return ((unsigned)p[0] << 8) | p[1];
+}
+
+static int nav_be16s(const unsigned char *p)
+{
+	int v = (int)nav_be16(p);
+	return v >= 32768 ? v - 65536 : v;
+}
+
+int Dod_NavLoad(DodNav *nav, const unsigned char *data, int len)
+{
+	int i, total = 0;
+	if (!nav)
+		return 0;
+	memset(nav, 0, sizeof(*nav));
+	if (!data || len < 20 || memcmp(data, "DWPT", 4) != 0 || nav_be16(data + 4) != 2)
+		return 0;
+	nav->bsp_size = ((unsigned)data[8] << 24) | ((unsigned)data[9] << 16) | ((unsigned)data[10] << 8) | data[11];
+	nav->node_count = (int)nav_be16(data + 12);
+	nav->edge_count = (int)nav_be16(data + 14);
+	if (nav->node_count < 1 || len < 20 + 7 * nav->node_count + 2 * nav->edge_count)
+		return 0;
+	nav->nodes = data + 20;
+	nav->edges = data + 20 + 7 * nav->node_count;
+	nav->first = (unsigned short *)malloc(sizeof(unsigned short) * (size_t)(nav->node_count + 1));
+	nav->g = (float *)malloc(sizeof(float) * (size_t)nav->node_count);
+	nav->parent = (short *)malloc(sizeof(short) * (size_t)nav->node_count);
+	nav->state = (unsigned char *)malloc((size_t)nav->node_count);
+	if (!nav->first || !nav->g || !nav->parent || !nav->state) {
+		Dod_NavFree(nav);
+		return 0;
+	}
+	for (i = 0; i < nav->node_count; ++i) {
+		nav->first[i] = (unsigned short)total;
+		total += nav->nodes[7 * i + 6];
+	}
+	nav->first[nav->node_count] = (unsigned short)total;
+	if (total != nav->edge_count) {
+		Dod_NavFree(nav);
+		return 0;
+	}
+	for (i = 0; i < nav->edge_count; ++i) {
+		if ((int)(nav_be16(nav->edges + 2 * i) & 0x3fff) >= nav->node_count) {
+			Dod_NavFree(nav);
+			return 0;
+		}
+	}
+	return 1;
+}
+
+void Dod_NavFree(DodNav *nav)
+{
+	if (!nav)
+		return;
+	free(nav->first);
+	free(nav->g);
+	free(nav->parent);
+	free(nav->state);
+	memset(nav, 0, sizeof(*nav));
+}
+
+void Dod_NavNodePos(const DodNav *nav, int node, float *x, float *y, float *z)
+{
+	const unsigned char *n;
+	if (!nav || node < 0 || node >= nav->node_count)
+		return;
+	n = nav->nodes + 7 * node;
+	if (x) *x = (float)nav_be16s(n);
+	if (y) *y = (float)nav_be16s(n + 2);
+	if (z) *z = (float)nav_be16s(n + 4);
+}
+
+int Dod_NavEdgeKind(const DodNav *nav, int from, int to)
+{
+	int e;
+	if (!nav || from < 0 || from >= nav->node_count)
+		return -1;
+	for (e = nav->first[from]; e < nav->first[from + 1]; ++e)
+		if ((int)(nav_be16(nav->edges + 2 * e) & 0x3fff) == to)
+			return (int)(nav_be16(nav->edges + 2 * e) >> 14);
+	return -1;
+}
+
+int Dod_NavNearest(const DodNav *nav, float x, float y, float z, int *out, int max)
+{
+	float best[8];
+	int count = 0, i, j;
+	if (!nav || !out || max < 1)
+		return 0;
+	if (max > 8)
+		max = 8;
+	for (i = 0; i < nav->node_count; ++i) {
+		float nx, ny, nz, d;
+		Dod_NavNodePos(nav, i, &nx, &ny, &nz);
+		d = (nx - x) * (nx - x) + (ny - y) * (ny - y) + 9.0f * (nz - z) * (nz - z);	/* a floor above or below is far */
+		if (count == max && d >= best[max - 1])
+			continue;
+		j = count < max ? count++ : max - 1;
+		while (j > 0 && best[j - 1] > d) {
+			best[j] = best[j - 1];
+			out[j] = out[j - 1];
+			--j;
+		}
+		best[j] = d;
+		out[j] = i;
+	}
+	return count;
+}
+
+void Dod_NavSetTime(DodNav *nav, float now)
+{
+	if (nav)
+		nav->now = now;
+}
+
+void Dod_NavPenalize(DodNav *nav, int from, int to, float until)
+{
+	int i;
+	if (!nav)
+		return;
+	for (i = 0; i < 8; ++i)
+		if (nav->pen_from[i] == from && nav->pen_to[i] == to && nav->pen_until[i] > 0.0f) {
+			nav->pen_until[i] = until;
+			return;
+		}
+	i = nav->pen_next;
+	nav->pen_from[i] = from;
+	nav->pen_to[i] = to;
+	nav->pen_until[i] = until;
+	nav->pen_next = (i + 1) & 7;
+}
+
+int Dod_NavPenalized(const DodNav *nav, int from, int to)
+{
+	int i;
+	if (!nav)
+		return 0;
+	for (i = 0; i < 8; ++i)
+		if (nav->pen_until[i] > nav->now && nav->pen_from[i] == from && nav->pen_to[i] == to)
+			return 1;
+	return 0;
+}
+
+int Dod_NavPath(DodNav *nav, int from, int to, int *path, int max_path)
+{
+	int i, e, count, n;
+	float tx, ty, tz;
+	if (!nav || !path || from < 0 || to < 0 || from >= nav->node_count || to >= nav->node_count || max_path < 1)
+		return 0;
+	for (i = 0; i < nav->node_count; ++i) {
+		nav->state[i] = 0;
+		nav->parent[i] = -1;
+	}
+	Dod_NavNodePos(nav, to, &tx, &ty, &tz);
+	nav->g[from] = 0.0f;
+	nav->state[from] = 1;
+	for (;;) {
+		int cur = -1;
+		float cur_f = 0.0f;
+		for (i = 0; i < nav->node_count; ++i) {
+			float x, y, z, h, f;
+			if (nav->state[i] != 1)
+				continue;
+			Dod_NavNodePos(nav, i, &x, &y, &z);
+			h = sqrtf((x - tx) * (x - tx) + (y - ty) * (y - ty) + (z - tz) * (z - tz));
+			f = nav->g[i] + h;
+			if (cur < 0 || f < cur_f) {
+				cur = i;
+				cur_f = f;
+			}
+		}
+		if (cur < 0)
+			return 0;
+		if (cur == to)
+			break;
+		nav->state[cur] = 2;
+		for (e = nav->first[cur]; e < nav->first[cur + 1]; ++e) {
+			const unsigned v = nav_be16(nav->edges + 2 * e);
+			const int next = (int)(v & 0x3fff), kind = (int)(v >> 14);
+			float cost, g, cx, cy, cz, nx, ny, nz;
+			Dod_NavNodePos(nav, cur, &cx, &cy, &cz);
+			Dod_NavNodePos(nav, next, &nx, &ny, &nz);
+			cost = sqrtf((nx - cx) * (nx - cx) + (ny - cy) * (ny - cy) + (nz - cz) * (nz - cz)) + 1.0f;
+			if (kind == DOD_NAV_JUMP)
+				cost += 64.0f;
+			else if (kind == DOD_NAV_DROP)
+				cost += 16.0f;
+			else if (kind == DOD_NAV_LADDER)
+				cost = cost * 1.5f + 64.0f;
+			if (Dod_NavPenalized(nav, cur, next))
+				cost += 1500.0f;
+			g = nav->g[cur] + cost;
+			if (nav->state[next] == 2 || (nav->state[next] == 1 && g >= nav->g[next]))
+				continue;
+			nav->g[next] = g;
+			nav->parent[next] = (short)cur;
+			nav->state[next] = 1;
+		}
+	}
+	count = 0;
+	for (n = to; n >= 0; n = nav->parent[n]) {
+		if (++count > max_path)
+			return 0;
+		if (n == from)
+			break;
+	}
+	i = count;
+	for (n = to; i > 0; n = nav->parent[n])
+		path[--i] = n;
+	return count;
 }
 
 int Dod_SpecSanitizeMode(int mode)

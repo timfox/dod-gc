@@ -2,6 +2,7 @@
 
 #include <assert.h>
 #include <math.h>
+#include <stdio.h>
 #include <string.h>
 
 static void test_target_count(void)
@@ -337,6 +338,77 @@ static void test_objectives(void)
 	assert(Dod_BotBlockHas(ids, untils, 3, 9, 90.0f));
 }
 
+/* The toy graph tests/test_gen_waypoints.py writes with tools/gen_waypoints.py (the same literal is asserted there):
+ * nodes 0..4 at (0,0,0) (100,0,0) (200,0,0) (100,0,200) (200,0,200); a ladder between 1 and 3 (both ways),
+ * a costly jump 2 -> 4. */
+static const char *TOY_WPT_HEX = "44575054000200000001e2400005000900200120000000000000010064000000000300c800000000020064000000c80200c8000000c801000100000002c00300014004c00100040003";
+
+static int hex_to_bytes(const char *hex, unsigned char *out, int max)
+{
+	int n = 0;
+	while (hex[0] && hex[1] && n < max) {
+		unsigned v = 0;
+		sscanf(hex, "%2x", &v);
+		out[n++] = (unsigned char)v;
+		hex += 2;
+	}
+	return n;
+}
+
+static void test_nav(void)
+{
+	unsigned char buf[128];
+	DodNav nav;
+	int len = hex_to_bytes(TOY_WPT_HEX, buf, sizeof(buf)), path[DOD_NAV_MAX_PATH], near[4], count;
+	float x, y, z;
+
+	assert(len == 73);
+	assert(Dod_NavLoad(&nav, buf, len));
+	assert(nav.node_count == 5 && nav.edge_count == 9 && nav.bsp_size == 123456u);
+	Dod_NavNodePos(&nav, 3, &x, &y, &z);
+	assert(x == 100.0f && y == 0.0f && z == 200.0f);
+	assert(Dod_NavEdgeKind(&nav, 1, 3) == DOD_NAV_LADDER && Dod_NavEdgeKind(&nav, 3, 1) == DOD_NAV_LADDER);
+	assert(Dod_NavEdgeKind(&nav, 2, 4) == DOD_NAV_JUMP && Dod_NavEdgeKind(&nav, 1, 2) == DOD_NAV_WALK);
+	assert(Dod_NavEdgeKind(&nav, 0, 4) == -1 && Dod_NavEdgeKind(&nav, 9, 0) == -1);
+
+	/* walking and jumping is cheaper to the far corner; the ladder is the way up to node 3 */
+	count = Dod_NavPath(&nav, 0, 4, path, DOD_NAV_MAX_PATH);
+	assert(count == 4 && path[0] == 0 && path[1] == 1 && path[2] == 2 && path[3] == 4);
+	count = Dod_NavPath(&nav, 0, 3, path, DOD_NAV_MAX_PATH);
+	assert(count == 3 && path[0] == 0 && path[1] == 1 && path[2] == 3);
+	count = Dod_NavPath(&nav, 4, 0, path, DOD_NAV_MAX_PATH);
+	assert(count == 4 && path[0] == 4 && path[1] == 3 && path[2] == 1 && path[3] == 0);
+	assert(Dod_NavPath(&nav, 2, 2, path, DOD_NAV_MAX_PATH) == 1 && path[0] == 2);
+	assert(Dod_NavPath(&nav, 0, 4, path, 3) == 0);	/* longer than max_path */
+	assert(Dod_NavPath(&nav, 0, 7, path, DOD_NAV_MAX_PATH) == 0);
+
+	/* a penalized edge is avoided while the penalty lasts: 0 -> 4 has to take the ladder when the jump is stuck */
+	Dod_NavSetTime(&nav, 10.0f);
+	Dod_NavPenalize(&nav, 2, 4, 40.0f);
+	assert(Dod_NavPenalized(&nav, 2, 4) && !Dod_NavPenalized(&nav, 4, 2) && !Dod_NavPenalized(&nav, 1, 2));
+	count = Dod_NavPath(&nav, 0, 4, path, DOD_NAV_MAX_PATH);
+	assert(count == 4 && path[2] == 3);
+	Dod_NavSetTime(&nav, 50.0f);	/* expired */
+	assert(!Dod_NavPenalized(&nav, 2, 4));
+	count = Dod_NavPath(&nav, 0, 4, path, DOD_NAV_MAX_PATH);
+	assert(count == 4 && path[2] == 2);
+
+	/* nearest nodes, nearest first */
+	count = Dod_NavNearest(&nav, 190.0f, 0.0f, 190.0f, near, 4);
+	assert(count == 4 && near[0] == 4 && near[1] == 3 && near[2] == 2);
+	assert(Dod_NavNearest(&nav, 0.0f, 0.0f, 0.0f, near, 1) == 1 && near[0] == 0);
+
+	Dod_NavFree(&nav);
+	/* a bad file is rejected, not trusted (and leaves nothing allocated) */
+	assert(!Dod_NavLoad(&nav, buf, 40));
+	buf[0] = 'X';
+	assert(!Dod_NavLoad(&nav, buf, len));
+	buf[0] = 'D';
+	buf[15] = 8;	/* edge count no longer matches the per-node counts */
+	assert(!Dod_NavLoad(&nav, buf, len));
+	Dod_NavFree(&nav);
+}
+
 int main(void)
 {
 	test_spectator();
@@ -350,5 +422,6 @@ int main(void)
 	test_aim_error();
 	test_decide();
 	test_objectives();
+	test_nav();
 	return 0;
 }

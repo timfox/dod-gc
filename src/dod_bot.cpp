@@ -65,6 +65,18 @@ typedef struct DodBotState {
 	Vector goal_mins, goal_maxs;
 	int block_id[3];		/* goals it could not reach, and until when */
 	float block_until[3];
+	/* waypoint path (see NavTarget) */
+	short path[DOD_NAV_MAX_PATH];
+	int path_len, path_idx;		/* nodes planned, and the one being walked to */
+	int path_goal;			/* goal id the path was planned for */
+	float path_replan;		/* earliest time to plan again */
+	float path_best, path_progress_time;	/* closest approach to the current node, and when it improved */
+	int nav_fails;
+	int ladder_dir;			/* +1 climbing up, -1 down, 0 not on a ladder */
+	float ladder_until;
+	int want_jump;			/* the edge being walked is a jump */
+	int stall_jumped;		/* a stalled route got its one jump before it is replanned */
+	float jump_until;
 } DodBotState;
 
 /* Per-bot state is heap allocated only while bots exist (the BSS it used to
@@ -72,7 +84,7 @@ typedef struct DodBotState {
  * map change and when the last bot leaves; if the heap cannot give it, no bot
  * is added rather than failing later. */
 #if defined( __GAMECUBE__ )
-#define DOD_BOT_MEM_BUDGET 1024
+#define DOD_BOT_MEM_BUDGET 2048
 #else
 #define DOD_BOT_MEM_BUDGET 8192
 #endif
@@ -84,8 +96,51 @@ static DodBotState *BotState( int index )
 	return g_bot && index >= 0 && index < g_bot_slots ? &g_bot[index] : NULL;
 }
 
+/* The map's waypoint graph (data/waypoints/<map>.wpt, next to the BSP on the disc): loaded when the first bot
+ * runs on a map, freed with the bot state or when the map changes. Without it bots steer with the look-ahead. */
+static DodNav g_nav;
+static byte *g_nav_file;
+static char g_nav_map[32];
+
+static void FreeNav( void )
+{
+	Dod_NavFree( &g_nav );
+	if( g_nav_file )
+		FREE_FILE( g_nav_file );
+	g_nav_file = NULL;
+	g_nav_map[0] = '\0';
+}
+
+static void EnsureNav( void )
+{
+	const char *map = STRING( gpGlobals->mapname );
+	char path[64];
+	int len = 0;
+	if( g_nav_map[0] && !strcmp( g_nav_map, map ) )
+		return;
+	FreeNav();
+	strncpy( g_nav_map, map, sizeof( g_nav_map ) - 1 );
+	g_nav_map[sizeof( g_nav_map ) - 1] = '\0';
+	snprintf( path, sizeof( path ), "maps/%s.wpt", map );
+	g_nav_file = LOAD_FILE_FOR_ME( path, &len );
+	if( !g_nav_file )
+	{
+		ALERT( at_console, "DoD nav: no %s on this disc, bots steer without a graph\n", path );
+		return;
+	}
+	if( !Dod_NavLoad( &g_nav, g_nav_file, len ) )
+	{
+		ALERT( at_console, "DoD nav: %s is not a valid waypoint file\n", path );
+		FREE_FILE( g_nav_file );
+		g_nav_file = NULL;
+		return;
+	}
+	ALERT( at_console, "DoD nav: %s %d waypoints, %d edges (%d bytes)\n", path, g_nav.node_count, g_nav.edge_count, len );
+}
+
 static void FreeBotState( void )
 {
+	FreeNav();
 	if( g_bot )
 		free( g_bot );
 	g_bot = NULL;
@@ -491,16 +546,19 @@ static float SteerYaw( CBasePlayer *pBot, DodBotState *state, const Vector &goal
 {
 	const Vector origin = pBot->pev->origin;
 	const float want = YawTo( origin, goal );
+	/* Never look further than the target: a heading that runs straight past it must not lose to one that
+	 * stops short at a wall (the bot used to orbit a node 100 units away). */
+	const float cap = fminf( DOD_BOT_LOOKAHEAD, ( goal - origin ).Length2D() + 16.0f );
 	float best_score = 1e9f, best_off = 0.0f;
 	int off;
 	for( off = -180; off < 180; off += 20 )
 	{
 		const float yaw = want + (float)off;
-		const float run = FreeRun( pBot, yaw, DOD_BOT_LOOKAHEAD, floor_trust );
+		const float run = FreeRun( pBot, yaw, cap, floor_trust );
 		const float r = yaw * (float)M_PI / 180.0f;
 		float score;
 		Vector end;
-		if( run < 96.0f )
+		if( run < fminf( 96.0f, cap * 0.6f ) )
 			continue;
 		end = origin + Vector( cos( r ), sin( r ), 0.0f ) * run;
 		score = ( end - goal ).Length2D() + (float)Visits( state, end.x, end.y ) * DOD_BOT_VISIT_PENALTY + fabsf( (float)off ) * 0.5f;
@@ -514,6 +572,198 @@ static float SteerYaw( CBasePlayer *pBot, DodBotState *state, const Vector &goal
 	}
 	state->steer_off = best_off;
 	return want + best_off;
+}
+
+/* Waypoint path following. The graph (tools/gen_waypoints.py) gives a route of nodes from the bot's floor to
+ * the goal's; the bot walks to each node in turn with the local steering above, jumps where the edge says
+ * so, and climbs ladders (look up or down and push forward). A route that stops making progress is replanned;
+ * a goal that keeps failing is left to the patience in PickGoal, which gives the point up for a while. */
+#define DOD_BOT_NODE_REACH 40.0f
+#define DOD_BOT_NODE_STALL 2.5f
+
+static BOOL NodeVisible( CBasePlayer *pBot, int node )
+{
+	TraceResult tr;
+	float x, y, z;
+	Dod_NavNodePos( &g_nav, node, &x, &y, &z );
+	if( fabsf( z - pBot->pev->origin.z ) > 64.0f )
+		return FALSE;
+	UTIL_TraceLine( pBot->pev->origin + Vector( 0, 0, 18 ), Vector( x, y, z + 18.0f ), ignore_monsters, pBot->edict(), &tr );
+	return tr.flFraction >= 0.98f;
+}
+
+static BOOL PlanPath( CBasePlayer *pBot, DodBotState *state )
+{
+	int starts[6], goals[4], tmp[DOD_NAV_MAX_PATH], ns, ng, i, j, k, pass, len;
+	const Vector origin = pBot->pev->origin;
+	Dod_NavSetTime( &g_nav, gpGlobals->time );
+	ns = Dod_NavNearest( &g_nav, origin.x, origin.y, origin.z, starts, 6 );
+	ng = Dod_NavNearest( &g_nav, state->goal.x, state->goal.y, state->goal.z, goals, 4 );
+	for( pass = 0; pass < 2; pass++ )	/* a start node in sight first, then any */
+	{
+		for( i = 0; i < ns; i++ )
+		{
+			if( pass == 0 && ( !NodeVisible( pBot, starts[i] ) || Dod_NavPenalized( &g_nav, -1, starts[i] ) ) )
+				continue;
+			for( j = 0; j < ng; j++ )
+			{
+				len = Dod_NavPath( &g_nav, starts[i], goals[j], tmp, DOD_NAV_MAX_PATH );
+				if( len <= 0 )
+					continue;
+				for( k = 0; k < len; k++ )
+					state->path[k] = (short)tmp[k];
+				state->path_len = len;
+				state->path_idx = 0;
+				if( len > 1 && Dod_NavEdgeKind( &g_nav, tmp[0], tmp[1] ) == DOD_NAV_WALK )
+				{
+					/* already past the first node: start at the second (never skip the foot of a ladder or a jump) */
+					float x0, y0, z0, x1, y1, z1;
+					Dod_NavNodePos( &g_nav, tmp[0], &x0, &y0, &z0 );
+					Dod_NavNodePos( &g_nav, tmp[1], &x1, &y1, &z1 );
+					if( ( Vector( x1, y1, 0 ) - Vector( origin.x, origin.y, 0 ) ).Length() < ( Vector( x1, y1, 0 ) - Vector( x0, y0, 0 ) ).Length() )
+						state->path_idx = 1;
+				}
+				state->path_goal = state->goal_id;
+				state->path_best = 1e9f;
+				state->path_progress_time = gpGlobals->time;
+				state->stall_jumped = 0;
+				state->cell_n = 0;
+				state->steer_off = 0.0f;
+				ALERT( at_console, "DoD bot %s: path to point %d, %d waypoints (%d -> %d)\n", STRING( pBot->pev->netname ),
+					state->goal_id, len, tmp[0], tmp[len - 1] );
+				return TRUE;
+			}
+		}
+	}
+	return FALSE;
+}
+
+/* The position to walk towards while following the path; FALSE when there is no path to follow (no graph,
+ * no goal, arrived, or no route), in which case the caller heads for the goal itself. */
+static BOOL NavTarget( CBasePlayer *pBot, DodBotState *state, Vector *target )
+{
+	const float now = gpGlobals->time;
+	const Vector origin = pBot->pev->origin;
+	state->want_jump = now < state->jump_until;
+	if( !g_nav.node_count || !state->has_goal || state->arrived )
+	{
+		state->path_len = 0;
+		state->ladder_dir = 0;
+		return FALSE;
+	}
+	if( state->path_len == 0 || state->path_goal != state->goal_id )
+	{
+		state->ladder_dir = 0;
+		if( now < state->path_replan )
+			return FALSE;
+		state->path_replan = now + 2.0f;
+		if( !PlanPath( pBot, state ) )
+			return FALSE;
+	}
+	for( ;; )
+	{
+		float nx, ny, nz, dist;
+		const BOOL last = state->path_idx + 1 >= state->path_len;
+		Dod_NavNodePos( &g_nav, state->path[state->path_idx], &nx, &ny, &nz );
+		dist = ( Vector( nx, ny, 0 ) - Vector( origin.x, origin.y, 0 ) ).Length();
+		if( state->ladder_dir )
+		{
+			/* on a ladder: the node being climbed to is the next one */
+			float lx, ly, lz;
+			Dod_NavNodePos( &g_nav, state->path[state->path_idx + 1], &lx, &ly, &lz );
+			if( fabsf( lz - origin.z ) < 36.0f || now > state->ladder_until )
+			{
+				const BOOL timed_out = fabsf( lz - origin.z ) >= 36.0f;
+				state->ladder_dir = 0;
+				if( timed_out )
+				{
+					ALERT( at_console, "DoD bot %s: ladder climb timed out\n", STRING( pBot->pev->netname ) );
+					state->path_len = 0;
+					state->nav_fails++;
+					return FALSE;
+				}
+				state->path_idx++;
+				state->goal_progress_time = now;
+				state->path_best = 1e9f;
+				state->path_progress_time = now;
+				state->cell_n = 0;
+				continue;
+			}
+			{
+				static float next_log;	/* ladder progress, once a second */
+				if( now >= next_log )
+				{
+					next_log = now + 1.0f;
+					ALERT( at_console, "DoD bot %s: on ladder dir=%d pos %.0f,%.0f,%.0f vel %.0f,%.0f,%.0f movetype %d to %.0f,%.0f,%.0f flags 0x%x\n",
+						STRING( pBot->pev->netname ), state->ladder_dir, origin.x, origin.y, origin.z, pBot->pev->velocity.x,
+						pBot->pev->velocity.y, pBot->pev->velocity.z, (int)pBot->pev->movetype, lx, ly, lz, (int)pBot->pev->flags );
+				}
+			}
+			*target = Vector( lx, ly, lz );
+			return TRUE;
+		}
+		if( dist < DOD_BOT_NODE_REACH && fabsf( nz - origin.z ) < 72.0f )
+		{
+			if( last )
+			{
+				state->path_len = 0;	/* the route is done: walk the last stretch to the goal itself */
+				return FALSE;
+			}
+			if( Dod_NavEdgeKind( &g_nav, state->path[state->path_idx], state->path[state->path_idx + 1] ) == DOD_NAV_LADDER )
+			{
+				float lx, ly, lz;
+				Dod_NavNodePos( &g_nav, state->path[state->path_idx + 1], &lx, &ly, &lz );
+				state->ladder_dir = lz > nz ? 1 : -1;
+				state->ladder_until = now + 12.0f;
+				ALERT( at_console, "DoD bot %s: %s a ladder\n", STRING( pBot->pev->netname ), state->ladder_dir > 0 ? "climbs" : "descends" );
+				continue;
+			}
+			state->path_idx++;
+			state->goal_progress_time = now;
+			state->path_best = 1e9f;
+			state->path_progress_time = now;
+			state->cell_n = 0;
+			continue;
+		}
+		if( dist < state->path_best - 24.0f )
+		{
+			state->path_best = dist;
+			state->path_progress_time = now;
+			state->goal_progress_time = now;
+			state->stall_jumped = 0;
+		}
+		else if( now - state->path_progress_time > DOD_BOT_NODE_STALL && !state->stall_jumped )
+		{
+			/* no progress for a moment: hop once (a low lip, a door frame), then give it another go */
+			state->stall_jumped = 1;
+			state->jump_until = now + 0.7f;
+			state->want_jump = 1;
+			state->path_progress_time = now;
+		}
+		else if( now - state->path_progress_time > DOD_BOT_NODE_STALL )
+		{
+			TraceResult line, hull;
+			UTIL_TraceLine( origin + Vector( 0, 0, 18 ), Vector( nx, ny, nz + 18.0f ), ignore_monsters, pBot->edict(), &line );
+			UTIL_TraceHull( origin + Vector( 0, 0, 18 ), Vector( nx, ny, nz + 18.0f ), ignore_monsters, human_hull, pBot->edict(), &hull );
+			ALERT( at_console, "DoD bot %s: stuck on the way to waypoint %d (node %d/%d, edge %d), replanning: bot %.0f,%.0f,%.0f node %.0f,%.0f,%.0f dist %.0f line %.2f hull %.2f vel %.0f movetype %d\n",
+				STRING( pBot->pev->netname ), state->path[state->path_idx], state->path_idx, state->path_len,
+				state->path_idx > 0 ? Dod_NavEdgeKind( &g_nav, state->path[state->path_idx - 1], state->path[state->path_idx] ) : -1,
+				origin.x, origin.y, origin.z, nx, ny, nz, dist, line.flFraction, hull.flFraction, pBot->pev->velocity.Length(), pBot->pev->movetype );
+			if( state->path_idx > 0 )
+				Dod_NavPenalize( &g_nav, state->path[state->path_idx - 1], state->path[state->path_idx], now + 30.0f );
+			else
+				Dod_NavPenalize( &g_nav, -1, state->path[0], now + 30.0f );
+			state->path_len = 0;
+			state->path_replan = now;
+			state->nav_fails++;
+			return FALSE;
+		}
+		if( state->path_idx > 0 && dist < 96.0f &&
+			Dod_NavEdgeKind( &g_nav, state->path[state->path_idx - 1], state->path[state->path_idx] ) == DOD_NAV_JUMP )
+			state->want_jump = 1;
+		*target = Vector( nx, ny, nz );
+		return TRUE;
+	}
 }
 
 static void RunBot( int index, CBasePlayer *pBot )
@@ -558,8 +808,11 @@ static void RunBot( int index, CBasePlayer *pBot )
 		state->goal_id = -1;
 		state->arrived = 0;
 		state->cell_n = 0;
+		state->path_len = 0;
+		state->ladder_dir = 0;
 		return;
 	}
+	EnsureNav();
 	if( state->yaw == 0.0f && state->pitch == 0.0f )
 		state->yaw = pBot->pev->v_angle.y;
 	if( gpGlobals->time >= state->next_goal )
@@ -621,7 +874,7 @@ static void RunBot( int index, CBasePlayer *pBot )
 		/* No path graph: if the bot is walking but going nowhere, break the
 		 * straight-line loop with a growing detour. */
 		const DodBotEscape esc = Dod_BotStuckUpdate( &state->stuck, pBot->pev->origin.x, pBot->pev->origin.y,
-			gpGlobals->time, enemy == NULL && !state->arrived, RANDOM_FLOAT( 0.0f, 1.0f ) );
+			gpGlobals->time, enemy == NULL && !state->arrived && !state->ladder_dir, RANDOM_FLOAT( 0.0f, 1.0f ) );
 		if( esc.stuck )
 		{
 			state->heading = Dod_BotAngleDelta( 0.0f, state->yaw + esc.turn );
@@ -673,22 +926,49 @@ static void RunBot( int index, CBasePlayer *pBot )
 				state->hold_heading_until = gpGlobals->time + RANDOM_FLOAT( 2.0f, 4.0f );
 			}
 		}
-		else if( state->has_goal && gpGlobals->time >= state->hold_heading_until )
+		else if( state->has_goal )
 		{
-			if( gpGlobals->time >= state->next_steer )
+			Vector target = state->goal;
+			const BOOL on_path = NavTarget( pBot, state, &target );
+			if( state->ladder_dir )
 			{
-				state->steer_yaw = SteerYaw( pBot, state, state->goal, floor_trust );
-				state->next_steer = gpGlobals->time + 0.25f;
+				/* climbing: face the ladder's far end, look up (or down) and push forward */
+				state->heading = YawTo( pBot->pev->origin, target );
+				state->yaw = state->heading;
 			}
-			state->heading = state->steer_yaw;
+			else if( on_path )
+			{
+				/* the graph's edges are walkable in a straight line (tools/gen_waypoints.py checks that), so go
+				 * straight at the node: the free-run probing below mistakes steps and stairs for walls */
+				state->heading = YawTo( pBot->pev->origin, target );
+				state->steer_off = 0.0f;
+			}
+			else if( gpGlobals->time >= state->hold_heading_until )
+			{
+				if( gpGlobals->time >= state->next_steer )
+				{
+					state->steer_yaw = SteerYaw( pBot, state, on_path ? target : state->goal, floor_trust );
+					state->next_steer = gpGlobals->time + 0.25f;
+				}
+				state->heading = state->steer_yaw;
+			}
 		}
 		state->yaw = Dod_BotTurn( state->yaw, state->heading, 120.0f * dt );
-		state->pitch = Dod_BotTurn( state->pitch, 0.0f, 120.0f * dt );
+		state->pitch = Dod_BotTurn( state->pitch, state->ladder_dir > 0 ? -50.0f : ( state->ladder_dir < 0 ? 50.0f : 0.0f ), 120.0f * dt );
 	}
 
 	move = Dod_BotDecide( &in );
 	if( state->has_goal && !enemy && !state->arrived )
 		move.turn_away = 0;	/* the steering picks the way round; a random turn only undoes it */
+	if( state->ladder_dir && !enemy )
+	{
+		move.forward = 1.0f;
+		move.side = 0.0f;
+		move.jump = 0;
+		move.turn_away = 0;
+	}
+	if( state->want_jump && !enemy )
+		buttons |= IN_JUMP;
 	if( state->arrived && !enemy )
 	{
 		move.forward = 0.0f;
@@ -740,27 +1020,5 @@ void DodBots_Think( void )
 		CBasePlayer *pBot = PlayerAt( i );
 		if( pBot && DodBots_IsBot( pBot ) )
 			RunBot( i, pBot );
-	}
-	/* TEMP bot objective probe (not for merge) */
-	{
-		const DodGameRulesState *rs = Dod_GetState();
-		CBasePlayer *h = PlayerAt( 1 );
-		static float next = 0.0f;
-		if( h && !DodBots_IsBot( h ) )
-			h->pev->flags |= FL_GODMODE | FL_NOTARGET;
-		if( gpGlobals->time >= next )
-		{
-			next = gpGlobals->time + 5.0f;
-			ALERT( at_console, "BOTOBJ t=%.0f round=%d phase=%d allies=%d axis=%d capserial=%d rounds=%d/%d ents=%d\n", gpGlobals->time, rs->round_number, (int)rs->phase,
-				rs->controlled_objectives[1], rs->controlled_objectives[2], rs->capture_serial, rs->rounds_won[1], rs->rounds_won[2], (int)NUMBER_OF_ENTITIES() );
-			for( i = 1; i <= gpGlobals->maxClients && i <= DOD_BOT_MAX_SLOTS; i++ )
-			{
-				CBasePlayer *b = PlayerAt( i );
-				DodBotState *st = BotState( i );
-				if( b && st && DodBots_IsBot( b ) )
-					ALERT( at_console, "BOTOBJ   %s team=%d alive=%d hp=%.0f pos=%.0f,%.0f,%.0f goal=%d kind=%d arrived=%d\n", STRING( b->pev->netname ), (int)TeamOf( b ), b->IsAlive() ? 1 : 0,
-						b->pev->health, b->pev->origin.x, b->pev->origin.y, b->pev->origin.z, st->goal_id, st->goal_kind, st->arrived );
-			}
-		}
 	}
 }
