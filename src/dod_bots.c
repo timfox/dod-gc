@@ -813,6 +813,38 @@ static float nav_dist(const DodNav *nav, int a, int b)
 	return sqrtf((bx - ax) * (bx - ax) + (by - ay) * (by - ay) + (bz - az) * (bz - az));
 }
 
+int Dod_NavInside(const DodNav *nav, const float mins[3], const float maxs[3], float margin, int *out, int max)
+{
+	float best[8], cx, cy, cz;
+	int count = 0, i, j;
+	if (!nav || !mins || !maxs || !out || max < 1)
+		return 0;
+	if (max > 8)
+		max = 8;
+	cx = 0.5f * (mins[0] + maxs[0]);
+	cy = 0.5f * (mins[1] + maxs[1]);
+	cz = 0.5f * (mins[2] + maxs[2]);
+	for (i = 0; i < nav->node_count; ++i) {
+		float x, y, z, d;
+		Dod_NavNodePos(nav, i, &x, &y, &z);
+		if (x < mins[0] - margin || x > maxs[0] + margin || y < mins[1] - margin || y > maxs[1] + margin ||
+			z < mins[2] - 72.0f || z > maxs[2] + 72.0f)
+			continue;
+		d = (x - cx) * (x - cx) + (y - cy) * (y - cy) + 9.0f * (z - cz) * (z - cz);
+		if (count == max && d >= best[max - 1])
+			continue;
+		j = count < max ? count++ : max - 1;
+		while (j > 0 && best[j - 1] > d) {
+			best[j] = best[j - 1];
+			out[j] = out[j - 1];
+			--j;
+		}
+		best[j] = d;
+		out[j] = i;
+	}
+	return count;
+}
+
 int Dod_NavPath(DodNav *nav, int from, int to, int *path, int max_path)
 {
 	int i, e, count, n, open = 0;

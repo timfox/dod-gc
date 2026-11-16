@@ -28,6 +28,7 @@ typedef struct DodGCObjectiveView {
 	DodTeam owner;
 	DodTeam capturing;
 	int can_cap[4];		/* indexed by DodTeam */
+	int num_cap[4];		/* players of that team that must be inside to capture (1 on most points) */
 	Vector center, mins, maxs;
 } DodGCObjectiveView;
 
