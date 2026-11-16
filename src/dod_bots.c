@@ -185,6 +185,97 @@ DodBotEscape Dod_BotStuckUpdate(DodBotStuck *s, float x, float y, float time, in
 	return esc;
 }
 
+int Dod_BotChooseObjective(const DodBotObjectiveInfo *list, int count, DodTeam team, int current_id, int *kind)
+{
+	int i, best = -1, best_kind = DOD_BOT_GOAL_NONE;
+	float best_dist = 0.0f;
+	if (kind)
+		*kind = DOD_BOT_GOAL_NONE;
+	if (!list || count <= 0 || (team != DOD_TEAM_ALLIES && team != DOD_TEAM_AXIS))
+		return -1;
+	/* Attack: keep the current target while it is still one, else the nearest. */
+	for (i = 0; i < count; ++i) {
+		const DodBotObjectiveInfo *o = &list[i];
+		if (o->blocked || o->owner == team || !o->can_cap[team])
+			continue;
+		if (o->id == current_id) {
+			if (kind)
+				*kind = DOD_BOT_GOAL_ATTACK;
+			return o->id;
+		}
+		if (best < 0 || o->distance < best_dist) {
+			best = o->id;
+			best_dist = o->distance;
+			best_kind = DOD_BOT_GOAL_ATTACK;
+		}
+	}
+	if (best >= 0) {
+		if (kind)
+			*kind = best_kind;
+		return best;
+	}
+	/* Defend: a point being captured by the enemy first, then the current one, then the nearest. */
+	{
+		int under_attack = -1, nearest = -1, keep = -1;
+		float under_dist = 0.0f, near_dist = 0.0f;
+		for (i = 0; i < count; ++i) {
+			const DodBotObjectiveInfo *o = &list[i];
+			if (o->blocked || o->owner != team)
+				continue;
+			if (o->capturing_team != DOD_TEAM_UNASSIGNED && o->capturing_team != team &&
+				(under_attack < 0 || o->distance < under_dist)) {
+				under_attack = o->id;
+				under_dist = o->distance;
+			}
+			if (o->id == current_id)
+				keep = o->id;
+			if (nearest < 0 || o->distance < near_dist) {
+				nearest = o->id;
+				near_dist = o->distance;
+			}
+		}
+		best = under_attack >= 0 ? under_attack : (keep >= 0 ? keep : nearest);
+	}
+	if (best >= 0 && kind)
+		*kind = DOD_BOT_GOAL_DEFEND;
+	return best;
+}
+
+void Dod_BotBlockAdd(int *ids, float *untils, int slots, int id, float until, float now)
+{
+	int i, victim = 0;
+	if (!ids || !untils || slots <= 0)
+		return;
+	for (i = 0; i < slots; ++i) {
+		if (ids[i] == id) {
+			untils[i] = until;
+			return;
+		}
+	}
+	/* an expired or empty slot first, else the one that expires soonest */
+	for (i = 0; i < slots; ++i) {
+		if (untils[i] <= now) {
+			victim = i;
+			break;
+		}
+		if (untils[i] < untils[victim])
+			victim = i;
+	}
+	ids[victim] = id;
+	untils[victim] = until;
+}
+
+int Dod_BotBlockHas(const int *ids, const float *untils, int slots, int id, float now)
+{
+	int i;
+	if (!ids || !untils)
+		return 0;
+	for (i = 0; i < slots; ++i)
+		if (ids[i] == id && untils[i] > now)
+			return 1;
+	return 0;
+}
+
 int Dod_SpecSanitizeMode(int mode)
 {
 	switch (mode) {

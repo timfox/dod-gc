@@ -266,6 +266,77 @@ static void test_spectator(void)
 	}
 }
 
+static DodBotObjectiveInfo obj(int id, DodTeam owner, DodTeam capturing, int allies_can, int axis_can, float dist, int blocked)
+{
+	DodBotObjectiveInfo o;
+	memset(&o, 0, sizeof(o));
+	o.id = id;
+	o.owner = owner;
+	o.capturing_team = capturing;
+	o.can_cap[DOD_TEAM_ALLIES] = allies_can;
+	o.can_cap[DOD_TEAM_AXIS] = axis_can;
+	o.distance = dist;
+	o.blocked = blocked;
+	return o;
+}
+
+static void test_objectives(void)
+{
+	DodBotObjectiveInfo list[4];
+	int kind = -1, ids[3] = { -1, -1, -1 };
+	float untils[3] = { 0.0f, 0.0f, 0.0f };
+
+	/* charlie: Axis owns every point and only Allies may capture them */
+	list[0] = obj(1, DOD_TEAM_AXIS, DOD_TEAM_UNASSIGNED, 1, 0, 1500.0f, 0);
+	list[1] = obj(2, DOD_TEAM_AXIS, DOD_TEAM_UNASSIGNED, 1, 0, 900.0f, 0);
+	list[2] = obj(3, DOD_TEAM_AXIS, DOD_TEAM_UNASSIGNED, 1, 0, 1200.0f, 0);
+	list[3] = obj(4, DOD_TEAM_AXIS, DOD_TEAM_UNASSIGNED, 1, 0, 2000.0f, 0);
+	assert(Dod_BotChooseObjective(list, 4, DOD_TEAM_ALLIES, -1, &kind) == 2 && kind == DOD_BOT_GOAL_ATTACK);	/* nearest */
+	/* keeps the current target even when another is nearer (stay in the area until it flips) */
+	assert(Dod_BotChooseObjective(list, 4, DOD_TEAM_ALLIES, 3, &kind) == 3 && kind == DOD_BOT_GOAL_ATTACK);
+	/* a captured current target is dropped */
+	list[2].owner = DOD_TEAM_ALLIES;
+	assert(Dod_BotChooseObjective(list, 4, DOD_TEAM_ALLIES, 3, &kind) == 2 && kind == DOD_BOT_GOAL_ATTACK);
+	/* Axis cannot capture any of them, so it defends: nothing under attack, nearest owned point */
+	list[2].owner = DOD_TEAM_AXIS;
+	assert(Dod_BotChooseObjective(list, 4, DOD_TEAM_AXIS, -1, &kind) == 2 && kind == DOD_BOT_GOAL_DEFEND);
+	assert(Dod_BotChooseObjective(list, 4, DOD_TEAM_AXIS, 1, &kind) == 1 && kind == DOD_BOT_GOAL_DEFEND);	/* keeps its post */
+	/* a point being captured by the enemy pulls the defender over */
+	list[3].capturing_team = DOD_TEAM_ALLIES;
+	assert(Dod_BotChooseObjective(list, 4, DOD_TEAM_AXIS, 1, &kind) == 4 && kind == DOD_BOT_GOAL_DEFEND);
+	/* the attacker's own team capturing it does not count as an attack on it */
+	list[3].capturing_team = DOD_TEAM_UNASSIGNED;
+	/* a point the bot could not reach is skipped */
+	list[1].blocked = 1;
+	assert(Dod_BotChooseObjective(list, 4, DOD_TEAM_ALLIES, -1, &kind) == 3);
+	/* Allies hold everything: they defend; Axis (can capture nothing here) has nothing to retake */
+	{
+		DodBotObjectiveInfo mine[2];
+		mine[0] = obj(1, DOD_TEAM_ALLIES, DOD_TEAM_UNASSIGNED, 1, 1, 300.0f, 0);
+		mine[1] = obj(2, DOD_TEAM_ALLIES, DOD_TEAM_UNASSIGNED, 1, 1, 100.0f, 0);
+		assert(Dod_BotChooseObjective(mine, 2, DOD_TEAM_ALLIES, -1, &kind) == 2 && kind == DOD_BOT_GOAL_DEFEND);
+		assert(Dod_BotChooseObjective(mine, 2, DOD_TEAM_AXIS, -1, &kind) == 2 && kind == DOD_BOT_GOAL_ATTACK);	/* both may capture */
+	}
+	/* nothing to do */
+	assert(Dod_BotChooseObjective(list, 0, DOD_TEAM_ALLIES, -1, &kind) == -1 && kind == DOD_BOT_GOAL_NONE);
+	assert(Dod_BotChooseObjective(list, 4, DOD_TEAM_SPECTATOR, -1, &kind) == -1);
+	assert(Dod_BotChooseObjective(NULL, 4, DOD_TEAM_ALLIES, -1, &kind) == -1);
+
+	/* blacklist: add, expire, replace the soonest-expiring */
+	Dod_BotBlockAdd(ids, untils, 3, 7, 50.0f, 10.0f);
+	assert(Dod_BotBlockHas(ids, untils, 3, 7, 20.0f));
+	assert(!Dod_BotBlockHas(ids, untils, 3, 7, 51.0f));
+	assert(!Dod_BotBlockHas(ids, untils, 3, 8, 20.0f));
+	Dod_BotBlockAdd(ids, untils, 3, 8, 60.0f, 10.0f);
+	Dod_BotBlockAdd(ids, untils, 3, 9, 70.0f, 10.0f);
+	Dod_BotBlockAdd(ids, untils, 3, 10, 80.0f, 10.0f);	/* full: drops id 7, the soonest */
+	assert(!Dod_BotBlockHas(ids, untils, 3, 7, 20.0f));
+	assert(Dod_BotBlockHas(ids, untils, 3, 8, 20.0f) && Dod_BotBlockHas(ids, untils, 3, 9, 20.0f)
+		&& Dod_BotBlockHas(ids, untils, 3, 10, 20.0f));
+	Dod_BotBlockAdd(ids, untils, 3, 9, 99.0f, 10.0f);	/* re-adding extends */
+	assert(Dod_BotBlockHas(ids, untils, 3, 9, 90.0f));
+}
+
 int main(void)
 {
 	test_spectator();
@@ -278,5 +349,6 @@ int main(void)
 	test_angles();
 	test_aim_error();
 	test_decide();
+	test_objectives();
 	return 0;
 }

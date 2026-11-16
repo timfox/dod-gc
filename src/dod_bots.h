@@ -101,6 +101,37 @@ typedef struct DodBotEscape {
 DodBotEscape Dod_BotStuckUpdate(DodBotStuck *s, float x, float y, float time, int wants_move, float roll);
 
 
+/* ---------------------------------------------------------------- objectives
+ * Retail-style goals: attackers go to the nearest control point their team may capture and does
+ * not own and stay in its capture area until it flips; defenders guard owned points and retake
+ * lost ones. Straight-line distance only (there is no path graph); a bot that cannot get to a
+ * point blacklists it for a while and the next best one is chosen. */
+#define DOD_BOT_MAX_OBJECTIVES 16
+
+typedef struct DodBotObjectiveInfo {
+	int id;
+	DodTeam owner;
+	DodTeam capturing_team;		/* who is capturing it right now, or unassigned */
+	int can_cap[4];			/* indexed by DodTeam: may that team capture it */
+	float distance;			/* from the bot, ground plane */
+	int blocked;			/* blacklisted for this bot: it could not get there */
+} DodBotObjectiveInfo;
+
+typedef enum {
+	DOD_BOT_GOAL_NONE = 0,
+	DOD_BOT_GOAL_ATTACK,
+	DOD_BOT_GOAL_DEFEND
+} DodBotGoalKind;
+
+/* The objective id the bot should go to, or -1. current_id is the one it already has (kept while
+ * it is still a valid choice, so it stays inside an area until the point flips). Attack first;
+ * with nothing to take, defend: a point under attack beats the nearest owned one. */
+int Dod_BotChooseObjective(const DodBotObjectiveInfo *list, int count, DodTeam team, int current_id, int *kind);
+
+/* Blacklist bookkeeping for a bot with `slots` entries: add an id until `until`, test one. */
+void Dod_BotBlockAdd(int *ids, float *untils, int slots, int id, float until, float now);
+int Dod_BotBlockHas(const int *ids, const float *untils, int slots, int id, float now);
+
 /* ---------------------------------------------------------------- spectator
  * A spectator is the local human watching a bot match. It takes the human's own
  * client slot (GoldSrc has no slotless spectator; HLTV also needs one), so the
