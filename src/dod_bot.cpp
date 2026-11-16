@@ -206,6 +206,16 @@ static void AddBot( int team_counts[4], int bot_team_counts[4], int special_coun
 	if( FNullEnt( pEdict ) )
 		return;	/* no free client slot after all */
 	reject[0] = '\0';
+	{
+		/* Mark the slot a bot before ClientPutInServer spawns it: the first PlayerSpawn must already
+		 * know it is a bot (a human waits at the side menu, a bot does not). */
+		DodBotState *state = BotState( ENTINDEX( pEdict ) );
+		if( state )
+		{
+			memset( state, 0, sizeof( DodBotState ) );
+			state->active = 1;
+		}
+	}
 	ClientConnect( pEdict, name, "127.0.0.1", reject );
 	ClientPutInServer( pEdict );
 
@@ -215,14 +225,6 @@ static void AddBot( int team_counts[4], int bot_team_counts[4], int special_coun
 	team = Dod_BotPickTeamBalanced( team_counts[DOD_TEAM_ALLIES], team_counts[DOD_TEAM_AXIS],
 		bot_team_counts[DOD_TEAM_ALLIES], bot_team_counts[DOD_TEAM_AXIS] );
 	player_class = Dod_BotPickClass( RANDOM_LONG( 0, 1000 ), special_counts[team] );
-	{
-		DodBotState *state = BotState( ENTINDEX( pEdict ) );
-		if( state )
-		{
-			memset( state, 0, sizeof( DodBotState ) );
-			state->active = 1;
-		}
-	}
 	DodGC_BotJoin( pBot, team, player_class );
 	pBot->pev->flags |= FL_FAKECLIENT;	/* Spawn() inside BotJoin resets flags to FL_CLIENT */
 	team_counts[team]++;
