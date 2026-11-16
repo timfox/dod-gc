@@ -30,6 +30,25 @@ static cvar_t dod_spec_auto = { "dod_spec_auto", "1", FCVAR_SERVER };
  * gc_studio/<name>.mdl). A map cfg can switch to us-para/axis-para/brit-inf. */
 /* Paratrooper teams: -1 follows the map (Dod_ParatroopersForMap), otherwise a bit mask: 1 Allies, 2 Axis. */
 static cvar_t dod_paras = { "dod_paras", "-1", FCVAR_SERVER };
+/* Class limits (retail mp_limit<side><gun>, -1 unlimited, 0 off) and the class masks (mp_alliesclasses / mp_axisclasses, -1 all, else
+ * bit 1 << class). The names are retail's; the class a gun belongs to is this port's six classes. A side with no gun for a class
+ * (the British have no machine gunner) has no cvar for it. */
+static const struct DodLimitCvar { const char *name; int team; int player_class; } g_limit_cvars[] = {
+	{ "mp_limitalliesgarand", DOD_TEAM_ALLIES, DOD_CLASS_RIFLEMAN }, { "mp_limitalliesthompson", DOD_TEAM_ALLIES, DOD_CLASS_ASSAULT },
+	{ "mp_limitalliesbar", DOD_TEAM_ALLIES, DOD_CLASS_SUPPORT }, { "mp_limitalliesspring", DOD_TEAM_ALLIES, DOD_CLASS_SNIPER },
+	{ "mp_limitallies30cal", DOD_TEAM_ALLIES, DOD_CLASS_MG }, { "mp_limitalliesbazooka", DOD_TEAM_ALLIES, DOD_CLASS_ROCKET },
+	{ "mp_limitbritlight", DOD_TEAM_ALLIES, DOD_CLASS_RIFLEMAN }, { "mp_limitbritassault", DOD_TEAM_ALLIES, DOD_CLASS_ASSAULT },
+	{ "mp_limitbritmg", DOD_TEAM_ALLIES, DOD_CLASS_SUPPORT }, { "mp_limitbritsniper", DOD_TEAM_ALLIES, DOD_CLASS_SNIPER },
+	{ "mp_limitbritpiat", DOD_TEAM_ALLIES, DOD_CLASS_ROCKET },
+	{ "mp_limitaxiskar", DOD_TEAM_AXIS, DOD_CLASS_RIFLEMAN }, { "mp_limitaxismp40", DOD_TEAM_AXIS, DOD_CLASS_ASSAULT },
+	{ "mp_limitaxismp44", DOD_TEAM_AXIS, DOD_CLASS_SUPPORT }, { "mp_limitaxisscopedkar", DOD_TEAM_AXIS, DOD_CLASS_SNIPER },
+	{ "mp_limitaxismg42", DOD_TEAM_AXIS, DOD_CLASS_MG }, { "mp_limitaxispschreck", DOD_TEAM_AXIS, DOD_CLASS_ROCKET },
+};
+#define DOD_LIMIT_CVARS ( (int)( sizeof( g_limit_cvars ) / sizeof( g_limit_cvars[0] ) ) )
+static cvar_t g_limit_cvar_storage[DOD_LIMIT_CVARS];
+static cvar_t mp_alliesclasses = { "mp_alliesclasses", "-1", FCVAR_SERVER };
+static cvar_t mp_axisclasses = { "mp_axisclasses", "-1", FCVAR_SERVER };
+
 static cvar_t dod_allies_body = { "dod_allies_body", "us-inf", FCVAR_SERVER };
 static cvar_t dod_axis_body = { "dod_axis_body", "axis-inf", FCVAR_SERVER };
 static BOOL g_dod_cvars_registered;
@@ -120,6 +139,33 @@ static DodTeam DodGC_MenuTeam( CBasePlayer *pPlayer )
 	return DodGC_TeamForPlayer( pPlayer );
 }
 
+/* Bring the core's class limits up to date with the cvars (they can change at any time), then ask whether a class is open. The British
+ * kit reads the mp_limitbrit* cvars, the American kit the mp_limitallies* ones. */
+static void DodGC_SyncClassLimits( void )
+{
+	const BOOL british = Dod_GetAlliesCountry() == DOD_COUNTRY_BRITISH;
+	int k;
+	for( int c = DOD_CLASS_RIFLEMAN; c < DOD_CLASS_COUNT; c++ ) {
+		Dod_SetClassLimit( DOD_TEAM_ALLIES, (DodClass)c, -1 );
+		Dod_SetClassLimit( DOD_TEAM_AXIS, (DodClass)c, -1 );
+	}
+	for( k = 0; k < DOD_LIMIT_CVARS; k++ ) {
+		const BOOL brit_cvar = !strncmp( g_limit_cvars[k].name, "mp_limitbrit", 12 );
+		if( g_limit_cvars[k].team == DOD_TEAM_ALLIES && brit_cvar != british )
+			continue;
+		Dod_SetClassLimit( (DodTeam)g_limit_cvars[k].team, (DodClass)g_limit_cvars[k].player_class,
+			(int)CVAR_GET_FLOAT( g_limit_cvars[k].name ) );
+	}
+	Dod_SetClassMask( DOD_TEAM_ALLIES, (int)CVAR_GET_FLOAT( "mp_alliesclasses" ) );
+	Dod_SetClassMask( DOD_TEAM_AXIS, (int)CVAR_GET_FLOAT( "mp_axisclasses" ) );
+}
+
+static BOOL DodGC_ClassOpen( DodTeam team, DodClass player_class, int player_index )
+{
+	DodGC_SyncClassLimits();
+	return Dod_ClassAvailable( team, player_class, player_index ) ? TRUE : FALSE;
+}
+
 static void DodGC_ShowClassMenu( CBasePlayer *pPlayer )
 {
 	const int index = DodGC_PlayerIndex( pPlayer );
@@ -131,8 +177,9 @@ static void DodGC_ShowClassMenu( CBasePlayer *pPlayer )
 	len = snprintf( text, sizeof( text ), "\\y%s - CHOOSE A CLASS\n\\w\n",
 		team == DOD_TEAM_AXIS ? "AXIS" : "ALLIES" );
 	for( int c = DOD_CLASS_RIFLEMAN; c < DOD_CLASS_COUNT && len < (int)sizeof( text ); c++ )
-		len += snprintf( text + len, sizeof( text ) - len, "%d. %s (%s)\n", c,
-			Dod_TeamClassName( team, (DodClass)c ), Dod_TeamClassWeapon( team, (DodClass)c ) );
+		len += snprintf( text + len, sizeof( text ) - len, "%d. %s (%s)%s\n", c,
+			Dod_TeamClassName( team, (DodClass)c ), Dod_TeamClassWeapon( team, (DodClass)c ),
+			DodGC_ClassOpen( team, (DodClass)c, index ) ? "" : " - full" );
 	DodGC_SendMenu( pPlayer, 0x003f, text );
 }
 
@@ -373,6 +420,14 @@ CHalfLifeDoD::CHalfLifeDoD()
 		CVAR_REGISTER( &dod_spectate );
 		CVAR_REGISTER( &dod_spec_auto );
 		CVAR_REGISTER( &dod_paras );
+		for( int k = 0; k < DOD_LIMIT_CVARS; k++ ) {
+			g_limit_cvar_storage[k].name = g_limit_cvars[k].name;
+			g_limit_cvar_storage[k].string = (char *)"-1";
+			g_limit_cvar_storage[k].flags = FCVAR_SERVER;
+			CVAR_REGISTER( &g_limit_cvar_storage[k] );
+		}
+		CVAR_REGISTER( &mp_alliesclasses );
+		CVAR_REGISTER( &mp_axisclasses );
 		CVAR_REGISTER( &dod_allies_body );
 		CVAR_REGISTER( &dod_axis_body );
 		g_dod_cvars_registered = TRUE;
@@ -414,6 +469,18 @@ CHalfLifeDoD::CHalfLifeDoD()
 	memset( g_spec_last_target, 0, sizeof( g_spec_last_target ) );
 	g_spec_next_think = 0.0f;
 	memset( g_spec_join_pending, 0, sizeof( g_spec_join_pending ) );
+}
+
+/* The first open class for a side, starting at the one asked for: a bot's pick when limits turn its choice away. */
+DodClass DodGC_OpenClass( CBasePlayer *pPlayer, DodTeam team, DodClass wanted )
+{
+	const int index = DodGC_PlayerIndex( pPlayer );
+	for( int n = 0; n < DOD_CLASS_COUNT - 1; n++ ) {
+		const DodClass c = (DodClass)( DOD_CLASS_RIFLEMAN + ( wanted - DOD_CLASS_RIFLEMAN + n ) % ( DOD_CLASS_COUNT - 1 ) );
+		if( DodGC_ClassOpen( team, c, index ) )
+			return c;
+	}
+	return wanted;	/* every class is full or off: the limits are ignored for this spawn, as retail does */
 }
 
 void DodGC_BotJoin( CBasePlayer *pPlayer, DodTeam team, DodClass player_class )
@@ -476,6 +543,13 @@ static void DodGC_PickClass( CBasePlayer *pPlayer, DodClass player_class )
 		return;
 	if( team != DOD_TEAM_ALLIES && team != DOD_TEAM_AXIS ) {
 		DodGC_ShowTeamMenu( pPlayer );	/* no side yet */
+		return;
+	}
+	if( !DodGC_ClassOpen( team, player_class, index ) ) {
+		ClientPrint( pPlayer->pev, HUD_PRINTCENTER, "That class is full\n" );
+		ALERT( at_console, "DoD class: %s asked for %s %s, which is full or off\n", STRING( pPlayer->pev->netname ), Dod_TeamName( team ),
+			Dod_TeamClassName( team, player_class ) );
+		DodGC_ShowClassMenu( pPlayer );
 		return;
 	}
 	if( pPlayer->IsObserver() || !g_dod_joined[index] ) {

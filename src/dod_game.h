@@ -269,6 +269,15 @@ int Dod_FormatPlayerLine(int player_index, const char *name, char *buffer, int s
  * look cloned. Other models (the paratrooper ones) get 0. */
 int Dod_PlayerBodyValue(const char *model, DodClass player_class, int player_index);
 
+/* Class limits (retail mp_limit<side><gun> cvars and mp_alliesclasses / mp_axisclasses): a limit of -1 is unlimited, 0 turns the
+ * class off; the class mask has bit (1 << class) per allowed class, -1 allows all. A class is available to a player when it is
+ * enabled and fewer than its limit of the side's other players hold it. */
+void Dod_SetClassLimit(DodTeam team, DodClass player_class, int limit);
+void Dod_SetClassMask(DodTeam team, int mask);
+int Dod_ClassLimit(DodTeam team, DodClass player_class);
+int Dod_ClassCount(DodTeam team, DodClass player_class, int except_player);
+int Dod_ClassAvailable(DodTeam team, DodClass player_class, int player_index);
+
 /* Voice commands (retail voice_* commands and the lines players call by themselves). Each has a sound per side; the
  * first DOD_VOICE_MENU_COUNT are on the voice menu, the rest are called automatically. */
 #define DOD_VOICE_MENU_COUNT 11
