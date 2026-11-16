@@ -51,6 +51,11 @@ extern int gmsgShowMenu;
 extern int gmsgScoreInfo;
 
 static int g_dod_menu_state[DOD_MAX_PLAYERS + 1];
+/* Join flow (retail): a human starts on the side menu as an observer, picks a side, picks a class and
+ * is spawned on that side with no death. g_dod_joined: the human has been through that once.
+ * g_dod_pending_team: the side picked at the menu while still an observer (observers read as spectators). */
+static int g_dod_joined[DOD_MAX_PLAYERS + 1];
+static int g_dod_pending_team[DOD_MAX_PLAYERS + 1];
 static int g_dod_winner_announced;
 static float g_dod_next_status;
 
@@ -86,10 +91,19 @@ static void DodGC_ShowTeamMenu( CBasePlayer *pPlayer )
 
 static DodTeam DodGC_TeamForPlayer( CBasePlayer *pPlayer );
 
+/* The side the class menu is for: the pending pick while the player is still an observer. */
+static DodTeam DodGC_MenuTeam( CBasePlayer *pPlayer )
+{
+	const int index = DodGC_PlayerIndex( pPlayer );
+	if( index >= 1 && index <= DOD_MAX_PLAYERS && g_dod_pending_team[index] )
+		return (DodTeam)g_dod_pending_team[index];
+	return DodGC_TeamForPlayer( pPlayer );
+}
+
 static void DodGC_ShowClassMenu( CBasePlayer *pPlayer )
 {
 	const int index = DodGC_PlayerIndex( pPlayer );
-	const DodTeam team = DodGC_TeamForPlayer( pPlayer );
+	const DodTeam team = DodGC_MenuTeam( pPlayer );
 	char text[256];
 	int len;
 	if( index > 0 && index <= DOD_MAX_PLAYERS )
@@ -132,9 +146,10 @@ static void DodGC_EnsurePlayer( CBasePlayer *pPlayer )
 	Dod_AssignPlayerTeam( index, DodGC_TeamForPlayer( pPlayer ) );
 }
 
-/* Become a spectator: no class, no gun, no spawn, no collision. Only the local
- * human does this (a bot never watches), and no death or frag is recorded. */
-static void DodGC_JoinSpectator( CBasePlayer *pPlayer )
+/* Become an observer: no class, no gun, no spawn, no collision. Only the local human does this
+ * (a bot never watches), and no death or frag is recorded. announce: tell them they are spectating
+ * (not when they are only waiting at the side menu). */
+static void DodGC_EnterObserver( CBasePlayer *pPlayer, BOOL announce )
 {
 	/* StartObserver -> RemoveAllItems -> UpdateClientData calls InitHUD again
 	 * (m_fGameHUDInitialized is only set after InitHUD returns), and IsObserver()
@@ -153,16 +168,27 @@ static void DodGC_JoinSpectator( CBasePlayer *pPlayer )
 	}
 	joining = false;
 	DodGC_EnsurePlayer( pPlayer );
-	ClientPrint( pPlayer->pev, HUD_PRINTTALK, "You are spectating. Fire/Aim: next/previous player, Jump: camera mode.\n" );
+	if( announce )
+		ClientPrint( pPlayer->pev, HUD_PRINTTALK, "You are spectating. Fire/Aim: next/previous player, Jump: camera mode.\n" );
 }
 
-/* Leave spectating to play: the HLSDK respawns the player as an ordinary one. */
-static void DodGC_LeaveSpectator( CBasePlayer *pPlayer )
+static void DodGC_JoinSpectator( CBasePlayer *pPlayer )
 {
-	if( pPlayer && pPlayer->IsObserver() ) {
-		pPlayer->StopObserver();
-		pPlayer->pev->iuser1 = pPlayer->pev->iuser2 = 0;
-	}
+	DodGC_EnterObserver( pPlayer, TRUE );
+}
+
+static void DodGC_ShowTeamMenu( CBasePlayer *pPlayer );
+
+/* A human who has not joined yet waits at the side menu as an observer instead of being dropped
+ * onto a team with a default kit. */
+static void DodGC_HoldForJoin( CBasePlayer *pPlayer )
+{
+	const int index = DodGC_PlayerIndex( pPlayer );
+	DodGC_EnterObserver( pPlayer, FALSE );
+	if( index >= 1 && index <= DOD_MAX_PLAYERS )
+		g_dod_pending_team[index] = 0;
+	DodGC_ShowTeamMenu( pPlayer );
+	ALERT( at_console, "DoD join: %s waits at the side menu\n", STRING( pPlayer->pev->netname ) );
 }
 
 /* The body the engine draws for a player comes from the "model" userinfo key
@@ -275,6 +301,8 @@ CHalfLifeDoD::CHalfLifeDoD()
 	/* Registered here, before any client connects, so the client can hook it. */
 	gmsgDodHud = REG_USER_MSG( "DodHud", -1 );
 	memset( g_dod_menu_state, 0, sizeof( g_dod_menu_state ) );
+	memset( g_dod_joined, 0, sizeof( g_dod_joined ) );
+	memset( g_dod_pending_team, 0, sizeof( g_dod_pending_team ) );
 	g_dod_winner_announced = 0;
 	g_dod_next_status = 0.0f;
 	memset( g_spec_hold_until, 0, sizeof( g_spec_hold_until ) );
@@ -304,6 +332,56 @@ void DodGC_BotJoin( CBasePlayer *pPlayer, DodTeam team, DodClass player_class )
 	DodGC_ApplyClass( pPlayer, player_class );
 }
 
+/* Pick a side at the menu or with dod_team. A player who is playing and alive and changes sides
+ * dies for it (retail: a suicide, no frag penalty); one who is still at the menu or already dead
+ * just switches. The class menu follows. */
+static void DodGC_PickTeam( CBasePlayer *pPlayer, DodTeam team )
+{
+	const int index = DodGC_PlayerIndex( pPlayer );
+	const BOOL playing = !pPlayer->IsObserver() && index >= 1 && index <= DOD_MAX_PLAYERS && g_dod_joined[index];
+	if( index < 1 || index > DOD_MAX_PLAYERS )
+		return;
+	if( stricmp( pPlayer->m_szTeamName, Dod_TeamName( team ) ) )
+		( (CHalfLifeDoD *)g_pGameRules )->ChangePlayerTeam( pPlayer, Dod_TeamName( team ), playing && pPlayer->IsAlive(), FALSE );
+	g_dod_pending_team[index] = pPlayer->IsObserver() ? (int)team : 0;
+	if( !pPlayer->IsObserver() )
+		Dod_AssignPlayerTeam( index, team );
+	DodGC_ShowClassMenu( pPlayer );
+}
+
+/* Pick a class. At the menu (an observer who has not spawned) it spawns the player on the picked
+ * side with that class at once, with no death. While playing it applies at the next respawn
+ * (retail: no suicide for a class change). */
+static void DodGC_PickClass( CBasePlayer *pPlayer, DodClass player_class )
+{
+	const int index = DodGC_PlayerIndex( pPlayer );
+	const DodTeam team = DodGC_MenuTeam( pPlayer );
+	if( index < 1 || index > DOD_MAX_PLAYERS || player_class <= DOD_CLASS_NONE || player_class >= DOD_CLASS_COUNT )
+		return;
+	if( team != DOD_TEAM_ALLIES && team != DOD_TEAM_AXIS ) {
+		DodGC_ShowTeamMenu( pPlayer );	/* no side yet */
+		return;
+	}
+	if( pPlayer->IsObserver() || !g_dod_joined[index] ) {
+		g_dod_joined[index] = 1;
+		g_dod_pending_team[index] = 0;
+		DodGC_ClearMenu( pPlayer );
+		if( pPlayer->IsObserver() )
+			pPlayer->StopObserver();	/* Spawn(): PlayerSpawn puts them on their side */
+		Dod_AssignPlayerTeam( index, team );	/* Spawn() resets the DoD team record */
+		DodGC_ApplyClass( pPlayer, player_class );
+		ALERT( at_console, "DoD join: %s spawned as %s %s\n", STRING( pPlayer->pev->netname ), Dod_TeamName( team ),
+			Dod_TeamClassName( team, player_class ) );
+		return;
+	}
+	if( Dod_SelectPlayerClass( index, player_class ) ) {
+		DodGC_ClearMenu( pPlayer );
+		ClientPrint( pPlayer->pev, HUD_PRINTTALK, UTIL_VarArgs( "You will respawn as %s.\n", Dod_TeamClassName( team, player_class ) ) );
+		ALERT( at_console, "DoD join: %s changes to %s at the next respawn\n", STRING( pPlayer->pev->netname ),
+			Dod_TeamClassName( team, player_class ) );
+	}
+}
+
 static void DodGC_CycleWeapon( CBasePlayer *pPlayer, int step );
 
 BOOL CHalfLifeDoD::ClientCommand( CBasePlayer *pPlayer, const char *pcmd )
@@ -324,13 +402,8 @@ BOOL CHalfLifeDoD::ClientCommand( CBasePlayer *pPlayer, const char *pcmd )
 			DodGC_JoinSpectator( pPlayer );
 			return TRUE;
 		}
-		if( team == DOD_TEAM_ALLIES || team == DOD_TEAM_AXIS ) {
-			DodGC_LeaveSpectator( pPlayer );
-			if( stricmp( pPlayer->m_szTeamName, Dod_TeamName( team ) ) )
-				ChangePlayerTeam( pPlayer, Dod_TeamName( team ), TRUE, FALSE );
-			Dod_AssignPlayerTeam( index, team );
-			DodGC_ShowClassMenu( pPlayer );
-		}
+		if( team == DOD_TEAM_ALLIES || team == DOD_TEAM_AXIS )
+			DodGC_PickTeam( pPlayer, team );
 		return TRUE;
 	}
 	if( FStrEq( pcmd, "spectate" ) ) {
@@ -369,7 +442,7 @@ BOOL CHalfLifeDoD::ClientCommand( CBasePlayer *pPlayer, const char *pcmd )
 		else if( !stricmp( name, "mg" ) || !stricmp( name, "machinegunner" ) ) player_class = DOD_CLASS_MG;
 		else if( !stricmp( name, "rocket" ) ) player_class = DOD_CLASS_ROCKET;
 		if( player_class != DOD_CLASS_NONE )
-			DodGC_ApplyClass( pPlayer, player_class );
+			DodGC_PickClass( pPlayer, player_class );
 		return TRUE;
 	}
 	if( FStrEq( pcmd, "menuselect" ) ) {
@@ -381,18 +454,12 @@ BOOL CHalfLifeDoD::ClientCommand( CBasePlayer *pPlayer, const char *pcmd )
 				DodGC_JoinSpectator( pPlayer );
 				return TRUE;
 			}
-			if( slot == 1 || slot == 2 ) {
-				const DodTeam team = slot == 1 ? DOD_TEAM_ALLIES : DOD_TEAM_AXIS;
-				DodGC_LeaveSpectator( pPlayer );
-				if( stricmp( pPlayer->m_szTeamName, Dod_TeamName( team ) ) )
-					ChangePlayerTeam( pPlayer, Dod_TeamName( team ), TRUE, FALSE );
-				Dod_AssignPlayerTeam( index, team );
-				DodGC_ShowClassMenu( pPlayer );
-			}
+			if( slot == 1 || slot == 2 )
+				DodGC_PickTeam( pPlayer, slot == 1 ? DOD_TEAM_ALLIES : DOD_TEAM_AXIS );
 			return TRUE;
 		}
 		if( g_dod_menu_state[index] == 2 && slot >= 1 && slot <= 6 ) {
-			DodGC_ApplyClass( pPlayer, (DodClass)( DOD_CLASS_RIFLEMAN + slot - 1 ) );
+			DodGC_PickClass( pPlayer, (DodClass)( DOD_CLASS_RIFLEMAN + slot - 1 ) );
 			return TRUE;
 		}
 	}
@@ -447,6 +514,11 @@ void CHalfLifeDoD::PlayerSpawn( CBasePlayer *pPlayer )
 	if( pPlayer->IsObserver() )
 		return;
 	const int index = DodGC_PlayerIndex( pPlayer );
+	if( !DodBots_IsBot( pPlayer ) && index >= 1 && index <= DOD_MAX_PLAYERS && !g_dod_joined[index]
+		&& CVAR_GET_FLOAT( "dod_spectate" ) == 0.0f ) {
+		DodGC_HoldForJoin( pPlayer );
+		return;
+	}
 	const DodPlayerState *state = Dod_GetPlayer( index );
 	if( state && state->player_class != DOD_CLASS_NONE )
 		DodGC_ApplyClass( pPlayer, state->player_class );
@@ -463,8 +535,12 @@ void CHalfLifeDoD::PlayerKilled( CBasePlayer *pVictim, entvars_t *pKiller, entva
 
 void CHalfLifeDoD::ClientDisconnected( edict_t *pClient )
 {
-	if( pClient )
-		Dod_PlayerDisconnect( ENTINDEX( pClient ) );
+	if( pClient ) {
+		const int index = ENTINDEX( pClient );
+		if( index >= 1 && index <= DOD_MAX_PLAYERS )
+			g_dod_joined[index] = g_dod_pending_team[index] = 0;
+		Dod_PlayerDisconnect( index );
+	}
 	CHalfLifeMultiplay::ClientDisconnected( pClient );
 }
 
