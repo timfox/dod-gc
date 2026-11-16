@@ -65,6 +65,7 @@ static BOOL g_spec_join_pending[DOD_MAX_PLAYERS + 1];
 static int gmsgDodHud;
 static int gmsgDodBoard;
 static int gmsgDodVoice;
+static int gmsgDodKill;
 static float g_dod_next_hud;
 static int g_dod_seen_restart;
 static int g_dod_seen_match;
@@ -458,6 +459,7 @@ CHalfLifeDoD::CHalfLifeDoD()
 	gmsgDodHud = REG_USER_MSG( "DodHud", -1 );
 	gmsgDodBoard = REG_USER_MSG( "DodBoard", -1 );
 	gmsgDodVoice = REG_USER_MSG( "DodVoice", -1 );
+	gmsgDodKill = REG_USER_MSG( "DodKill", -1 );
 	memset( g_dod_menu_state, 0, sizeof( g_dod_menu_state ) );
 	memset( g_dod_joined, 0, sizeof( g_dod_joined ) );
 	memset( g_dod_weaponlist_resent, 0, sizeof( g_dod_weaponlist_resent ) );
@@ -901,10 +903,44 @@ void CHalfLifeDoD::PlayerSpawn( CBasePlayer *pPlayer )
 		DodGC_ApplyClass( pPlayer, DOD_CLASS_RIFLEMAN );
 }
 
+/* The kill feed: the lean client drops the stock DeathNotice, so one DodKill message goes to everyone with the sides, the names
+ * and what killed. */
+static void DodGC_SendKillFeed( CBasePlayer *pVictim, entvars_t *pKiller, entvars_t *pInflictor )
+{
+	CBaseEntity *killer = pKiller ? CBaseEntity::Instance( pKiller ) : NULL;
+	const BOOL by_player = killer && killer->IsPlayer();
+	const char *weapon = "World";
+	const char *kname = "";
+	DodTeam kteam = DOD_TEAM_UNASSIGNED;
+	if( !gmsgDodKill || !pVictim )
+		return;
+	if( by_player ) {
+		CBasePlayer *kp = (CBasePlayer *)killer;
+		kname = STRING( kp->pev->netname );
+		kteam = DodGC_TeamForPlayer( kp );
+		if( pInflictor && !( pInflictor->flags & FL_CLIENT ) && pInflictor != pKiller )
+			weapon = Dod_KillWeaponLabel( STRING( pInflictor->classname ), kteam, Dod_GetAlliesCountry() == DOD_COUNTRY_BRITISH );
+		else if( kp->m_pActiveItem )
+			weapon = Dod_KillWeaponLabel( STRING( kp->m_pActiveItem->pev->classname ), kteam, Dod_GetAlliesCountry() == DOD_COUNTRY_BRITISH );
+		else
+			weapon = "Weapon";
+	} else if( pInflictor ) {
+		weapon = Dod_KillWeaponLabel( STRING( pInflictor->classname ), DOD_TEAM_UNASSIGNED, 0 );
+	}
+	MESSAGE_BEGIN( MSG_ALL, gmsgDodKill );
+		WRITE_BYTE( by_player ? (int)kteam : 0 );
+		WRITE_STRING( kname );
+		WRITE_BYTE( (int)DodGC_TeamForPlayer( pVictim ) );
+		WRITE_STRING( STRING( pVictim->pev->netname ) );
+		WRITE_STRING( weapon );
+	MESSAGE_END();
+}
+
 void CHalfLifeDoD::PlayerKilled( CBasePlayer *pVictim, entvars_t *pKiller, entvars_t *pInflictor )
 {
 	const int attacker = pKiller ? ENTINDEX( ENT( pKiller ) ) : 0;
 	Dod_RecordKill( attacker, DodGC_PlayerIndex( pVictim ) );
+	DodGC_SendKillFeed( pVictim, pKiller, pInflictor );
 	CHalfLifeTeamplay::PlayerKilled( pVictim, pKiller, pInflictor );
 }
 

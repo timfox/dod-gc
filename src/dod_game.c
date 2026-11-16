@@ -819,6 +819,23 @@ int Dod_PlayerBodyValue(const char *model, DodClass player_class, int player_ind
 	return part + 6 * helmet + 48 * head + 336 * gear;
 }
 
+const char *Dod_KillWeaponLabel(const char *classname, DodTeam team, int british)
+{
+	const DodWeaponDef *def;
+	if (!classname || !classname[0] || !strcmp(classname, "worldspawn") || !strncmp(classname, "trigger_", 8))
+		return "World";
+	if (!strcmp(classname, "weapon_crowbar"))
+		return team == DOD_TEAM_AXIS ? "Spade" : (british ? "Fairbairn" : "Knife");
+	if (strstr(classname, "grenade") || !strcmp(classname, "weapon_handgrenade"))
+		return "Grenade";
+	if (strstr(classname, "rocket"))
+		return "Rocket";
+	def = Dod_FindWeaponDef(classname);
+	if (def && def->title[0])
+		return def->title;
+	return "Weapon";
+}
+
 static int g_class_limit[4][DOD_CLASS_COUNT];
 static int g_class_mask[4] = { -1, -1, -1, -1 };
 static int g_class_limits_set;

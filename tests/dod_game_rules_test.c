@@ -123,6 +123,26 @@ static void test_player_body(void)
 	assert(Dod_PlayerBodyValue("us-inf", DOD_CLASS_NONE, 4) == 0);
 }
 
+static void test_kill_labels(void)
+{
+	Dod_SetAlliesCountry(DOD_COUNTRY_US);
+	Dod_SetParatroopers(0, 0);
+	assert(!strcmp(Dod_KillWeaponLabel("weapon_dod_garand", DOD_TEAM_ALLIES, 0), "M1 Garand"));
+	assert(!strcmp(Dod_KillWeaponLabel("weapon_dod_mp40", DOD_TEAM_AXIS, 0), "MP40"));
+	assert(!strcmp(Dod_KillWeaponLabel("weapon_crowbar", DOD_TEAM_ALLIES, 0), "Knife"));
+	assert(!strcmp(Dod_KillWeaponLabel("weapon_crowbar", DOD_TEAM_AXIS, 0), "Spade"));
+	assert(!strcmp(Dod_KillWeaponLabel("weapon_crowbar", DOD_TEAM_ALLIES, 1), "Fairbairn"));
+	assert(!strcmp(Dod_KillWeaponLabel("grenade", DOD_TEAM_ALLIES, 0), "Grenade"));
+	assert(!strcmp(Dod_KillWeaponLabel("weapon_handgrenade", DOD_TEAM_AXIS, 0), "Grenade"));
+	assert(!strcmp(Dod_KillWeaponLabel("dod_rocket", DOD_TEAM_AXIS, 0), "Rocket"));
+	assert(!strcmp(Dod_KillWeaponLabel("trigger_hurt", DOD_TEAM_AXIS, 0), "World") && !strcmp(Dod_KillWeaponLabel(0, DOD_TEAM_AXIS, 0), "World"));
+	assert(!strcmp(Dod_KillWeaponLabel("weapon_nothing", DOD_TEAM_AXIS, 0), "Weapon"));
+	/* the British and paratrooper variants keep their class names, so the title follows the kit */
+	Dod_SetAlliesCountry(DOD_COUNTRY_BRITISH);
+	assert(!strcmp(Dod_KillWeaponLabel("weapon_dod_garand", DOD_TEAM_ALLIES, 1), "Lee-Enfield"));
+	Dod_SetAlliesCountry(DOD_COUNTRY_US);
+}
+
 static void test_class_limits(void)
 {
 	int i;
@@ -987,6 +1007,7 @@ int main(void)
 	test_retail_class_names();
 	test_status_line();
 	test_player_line();
+	test_kill_labels();
 	test_class_limits();
 	test_stamina();
 	test_voice();

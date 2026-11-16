@@ -25,10 +25,15 @@ public:
 	int MsgFunc_DodHud( const char *pszName, int iSize, void *pbuf );
 	int MsgFunc_DodBoard( const char *pszName, int iSize, void *pbuf );
 	int MsgFunc_DodVoice( const char *pszName, int iSize, void *pbuf );
+	int MsgFunc_DodKill( const char *pszName, int iSize, void *pbuf );
 
 private:
 	void DrawBoard( void );
 	void DrawVoice( void );
+	void DrawKills( void );
+	struct KillLine { char killer[32], victim[32], weapon[24]; int killer_team, victim_team; float time; };
+	KillLine m_kills[5];	/* newest last */
+	int m_nKills;
 	char m_szVoice[200];	/* voice menu lines from the DodVoice message */
 	int m_iVoiceSel;
 	float m_flVoiceTime;
