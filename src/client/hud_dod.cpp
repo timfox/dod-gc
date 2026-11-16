@@ -9,6 +9,11 @@ int __MsgFunc_DodHud( const char *pszName, int iSize, void *pbuf )
 	return gHUD.m_Dod.MsgFunc_DodHud( pszName, iSize, pbuf );
 }
 
+int __MsgFunc_DodBoard( const char *pszName, int iSize, void *pbuf )
+{
+	return gHUD.m_Dod.MsgFunc_DodBoard( pszName, iSize, pbuf );
+}
+
 void CHudDod::InitState( void )
 {
 	int i;
@@ -27,6 +32,10 @@ void CHudDod::InitState( void )
 	m_szLoggedWeapon[0] = 0;
 	m_pCvar = gEngfuncs.pfnRegisterVariable( "cl_dodhud", "1", FCVAR_ARCHIVE );
 	HOOK_MESSAGE( DodHud );
+	HOOK_MESSAGE( DodBoard );
+	m_szBoard[0] = 0;
+	m_flBoardTime = 0.0f;
+	m_fBoardShown = 0;
 }
 
 int CHudDod::Init( void )
@@ -71,6 +80,58 @@ int CHudDod::MsgFunc_DodHud( const char *pszName, int iSize, void *pbuf )
 	m_flLastUpdate = m_flTimerBase = gEngfuncs.GetClientTime();
 	m_fHaveState = 1;
 	return 1;
+}
+
+/* The server sends the scoreboard text (Dod_FormatScoreboard) once a second while the player has it open, and an
+ * empty one to close it. */
+int CHudDod::MsgFunc_DodBoard( const char *pszName, int iSize, void *pbuf )
+{
+	int show;
+	const char *text;
+
+	BEGIN_READ( pbuf, iSize );
+	show = READ_BYTE();
+	text = show ? READ_STRING() : "";
+	strncpy( m_szBoard, show && text ? text : "", sizeof( m_szBoard ) - 1 );
+	m_szBoard[sizeof( m_szBoard ) - 1] = 0;
+	m_flBoardTime = gEngfuncs.GetClientTime();
+	m_fBoardShown = show && m_szBoard[0];
+	return 1;
+}
+
+void CHudDod::DrawBoard( void )
+{
+	char line[96];
+	const char *p = m_szBoard;
+	const int line_h = gHUD.m_scrinfo.iCharHeight > 0 ? gHUD.m_scrinfo.iCharHeight : 12;
+	const int x = 12, w = ScreenWidth > 0 ? ScreenWidth : 320;
+	int y = 28, rows = 1;
+
+	if( !m_fBoardShown || gEngfuncs.GetClientTime() - m_flBoardTime > 3.0f )
+		return;
+	for( const char *q = p; *q; q++ )
+		if( *q == '\n' ) rows++;
+	/* Dark backing so the text reads over any scene. */
+	gEngfuncs.pfnFillRGBABlend( x - 6, y - 4, w - 2 * ( x - 6 ), rows * line_h + 8, 0, 0, 0, 150 );
+	while( *p )
+	{
+		int n = 0, r = 255, g = 255, b = 255;
+
+		while( p[n] && p[n] != '\n' && n < (int)sizeof( line ) - 1 )
+		{
+			line[n] = p[n];
+			n++;
+		}
+		line[n] = 0;
+		p += n;
+		if( *p == '\n' ) p++;
+		if( !n ) { y += line_h / 2; continue; }
+		if( !strncmp( line, "Allies", 6 )) { r = 140; g = 230; b = 140; }
+		else if( !strncmp( line, "Axis", 4 )) { r = 235; g = 130; b = 130; }
+		else if( line[0] == '>' ) { r = 255; g = 230; b = 90; }
+		gHUD.DrawHudString( x, y, w - x, line, r, g, b );
+		y += line_h;
+	}
 }
 
 int CHudDod::DrawRetail( float flTime )
@@ -212,6 +273,7 @@ int CHudDod::DrawRetail( float flTime )
 		sprintf( buf, "x %d", spare.count );
 		gHUD.DrawHudString( tx, (int)( spare.y * sy + 0.5f ), tx + (int)( 64 * sx + 0.5f ), buf, 255, 255, 255 );
 	}
+	DrawBoard();
 	if( !m_fDrawLogged )
 	{
 		m_fDrawLogged = 1;

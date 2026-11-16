@@ -41,6 +41,7 @@ static float g_spec_next_think;
  * bots at that point. */
 static BOOL g_spec_join_pending[DOD_MAX_PLAYERS + 1];
 static int gmsgDodHud;
+static int gmsgDodBoard;
 static float g_dod_next_hud;
 static int g_dod_seen_restart;
 static int g_dod_seen_match;
@@ -58,6 +59,11 @@ static int g_dod_joined[DOD_MAX_PLAYERS + 1];
 static int g_dod_pending_team[DOD_MAX_PLAYERS + 1];
 static int g_dod_winner_announced;
 static float g_dod_next_status;
+/* Scoreboard on the lean HUD (D-pad right, "dod_score"): shown for DOD_BOARD_SECONDS, refreshed once a second,
+ * and pressed again it goes away. */
+#define DOD_BOARD_SECONDS 8.0f
+static float g_dod_board_until[DOD_MAX_PLAYERS + 1];
+static float g_dod_next_board;
 
 static int DodGC_PlayerIndex( CBasePlayer *pPlayer )
 {
@@ -354,6 +360,7 @@ CHalfLifeDoD::CHalfLifeDoD()
 	g_dod_next_hud = 0.0f;
 	/* Registered here, before any client connects, so the client can hook it. */
 	gmsgDodHud = REG_USER_MSG( "DodHud", -1 );
+	gmsgDodBoard = REG_USER_MSG( "DodBoard", -1 );
 	memset( g_dod_menu_state, 0, sizeof( g_dod_menu_state ) );
 	memset( g_dod_joined, 0, sizeof( g_dod_joined ) );
 	memset( g_dod_weaponlist_resent, 0, sizeof( g_dod_weaponlist_resent ) );
@@ -437,6 +444,83 @@ static void DodGC_PickClass( CBasePlayer *pPlayer, DodClass player_class )
 	}
 }
 
+/* The scoreboard text for one player (or an empty block, which clears the channel). */
+static void DodGC_ShowBoard( CBasePlayer *pPlayer, BOOL show )
+{
+	char board[240];	/* a user message string is limited; Dod_FormatScoreboard drops whole lines that do not fit */
+	const char *names[DOD_MAX_PLAYERS + 1];
+	int i;
+
+	board[0] = '\0';
+	if( show ) {
+		for( i = 0; i <= DOD_MAX_PLAYERS; i++ )
+			names[i] = NULL;
+		for( i = 1; i <= gpGlobals->maxClients && i <= DOD_MAX_PLAYERS; i++ ) {
+			CBasePlayer *other = (CBasePlayer *)UTIL_PlayerByIndex( i );
+			if( other && other->IsPlayer() )
+				names[i] = STRING( other->pev->netname );
+		}
+		Dod_FormatScoreboard( board, sizeof( board ), names, ENTINDEX( pPlayer->edict() ) );
+	}
+	if( gmsgDodBoard ) {
+		MESSAGE_BEGIN( MSG_ONE, gmsgDodBoard, NULL, pPlayer->edict() );
+			WRITE_BYTE( show && board[0] ? 1 : 0 );
+			if( show && board[0] )
+				WRITE_STRING( board );
+		MESSAGE_END();
+	}
+	if( show && board[0] && CVAR_GET_FLOAT( "cl_dodhud" ) == 0.0f ) {
+		/* No sprite HUD: the plain HUD text block. */
+		hudtextparms_t params;
+		memset( &params, 0, sizeof( params ) );
+		params.channel = 4;
+		params.x = 0.08f;
+		params.y = 0.2f;
+		params.r1 = 255; params.g1 = 255; params.b1 = 255; params.a1 = 255;
+		params.holdTime = 1.5f;
+		UTIL_HudMessage( pPlayer, params, board );
+	}
+}
+
+/* Players that asked for the scoreboard get it again every second while their time runs. */
+static void DodGC_RefreshBoards( void )
+{
+	int i;
+	if( gpGlobals->time < g_dod_next_board )
+		return;
+	g_dod_next_board = gpGlobals->time + 1.0f;
+	for( i = 1; i <= gpGlobals->maxClients && i <= DOD_MAX_PLAYERS; i++ ) {
+		CBasePlayer *player;
+		if( g_dod_board_until[i] <= 0.0f )
+			continue;
+		player = (CBasePlayer *)UTIL_PlayerByIndex( i );
+		if( !player || !player->IsPlayer() || g_dod_board_until[i] <= gpGlobals->time ) {
+			g_dod_board_until[i] = 0.0f;
+			continue;
+		}
+		DodGC_ShowBoard( player, TRUE );
+	}
+}
+
+/* Everyone of `team` who stands in the capture volume gets credit for the capture. A sphere point is the
+ * 128-unit radius around it; an area is its brush bounds. */
+static void DodGC_CreditCapture( DodTeam team, const Vector &center, float radius, const Vector *mins, const Vector *maxs )
+{
+	int i;
+	for( i = 1; i <= gpGlobals->maxClients; ++i ) {
+		CBasePlayer *player = (CBasePlayer *)UTIL_PlayerByIndex( i );
+		if( !player || !player->IsPlayer() || player->pev->deadflag != DEAD_NO ) continue;
+		if( DodGC_TeamForPlayer( player ) != team ) continue;
+		const Vector &o = player->pev->origin;
+		if( mins && maxs ) {
+			if( o.x < mins->x || o.y < mins->y || o.z < mins->z - 8 || o.x > maxs->x || o.y > maxs->y || o.z > maxs->z + 72 ) continue;
+		} else if( ( o - center ).Length() > radius ) {
+			continue;
+		}
+		Dod_RecordCapture( DodGC_PlayerIndex( player ) );
+	}
+}
+
 static void DodGC_CycleWeapon( CBasePlayer *pPlayer, int step );
 
 BOOL CHalfLifeDoD::ClientCommand( CBasePlayer *pPlayer, const char *pcmd )
@@ -466,25 +550,11 @@ BOOL CHalfLifeDoD::ClientCommand( CBasePlayer *pPlayer, const char *pcmd )
 		return TRUE;
 	}
 	if( FStrEq( pcmd, "dod_score" ) ) {
-		/* Text scoreboard for the lean HUD: one HUD text block for the asker. */
-		char board[512];
-		char line[96];
-		int len = snprintf( board, sizeof( board ), "SCOREBOARD\n" );
-		hudtextparms_t params;
-		memset( &params, 0, sizeof( params ) );
-		params.channel = 4;
-		params.x = 0.08f;
-		params.y = 0.25f;
-		params.r1 = 255; params.g1 = 255; params.b1 = 255; params.a1 = 255;
-		params.holdTime = 6.0f;
-		for( int i = 1; i <= gpGlobals->maxClients && len < (int)sizeof( board ) - 1; i++ ) {
-			CBasePlayer *other = (CBasePlayer *)UTIL_PlayerByIndex( i );
-			if( !other || !other->IsPlayer() )
-				continue;
-			if( Dod_FormatPlayerLine( i, STRING( other->pev->netname ), line, sizeof( line ) ) > 0 )
-				len += snprintf( board + len, sizeof( board ) - len, "%s\n", line );
+		if( index >= 1 && index <= DOD_MAX_PLAYERS ) {
+			const BOOL showing = g_dod_board_until[index] > gpGlobals->time;
+			g_dod_board_until[index] = showing ? 0.0f : gpGlobals->time + DOD_BOARD_SECONDS;
+			DodGC_ShowBoard( pPlayer, !showing );
 		}
-		UTIL_HudMessage( pPlayer, params, board );
 		return TRUE;
 	}
 	if( FStrEq( pcmd, "dod_class" ) ) {
@@ -870,6 +940,7 @@ void CHalfLifeDoD::Think( void )
 	/* Match status for the lean HUD, which has no VGUI scoreboard. With the client
 	 * sprite HUD on (cl_dodhud, a cvar the local client registers) the server sends
 	 * the numbers for it to draw; otherwise it shows the text strip, once a second. */
+	DodGC_RefreshBoards();
 	if( CVAR_GET_FLOAT( "cl_dodhud" ) != 0.0f ) {
 		if( gpGlobals->time >= g_dod_next_hud ) {
 			g_dod_next_hud = gpGlobals->time + 0.5f;
@@ -1014,6 +1085,8 @@ void CDoDControlPoint::Think( void )
 	}
 	if( Dod_TickObjective( m_iPointIndex, allies, axis, 0.25f ) ) {
 		const DodObjectiveState *objective = Dod_GetObjective( m_iPointIndex );
+		if( objective && ( objective->owner == DOD_TEAM_ALLIES || objective->owner == DOD_TEAM_AXIS ) )
+			DodGC_CreditCapture( objective->owner, pev->origin, 128.0f, NULL, NULL );
 		const char *owner = objective && objective->owner == DOD_TEAM_ALLIES ? "Allies" : "Axis";
 		UTIL_ClientPrintAll( HUD_PRINTCENTER,
 			UTIL_VarArgs( "%s captured control point %d", owner, m_iPointIndex ) );
@@ -1167,6 +1240,8 @@ void CDoDCaptureArea::Think( void )
 		if( Dod_TickObjective( m_pPoint->PointIndex(), allies, axis, 0.25f ) ) {
 			const DodObjectiveState *after = Dod_GetObjective( m_pPoint->PointIndex() );
 			const DodTeam owner = after ? after->owner : DOD_TEAM_UNASSIGNED;
+			if( owner == DOD_TEAM_ALLIES || owner == DOD_TEAM_AXIS )
+				DodGC_CreditCapture( owner, pev->origin, 0.0f, &pev->absmin, &pev->absmax );
 			ALERT( at_console, "DoD capture complete point %d owner %s\n", m_pPoint->PointIndex(), owner == DOD_TEAM_ALLIES ? "Allies" : "Axis" );
 			UTIL_ClientPrintAll( HUD_PRINTCENTER, UTIL_VarArgs( "%s captured control point %d",
 				owner == DOD_TEAM_ALLIES ? "Allies" : "Axis", m_pPoint->PointIndex() ) );

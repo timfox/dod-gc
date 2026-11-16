@@ -133,6 +133,8 @@ void Dod_ResetPlayerStats(void)
 		g_dod_players[i].kills = 0;
 		g_dod_players[i].deaths = 0;
 		g_dod_players[i].objective_score = 0;
+		g_dod_players[i].teamkills = 0;
+		g_dod_players[i].captures = 0;
 	}
 }
 
@@ -324,12 +326,29 @@ void Dod_RecordKill(int attacker_index, int victim_index)
 	if (victim && victim->connected)
 		++victim->deaths;
 	if (attacker && attacker->connected && attacker_index != victim_index) {
-		if (victim && dod_valid_team(attacker->team) && attacker->team == victim->team)
+		if (victim && dod_valid_team(attacker->team) && attacker->team == victim->team) {
+			++attacker->teamkills;
 			return;
+		}
 		++attacker->kills;
 		++attacker->objective_score;
 		dod_add_team_score(attacker->team, 1.0f);
 	}
+}
+
+void Dod_RecordCapture(int player_index)
+{
+	DodPlayerState *player = dod_valid_player(player_index) ? &g_dod_players[player_index] : 0;
+	if (player && player->connected)
+		++player->captures;
+}
+
+int Dod_PlayerScore(int player_index)
+{
+	const DodPlayerState *player = dod_valid_player(player_index) ? &g_dod_players[player_index] : 0;
+	if (!player || !player->connected)
+		return 0;
+	return player->kills - player->teamkills + player->captures * DOD_CAPTURE_PLAYER_POINTS;
 }
 
 const DodPlayerState *Dod_GetPlayer(int player_index)
@@ -638,6 +657,69 @@ int Dod_FormatPlayerLine(int player_index, const char *name, char *buffer, int s
 		return 0;
 	}
 	return written >= size ? size - 1 : written;
+}
+
+static const char *dod_class_tag(DodClass c)
+{
+	switch (c) {
+	case DOD_CLASS_RIFLEMAN: return "RIF";
+	case DOD_CLASS_ASSAULT: return "ASL";
+	case DOD_CLASS_SUPPORT: return "SUP";
+	case DOD_CLASS_SNIPER: return "SNP";
+	case DOD_CLASS_MG: return "MG";
+	case DOD_CLASS_ROCKET: return "RKT";
+	default: return "--";
+	}
+}
+
+/* true when player a ranks above player b: score, then kills, then fewer deaths, then lower index */
+static int dod_ranks_above(int a, int b)
+{
+	const int sa = Dod_PlayerScore(a), sb = Dod_PlayerScore(b);
+	if (sa != sb) return sa > sb;
+	if (g_dod_players[a].kills != g_dod_players[b].kills) return g_dod_players[a].kills > g_dod_players[b].kills;
+	if (g_dod_players[a].deaths != g_dod_players[b].deaths) return g_dod_players[a].deaths < g_dod_players[b].deaths;
+	return a < b;
+}
+
+int Dod_FormatScoreboard(char *buffer, int size, const char *const *names, int viewer_index)
+{
+	static const DodTeam order[2] = { DOD_TEAM_ALLIES, DOD_TEAM_AXIS };
+	int len = 0, t;
+	if (!buffer || size <= 1)
+		return 0;
+	buffer[0] = '\0';
+	for (t = 0; t < 2; ++t) {
+		int ranked[DOD_MAX_PLAYERS], n = 0, i, j, rank = 0;
+		const DodTeam team = order[t];
+		int w = snprintf(buffer + len, (size_t)(size - len), "%s%s  %d\n", t ? "\n" : "", Dod_TeamName(team),
+			team == DOD_TEAM_ALLIES ? g_dod_state.allies_score : g_dod_state.axis_score);
+		if (w < 0 || w >= size - len)
+			break;
+		len += w;
+		for (i = 1; i <= DOD_MAX_PLAYERS; ++i)
+			if (g_dod_players[i].connected && g_dod_players[i].team == team)
+				ranked[n++] = i;
+		for (i = 1; i < n; ++i) {	/* insertion sort, n is at most 32 */
+			const int v = ranked[i];
+			for (j = i - 1; j >= 0 && dod_ranks_above(v, ranked[j]); --j)
+				ranked[j + 1] = ranked[j];
+			ranked[j + 1] = v;
+		}
+		for (i = 0; i < n; ++i) {
+			const int p = ranked[i];
+			const char *name = names && names[p] && names[p][0] ? names[p] : "player";
+			w = snprintf(buffer + len, (size_t)(size - len), "%s%d. %s  %s  %d  %d/%d\n", p == viewer_index ? ">" : "", ++rank,
+				name, dod_class_tag(g_dod_players[p].player_class), Dod_PlayerScore(p), g_dod_players[p].kills,
+				g_dod_players[p].deaths);
+			if (w < 0 || w >= size - len) {
+				buffer[len] = '\0';	/* the line did not fit: drop it and everything below */
+				return len;
+			}
+			len += w;
+		}
+	}
+	return len;
 }
 
 void Dod_ClearObjectives(void)

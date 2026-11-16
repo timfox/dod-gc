@@ -23,8 +23,13 @@ public:
 	 * the caller should skip its own HUD. */
 	int DrawRetail( float flTime );
 	int MsgFunc_DodHud( const char *pszName, int iSize, void *pbuf );
+	int MsgFunc_DodBoard( const char *pszName, int iSize, void *pbuf );
 
 private:
+	void DrawBoard( void );
+	char m_szBoard[256];	/* scoreboard text from the DodBoard message, lines split by newlines */
+	float m_flBoardTime;	/* client time of the last DodBoard message; the board hides 3 s after it */
+	int m_fBoardShown;
 	DodHudState m_state;
 	float m_flLastUpdate;
 	float m_flTimerBase;	/* client time the clock was last set */

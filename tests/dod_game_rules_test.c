@@ -87,6 +87,38 @@ static void test_player_line(void)
 	Dod_GameShutdown();
 }
 
+static void test_scoreboard(void)
+{
+	char board[512], tiny[40];
+	const char *names[DOD_MAX_PLAYERS + 1] = { 0 };
+	Dod_GameInit();
+	assert(Dod_PlayerConnect(1) && Dod_PlayerConnect(2) && Dod_PlayerConnect(3) && Dod_PlayerConnect(4));
+	assert(Dod_AssignPlayerTeam(1, DOD_TEAM_ALLIES) && Dod_AssignPlayerTeam(2, DOD_TEAM_ALLIES));
+	assert(Dod_AssignPlayerTeam(3, DOD_TEAM_AXIS) && Dod_AssignPlayerTeam(4, DOD_TEAM_AXIS));
+	Dod_SelectPlayerClass(1, DOD_CLASS_SNIPER);
+	Dod_SelectPlayerClass(3, DOD_CLASS_MG);
+	names[1] = "Ann"; names[2] = "Bob"; names[3] = "Cy"; /* 4 has no name */
+	Dod_RecordKill(1, 3);
+	Dod_RecordKill(1, 4);
+	Dod_RecordKill(2, 3);
+	Dod_RecordKill(2, 1);	/* team kill: no kill, one team kill */
+	Dod_RecordCapture(2);	/* Bob: 1 kill - 1 team kill + 2 = 2; Ann: 2 kills = 2 */
+	assert(Dod_PlayerScore(1) == 2 && Dod_PlayerScore(2) == 2);
+	assert(Dod_PlayerScore(3) == 0 && Dod_PlayerScore(99) == 0);
+	assert(Dod_FormatScoreboard(board, sizeof(board), names, 2) > 0);
+	/* Ann and Bob tie on score; Ann has more kills, so she ranks first. Bob is the viewer. */
+	assert(strstr(board, "Allies  "));
+	assert(strstr(board, "\n1. Ann  SNP  2  2/1\n>2. Bob  --  2  1/0\n"));
+	assert(strstr(board, "Axis  "));
+	assert(strstr(board, "\n1. player  --  0  0/1\n2. Cy  MG  0  0/2\n")); /* equal score and kills: fewer deaths first */
+	/* a buffer that is too small drops whole lines, never part of one */
+	assert(Dod_FormatScoreboard(tiny, sizeof(tiny), names, 0) > 0);
+	assert(strlen(tiny) < sizeof(tiny) && tiny[strlen(tiny) - 1] == '\n');
+	Dod_ResetPlayerStats();
+	assert(Dod_PlayerScore(1) == 0);
+	Dod_GameShutdown();
+}
+
 static void test_status_line(void)
 {
 	char line[96];
@@ -728,6 +760,7 @@ int main(void)
 	test_retail_class_names();
 	test_status_line();
 	test_player_line();
+	test_scoreboard();
 	test_loadouts();
 	test_contested_capture_flip_and_round_win();
 	test_kill_scoring_and_timed_tie();
