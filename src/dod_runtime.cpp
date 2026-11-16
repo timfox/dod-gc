@@ -1640,6 +1640,112 @@ void CDoDCaptureArea::Think( void )
 	}
 }
 
+/* particle_shooter: the map's smoke and flame emitters (charlie 17, caen 7). Retail runs a client particle system; this build sends one
+ * TE_SMOKE puff per fire_delay to the clients that can see it, from a single small sprite (gas_puff_01, 9 KB: the map's own
+ * smoke_ia.spr is 197 KB and flames.spr 72 KB, too much for the GC heap), and at most DOD_PUFFS_PER_SECOND puffs per second server-wide
+ * (the client has 8 temporary entities). A shooter starts on with spawnflag 32 and is toggled by use; num_particles counts puffs
+ * (-1 endless). */
+#define DOD_PUFF_SPRITE "sprites/gas_puff_01.spr"
+#define DOD_PUFFS_PER_SECOND 6
+static float g_dod_puff_window;
+static int g_dod_puffs_in_window;
+
+class CDoDParticleShooter : public CPointEntity
+{
+public:
+	void Spawn( void );
+	void KeyValue( KeyValueData *pkvd );
+	void EXPORT PuffThink( void );
+	void Use( CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TYPE useType, float value );
+private:
+	int m_iSprite;
+	int m_iRemaining;	/* puffs left, -1 endless */
+	int m_iCount;
+	float m_flDelay;
+	float m_flSize;
+	int m_iFramerate;
+	BOOL m_bOn;
+};
+
+LINK_ENTITY_TO_CLASS( particle_shooter, CDoDParticleShooter )
+
+void CDoDParticleShooter::KeyValue( KeyValueData *pkvd )
+{
+	if( FStrEq( pkvd->szKeyName, "num_particles" ) ) {
+		m_iCount = atoi( pkvd->szValue ); pkvd->fHandled = TRUE;
+	} else if( FStrEq( pkvd->szKeyName, "fire_delay" ) ) {
+		m_flDelay = (float)atof( pkvd->szValue ); pkvd->fHandled = TRUE;
+	} else if( FStrEq( pkvd->szKeyName, "size" ) ) {
+		m_flSize = (float)atof( pkvd->szValue ); pkvd->fHandled = TRUE;
+	} else if( FStrEq( pkvd->szKeyName, "framerate" ) ) {
+		m_iFramerate = atoi( pkvd->szValue ); pkvd->fHandled = TRUE;
+	} else CPointEntity::KeyValue( pkvd );	/* the rest (velocity, colour, life...) is not used by the puff */
+}
+
+void CDoDParticleShooter::Spawn( void )
+{
+	pev->solid = SOLID_NOT;
+	pev->movetype = MOVETYPE_NONE;
+	if( m_flDelay < 0.25f ) m_flDelay = 0.25f;
+	if( m_iCount == 0 ) m_iCount = 10;
+	if( m_flSize <= 0.0f ) m_flSize = 16.0f;
+	if( m_iFramerate <= 0 ) m_iFramerate = 4;
+	PRECACHE_MODEL( DOD_PUFF_SPRITE );
+	m_iSprite = MODEL_INDEX( DOD_PUFF_SPRITE );
+	m_iRemaining = m_iCount;
+	m_bOn = FALSE;
+	SetThink( &CDoDParticleShooter::PuffThink );
+	ALERT( at_console, "DoD particle_shooter at %.0f %.0f %.0f: %s, delay %.2f, puffs %d, size %.0f\n", pev->origin.x, pev->origin.y, pev->origin.z, ( pev->spawnflags & 32 ) ? "starts on" : "waits for use", m_flDelay, m_iCount, m_flSize );
+	if( pev->spawnflags & 32 ) {	/* start on */
+		m_bOn = TRUE;
+		pev->nextthink = gpGlobals->time + 1.0f + RANDOM_FLOAT( 0.0f, m_flDelay );
+	}
+}
+
+void CDoDParticleShooter::Use( CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TYPE useType, float value )
+{
+	const BOOL want = useType == USE_ON ? TRUE : useType == USE_OFF ? FALSE : !m_bOn;
+	if( want == m_bOn )
+		return;
+	m_bOn = want;
+	if( m_bOn ) {
+		m_iRemaining = m_iCount;
+		pev->nextthink = gpGlobals->time + 0.1f;
+	} else {
+		pev->nextthink = 0.0f;
+	}
+}
+
+void CDoDParticleShooter::PuffThink( void )
+{
+	if( !m_bOn )
+		return;
+	pev->nextthink = gpGlobals->time + m_flDelay;
+	if( !Dod_PuffAllowed( gpGlobals->time, &g_dod_puff_window, &g_dod_puffs_in_window, DOD_PUFFS_PER_SECOND ) )
+		return;	/* the budget for this second is spent; try again next delay */
+	{
+		static int logged;
+		if( logged < 4 ) {
+			logged++;
+			ALERT( at_console, "DoD particle_shooter puff at %.0f %.0f %.0f\n", pev->origin.x, pev->origin.y, pev->origin.z );
+		}
+		const int scale = Dod_PuffScale( m_flSize );
+		MESSAGE_BEGIN( MSG_PVS, SVC_TEMPENTITY, pev->origin );
+			WRITE_BYTE( TE_SMOKE );
+			WRITE_COORD( pev->origin.x );
+			WRITE_COORD( pev->origin.y );
+			WRITE_COORD( pev->origin.z );
+			WRITE_SHORT( m_iSprite );
+			WRITE_BYTE( scale );
+			WRITE_BYTE( m_iFramerate > 20 ? 20 : m_iFramerate );
+		MESSAGE_END();
+	}
+	if( m_iRemaining > 0 && --m_iRemaining == 0 ) {
+		m_bOn = FALSE;
+		pev->nextthink = 0.0f;
+	}
+}
+
 /* dod_point_relay: forwards a use to its target (retail relays capture events to map logic). */
 class CDoDPointRelay : public CPointEntity
 {

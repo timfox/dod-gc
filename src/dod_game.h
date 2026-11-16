@@ -273,6 +273,11 @@ int Dod_PlayerBodyValue(const char *model, DodClass player_class, int player_ind
  * crowbar slot, "Grenade", "Rocket", "Fall"/"World" for the rest. british picks the British Allies' names. Never returns NULL. */
 const char *Dod_KillWeaponLabel(const char *classname, DodTeam team, int british);
 
+/* A particle_shooter's puff: the TE_SMOKE scale byte (tenths) for the emitter's size key, and the puffs it may spend: the rate is
+ * capped server-wide because the client has 8 temporary entities. */
+int Dod_PuffScale(float size);
+int Dod_PuffAllowed(float now, float *window_start, int *in_window, int per_second);
+
 /* Class limits (retail mp_limit<side><gun> cvars and mp_alliesclasses / mp_axisclasses): a limit of -1 is unlimited, 0 turns the
  * class off; the class mask has bit (1 << class) per allowed class, -1 allows all. A class is available to a player when it is
  * enabled and fewer than its limit of the side's other players hold it. */
