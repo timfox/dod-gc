@@ -251,6 +251,29 @@ class VoiceMenuIntegrationTest(unittest.TestCase):
 				INTEGRATOR.integrate_voice_menu(dlls)
 
 
+class UserCmdIntegrationTest(unittest.TestCase):
+	CLIENT = ('void CmdStart( const edict_t *player, const struct usercmd_s *cmd, unsigned int random_seed )\n{\n'
+		'\tCBasePlayer *pl = NULL;\n\tpl->random_seed = random_seed;\n}\n')
+
+	def test_cmdstart_forwards_the_usercmd_once(self):
+		with tempfile.TemporaryDirectory() as directory:
+			dlls = Path(directory)
+			(dlls / "client.cpp").write_text(self.CLIENT)
+			INTEGRATOR.integrate_usercmd(dlls)
+			first = (dlls / "client.cpp").read_text()
+			INTEGRATOR.integrate_usercmd(dlls)
+			self.assertEqual((dlls / "client.cpp").read_text(), first, "must be idempotent")
+			self.assertEqual(first.count("DodGC_UserCmd( pl, cmd )"), 1)
+			self.assertLess(first.index("random_seed = random_seed"), first.index("DodGC_UserCmd( pl, cmd )"))
+
+	def test_missing_anchor_fails_loudly(self):
+		with tempfile.TemporaryDirectory() as directory:
+			dlls = Path(directory)
+			(dlls / "client.cpp").write_text("int unrelated;\n")
+			with self.assertRaises(SystemExit):
+				INTEGRATOR.integrate_usercmd(dlls)
+
+
 class DefaultItemsIntegrationTest(unittest.TestCase):
 	RULES = ('void CHalfLifeMultiplay::PlayerSpawn( CBasePlayer *pPlayer )\n{\n\tBOOL addDefault = TRUE;\n\n'
 		'\tif( addDefault )\n\t{\n\t\tpPlayer->GiveNamedItem( "weapon_crowbar" );\n'

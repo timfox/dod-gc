@@ -40,6 +40,7 @@ typedef struct DodHudState {
 	unsigned char my_team;		/* 0 none, 1 Allies, 2 Axis */
 	unsigned char my_class;		/* DodClass, 0 none */
 	unsigned char grenades;
+	unsigned char stamina;		/* 0..100: the tube beside the health panel */
 	unsigned char kit;		/* DOD_HUD_KIT_*: which weapon variants this map uses, for the clip graphics */
 } DodHudState;
 

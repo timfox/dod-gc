@@ -61,7 +61,35 @@ typedef struct DodPlayerState {
 	int teamkills;
 	int captures;	/* control points this player was standing in when they were captured */
 	int score;	/* objective points only: what the captured points give their capturers (retail Score) */
+	float stamina;		/* 0..DOD_STAMINA_MAX; sprinting and jumping spend it, standing and walking refill it */
+	int sprinting;
+	int forward_down;		/* last seen state of the forward key, for the double tap */
+	float forward_pressed_at;	/* when forward went down */
+	float forward_released_at;	/* when forward went up */
+	float stamina_rest_until;	/* no refill before this time after spending */
+	float sprint_started_at;
+	int sprint_locked;		/* the tube ran dry: no sprint until it has refilled a bit */
 } DodPlayerState;
+
+/* Stamina and sprint. A double tap of forward starts a sprint that lasts while forward is held and stamina remains; it
+ * costs DOD_STAMINA_DRAIN per second, a jump DOD_STAMINA_JUMP, and the tube refills at DOD_STAMINA_REGEN per second after a
+ * rest. Run and sprint speeds are the port's own numbers (retail's are not recorded here). */
+#define DOD_STAMINA_MAX 100.0f
+#define DOD_STAMINA_DRAIN 22.0f
+#define DOD_STAMINA_REGEN 14.0f
+#define DOD_STAMINA_JUMP 8.0f
+#define DOD_STAMINA_REST 1.0f
+#define DOD_STAMINA_RESUME 25.0f
+#define DOD_DOUBLE_TAP_SECONDS 0.3f
+#define DOD_RUN_SPEED 220.0f
+#define DOD_SPRINT_SPEED 300.0f
+
+void Dod_StaminaReset(int player_index);
+/* One frame: the forward key, a jump that started this frame, and whether the player is moving. Returns the player's
+ * maximum speed for this frame (DOD_RUN_SPEED or DOD_SPRINT_SPEED). */
+float Dod_StaminaThink(int player_index, float now, float dt, int forward, int jumped, int moving);
+int Dod_PlayerStamina(int player_index);	/* 0..100 for the HUD */
+int Dod_PlayerSprinting(int player_index);
 
 typedef struct DodObjectiveState {
 	int active;

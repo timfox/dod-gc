@@ -290,6 +290,81 @@ const DodGameRulesState *Dod_GetState(void)
 	return &g_dod_state;
 }
 
+void Dod_StaminaReset(int player_index)
+{
+	DodPlayerState *player = dod_valid_player(player_index) ? &g_dod_players[player_index] : 0;
+	if (!player)
+		return;
+	player->stamina = DOD_STAMINA_MAX;
+	player->sprinting = 0;
+	player->sprint_locked = 0;
+	player->forward_down = 0;
+	player->forward_pressed_at = -10.0f;
+	player->forward_released_at = -10.0f;
+	player->stamina_rest_until = 0.0f;
+}
+
+float Dod_StaminaThink(int player_index, float now, float dt, int forward, int jumped, int moving)
+{
+	DodPlayerState *player = dod_valid_player(player_index) ? &g_dod_players[player_index] : 0;
+	if (!player || !player->connected)
+		return DOD_RUN_SPEED;
+	if (dt < 0.0f)
+		dt = 0.0f;
+	/* the double tap: a second press within the window of the first release starts the sprint */
+	if (forward && !player->forward_down) {
+		if (now - player->forward_released_at <= DOD_DOUBLE_TAP_SECONDS && player->forward_released_at > -5.0f &&
+			!player->sprint_locked && player->stamina >= 15.0f)
+		{
+			player->sprinting = 1;
+			player->sprint_started_at = now;
+		}
+		player->forward_pressed_at = now;
+	} else if (!forward && player->forward_down) {
+		player->forward_released_at = now;
+		player->sprinting = 0;
+	}
+	player->forward_down = forward;
+	/* stopped against a wall: not sprinting (the speed takes a moment to build after the tap) */
+	if (player->sprinting && !moving && now - player->sprint_started_at > 0.4f)
+		player->sprinting = 0;
+	if (player->sprinting) {
+		player->stamina -= DOD_STAMINA_DRAIN * dt;
+		player->stamina_rest_until = now + DOD_STAMINA_REST;
+		if (player->stamina <= 0.0f) {
+			player->stamina = 0.0f;
+			player->sprinting = 0;
+			player->sprint_locked = 1;
+		}
+	}
+	if (jumped && player->stamina > 0.0f) {
+		player->stamina -= DOD_STAMINA_JUMP;
+		if (player->stamina < 0.0f)
+			player->stamina = 0.0f;
+		player->stamina_rest_until = now + DOD_STAMINA_REST;
+	}
+	if (!player->sprinting && now >= player->stamina_rest_until && player->stamina < DOD_STAMINA_MAX) {
+		player->stamina += DOD_STAMINA_REGEN * dt;
+		if (player->stamina > DOD_STAMINA_MAX)
+			player->stamina = DOD_STAMINA_MAX;
+	}
+	if (player->sprint_locked && player->stamina >= DOD_STAMINA_RESUME)
+		player->sprint_locked = 0;
+	return player->sprinting ? DOD_SPRINT_SPEED : DOD_RUN_SPEED;
+}
+
+int Dod_PlayerStamina(int player_index)
+{
+	const DodPlayerState *player = dod_valid_player(player_index) ? &g_dod_players[player_index] : 0;
+	return player && player->connected ? (int)(player->stamina + 0.5f) : 0;
+}
+
+int Dod_PlayerSprinting(int player_index)
+{
+	const DodPlayerState *player = dod_valid_player(player_index) ? &g_dod_players[player_index] : 0;
+	return player && player->connected && player->sprinting;
+}
+
 int Dod_PlayerConnect(int player_index)
 {
 	if (!dod_valid_player(player_index))
@@ -297,6 +372,7 @@ int Dod_PlayerConnect(int player_index)
 	memset(&g_dod_players[player_index], 0, sizeof(g_dod_players[player_index]));
 	g_dod_players[player_index].connected = 1;
 	g_dod_players[player_index].team = DOD_TEAM_UNASSIGNED;
+	Dod_StaminaReset(player_index);
 	dod_recount_players();
 	return 1;
 }
