@@ -650,6 +650,8 @@ static CBasePlayer *Perceive( CBasePlayer *pBot, DodBotState *state, float *dist
 				heard = pOther;
 				heard_dist = dist;
 			}
+			if( heard && Dod_NavInHazard( &g_nav, my_team, heard->pev->origin.x, heard->pev->origin.y, heard->pev->origin.z ) )
+				heard = NULL;	/* a sound from a zone that would kill us is not followed */
 			if( heard && now > state->seen_time + 1.0f )
 			{
 				float dx, dy;
@@ -1232,8 +1234,8 @@ static void BotThink( CBasePlayer *pBot, DodBotState *state, CBasePlayer *enemy 
 	}
 	if( enemy )
 		ws |= DOD_WS_ENEMY_VISIBLE | DOD_WS_ENEMY_KNOWN;
-	else if( now < state->known_until )
-		ws |= DOD_WS_ENEMY_KNOWN;
+	else if( now < state->known_until && !Dod_NavInHazard( &g_nav, team, state->known_pos.x, state->known_pos.y, state->known_pos.z ) )
+		ws |= DOD_WS_ENEMY_KNOWN;	/* (an enemy last seen or heard inside a zone that would kill us is not worth the trip) */
 	if( pBot->pev->health < DOD_BOT_LOW_HEALTH )
 		ws |= DOD_WS_LOW_HEALTH;
 	for( i = 1; i <= gpGlobals->maxClients; i++ )
@@ -1870,6 +1872,39 @@ static void RunBot( int index, CBasePlayer *pBot )
 	if( path_follow && !fight && fabsf( Dod_BotAngleDelta( state->yaw, state->heading ) ) > 45.0f )
 		move.forward = fminf( move.forward, 0.3f );	/* point at the node first, then run at it */
 	seg.mark();
+	if( g_nav.zone_count )
+	{
+		/* Never walk into a damage zone that hurts this team (spawn-protection zones, minefields): the route costs
+		 * only discourage it, and chasing an enemy or a heard sound ignores them. Standing already inside one is left alone. */
+		const DodTeam gteam = TeamOf( pBot );
+		const float yr = state->yaw * (float)M_PI / 180.0f;
+		const Vector fwd( cos( yr ), sin( yr ), 0.0f ), right( sin( yr ), -cos( yr ), 0.0f );
+		const Vector dir = fwd * move.forward + right * move.side;
+		const Vector o = pBot->pev->origin;
+		const Vector vel( pBot->pev->velocity.x, pBot->pev->velocity.y, 0.0f );
+		const float speed = vel.Length();
+		/* strictly inside already: nothing left to prevent. Otherwise look where the command leads (a body length
+		 * and a half) and where momentum carries the bot in the next 0.4 s: the zone kills on touch. */
+		if( ( dir.Length() > 0.1f || speed > 40.0f ) && !Dod_NavInHazardMargin( &g_nav, gteam, o.x, o.y, o.z, 0.0f ) )
+		{
+			const Vector ahead = o + ( dir.Length() > 0.1f ? dir.Normalize() * 72.0f : Vector( 0, 0, 0 ) );
+			const Vector coast = o + vel * 0.4f;
+			if( Dod_NavInHazard( &g_nav, gteam, ahead.x, ahead.y, o.z ) || ( speed > 40.0f && Dod_NavInHazard( &g_nav, gteam, coast.x, coast.y, o.z ) ) )
+			{
+				static float next_note;
+				/* stand still, and brake against any momentum towards the zone */
+				const Vector vdir = speed > 1.0f ? vel * ( 1.0f / speed ) : Vector( 0, 0, 0 );
+				move.forward = -( vdir.x * fwd.x + vdir.y * fwd.y );
+				move.side = -( vdir.x * right.x + vdir.y * right.y );
+				move.jump = 0;
+				if( gpGlobals->time >= next_note )
+				{
+					next_note = gpGlobals->time + 20.0f;
+					ALERT( at_console, "DoD bot %s: stops at a damage zone that would hurt its team\n", STRING( pBot->pev->netname ) );
+				}
+			}
+		}
+	}
 	if( state->nav_has && !fight && !state->nav_arrived )
 		move.turn_away = 0;	/* the steering picks the way round; a random turn only undoes it */
 	if( state->ladder_dir && !fight )

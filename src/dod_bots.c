@@ -874,17 +874,34 @@ void Dod_NavSetAvoidTeam(DodNav *nav, DodTeam team)
 
 /* A player standing here (origin 36 above the floor) is in the zone: the box grown 16 sideways, from just
  * below its floor to a head above its top. */
-static int nav_in_hazard(const DodNav *nav, int team, float x, float y, float z)
+static int nav_in_hazard_margin(const DodNav *nav, int team, float x, float y, float z, float margin)
 {
 	int i;
 	for (i = 0; i < nav->zone_count; ++i) {
 		if (!(nav->zone_teams[i] & (1 << team)))
 			continue;
-		if (x >= nav->zone_min[i][0] - 16.0f && x <= nav->zone_max[i][0] + 16.0f && y >= nav->zone_min[i][1] - 16.0f &&
-			y <= nav->zone_max[i][1] + 16.0f && z >= nav->zone_min[i][2] - 40.0f && z <= nav->zone_max[i][2] + 36.0f)
+		if (x >= nav->zone_min[i][0] - margin && x <= nav->zone_max[i][0] + margin && y >= nav->zone_min[i][1] - margin &&
+			y <= nav->zone_max[i][1] + margin && z >= nav->zone_min[i][2] - 40.0f && z <= nav->zone_max[i][2] + 36.0f)
 			return 1;
 	}
 	return 0;
+}
+
+static int nav_in_hazard(const DodNav *nav, int team, float x, float y, float z)
+{
+	return nav_in_hazard_margin(nav, team, x, y, z, 16.0f);	/* the player's half-width: touching the box hurts */
+}
+
+int Dod_NavInHazard(const DodNav *nav, DodTeam team, float x, float y, float z)
+{
+	return Dod_NavInHazardMargin(nav, team, x, y, z, 16.0f);
+}
+
+int Dod_NavInHazardMargin(const DodNav *nav, DodTeam team, float x, float y, float z, float margin)
+{
+	if (!nav || !nav->zone_count || (team != DOD_TEAM_ALLIES && team != DOD_TEAM_AXIS))
+		return 0;
+	return nav_in_hazard_margin(nav, (int)team, x, y, z, margin);
 }
 
 /* Does the straight edge a -> b enter a zone hurting the team? Sampled every ~24 units. */

@@ -315,6 +315,10 @@ void Dod_NavSetTime(DodNav *nav, float now);
 void Dod_NavAddHazard(DodNav *nav, const float mins[3], const float maxs[3], int team_mask);
 /* The team the next searches are for: edges that cross a zone hurting it cost DOD_NAV_HAZARD_COST more. 0 = none. */
 void Dod_NavSetAvoidTeam(DodNav *nav, DodTeam team);
+/* Is a player of this team standing at (x, y, z) (origin) inside a damage zone that hurts it? */
+int Dod_NavInHazard(const DodNav *nav, DodTeam team, float x, float y, float z);	/* margin 16: the hull touches the zone */
+/* The same with the box grown by `margin` sideways (0 = the origin is strictly inside it). */
+int Dod_NavInHazardMargin(const DodNav *nav, DodTeam team, float x, float y, float z, float margin);
 /* Up to max nodes inside a capture volume (the box grown by margin sideways and 72 vertically), nearest to its
  * centre first; returns how many. A bot heading for a point should route to one of these, not to the node nearest
  * the centre, which can lie outside a large or odd-shaped volume. */
