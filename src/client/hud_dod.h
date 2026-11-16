@@ -24,9 +24,15 @@ public:
 	int DrawRetail( float flTime );
 	int MsgFunc_DodHud( const char *pszName, int iSize, void *pbuf );
 	int MsgFunc_DodBoard( const char *pszName, int iSize, void *pbuf );
+	int MsgFunc_DodVoice( const char *pszName, int iSize, void *pbuf );
 
 private:
 	void DrawBoard( void );
+	void DrawVoice( void );
+	char m_szVoice[200];	/* voice menu lines from the DodVoice message */
+	int m_iVoiceSel;
+	float m_flVoiceTime;
+	int m_fVoiceShown;
 	char m_szBoard[256];	/* scoreboard text from the DodBoard message, lines split by newlines */
 	float m_flBoardTime;	/* client time of the last DodBoard message; the board hides 3 s after it */
 	int m_fBoardShown;

@@ -216,6 +216,15 @@ def integrate_default_items(dlls: Path) -> None:
 		'\tif( addDefault && !DodGC_SkipDefaultItems() )\n\t{\n')
 
 
+def integrate_voice_menu(dlls: Path) -> None:
+	"""impulse 100 (the Half-Life flashlight, which DoD does not have; the pad's Y button) opens the voice menu in a DoD
+	match: the game decides in DodGC_VoiceMenuImpulse and the flashlight stays for everything else."""
+	replace_once(dlls / "player.cpp",
+		'\tcase 100:\n        // temporary flashlight for level designers\n',
+		'\tcase 100:\n\t\t{\n\t\t\textern BOOL DodGC_VoiceMenuImpulse( CBasePlayer *pPlayer );\n\t\t\tif( DodGC_VoiceMenuImpulse( this ) )\n\t\t\t\tbreak;\n\t\t}\n'
+		'        // temporary flashlight for level designers\n')
+
+
 def integrate_grenades(dlls: Path) -> None:
 	"""DoD hand grenades: models, fuse, damage and a budgeted explosion."""
 	hand = dlls / "handgrenade.cpp"
@@ -506,6 +515,7 @@ def main() -> int:
 	integrate_grenades(dlls)
 	integrate_trigger_hurt(dlls)
 	integrate_default_items(dlls)
+	integrate_voice_menu(dlls)
 	integrate_weapons(dlls)
 	integrate_dod_hud(client)
 	integrate_spectator_camera(client)
