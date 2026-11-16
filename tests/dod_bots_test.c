@@ -415,6 +415,20 @@ static void test_nav(void)
 		nav.zone_count = 0;
 	}
 
+	/* the guard's question: is this spot inside a zone that hurts the team? */
+	{
+		const float zmin[3] = { 150.0f, -40.0f, -60.0f }, zmax[3] = { 250.0f, 40.0f, 40.0f };
+		Dod_NavAddHazard(&nav, zmin, zmax, 1 << DOD_TEAM_AXIS);
+		assert(Dod_NavInHazard(&nav, DOD_TEAM_AXIS, 200.0f, 0.0f, 0.0f) && Dod_NavInHazard(&nav, DOD_TEAM_AXIS, 260.0f, 0.0f, 0.0f));	/* 16 margin */
+		assert(!Dod_NavInHazard(&nav, DOD_TEAM_AXIS, 290.0f, 0.0f, 0.0f) && !Dod_NavInHazard(&nav, DOD_TEAM_AXIS, 200.0f, 80.0f, 0.0f));
+		assert(!Dod_NavInHazard(&nav, DOD_TEAM_ALLIES, 200.0f, 0.0f, 0.0f) && !Dod_NavInHazard(&nav, DOD_TEAM_UNASSIGNED, 200.0f, 0.0f, 0.0f));
+		assert(!Dod_NavInHazard(&nav, DOD_TEAM_AXIS, 200.0f, 0.0f, 400.0f) && !Dod_NavInHazard(NULL, DOD_TEAM_AXIS, 200.0f, 0.0f, 0.0f));
+		/* strictly inside (margin 0) differs from touching (16): 255 is 5 past the box, 270 is 20 past */
+		assert(Dod_NavInHazardMargin(&nav, DOD_TEAM_AXIS, 250.0f, 0.0f, 0.0f, 0.0f) && !Dod_NavInHazardMargin(&nav, DOD_TEAM_AXIS, 255.0f, 0.0f, 0.0f, 0.0f));
+		assert(Dod_NavInHazardMargin(&nav, DOD_TEAM_AXIS, 255.0f, 0.0f, 0.0f, 16.0f) && !Dod_NavInHazardMargin(&nav, DOD_TEAM_AXIS, 270.0f, 0.0f, 0.0f, 16.0f));
+		nav.zone_count = 0;
+	}
+
 	/* nodes inside a capture volume, nearest the centre first; none when nothing is inside */
 	{
 		const float mins[3] = { 150.0f, -50.0f, -50.0f }, maxs[3] = { 250.0f, 50.0f, 50.0f };
