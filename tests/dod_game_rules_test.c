@@ -112,7 +112,13 @@ static void test_player_body(void)
 					assert(v >= 0 && v < 6 * 8 * 7 * 7 && v % 6 < 6 && (v / 6) % 8 < 3 && (v / 48) % 7 < 6 && v / 336 < 6);
 				}
 	}
-	assert(Dod_PlayerBodyValue("us-para", DOD_CLASS_RIFLEMAN, 4) == 0);
+	/* the paratrooper models: one body, the gear is the weapon (US: carbine 5, grease gun 6; Axis: FG42 6, MP40 0) */
+	assert(Dod_PlayerBodyValue("us-para", DOD_CLASS_RIFLEMAN, 0) == 336 * 5);
+	assert(Dod_PlayerBodyValue("us-para", DOD_CLASS_ASSAULT, 1) == 6 * 1 + 48 * 1 + 336 * 6);
+	assert(Dod_PlayerBodyValue("axis-para", DOD_CLASS_RIFLEMAN, 2) == 48 * 2 + 336 * 6);
+	assert(Dod_PlayerBodyValue("axis-para", DOD_CLASS_ASSAULT, 0) == 0);
+	assert(Dod_PlayerBodyValue("axis-para", DOD_CLASS_SNIPER, 0) == 336 * 1);
+	assert(Dod_PlayerBodyValue("nonsense", DOD_CLASS_RIFLEMAN, 4) == 0);
 	assert(Dod_PlayerBodyValue(NULL, DOD_CLASS_RIFLEMAN, 4) == 0);
 	assert(Dod_PlayerBodyValue("us-inf", DOD_CLASS_NONE, 4) == 0);
 }
@@ -755,6 +761,48 @@ static void test_view_animations(void)
 	assert(Dod_ViewAnim("models/v_nothing.mdl", DOD_ANIM_IDLE, 0) == -1 && Dod_ViewAnim(0, DOD_ANIM_IDLE, 0) == -1);
 }
 
+static void test_para_kit(void)
+{
+	int id, ok = 1;
+	Dod_SetAlliesCountry(DOD_COUNTRY_US);
+	Dod_SetParatroopers(0, 0);
+	assert(Dod_ParatroopersForMap("dod_escape") == 3 && Dod_ParatroopersForMap("dod_jagd") == 2);
+	assert(Dod_ParatroopersForMap("dod_sturm") == 1 && Dod_ParatroopersForMap("dod_charlie") == 0 && Dod_ParatroopersForMap(0) == 0);
+	assert(!Dod_TeamIsParatroopers(DOD_TEAM_ALLIES) && !Dod_TeamIsParatroopers(DOD_TEAM_AXIS));
+	assert(strcmp(Dod_GetWeaponDef(DOD_WEAPON_K98)->title, "Kar98k") == 0);
+	Dod_SetParatroopers(1, 1);
+	assert(Dod_TeamIsParatroopers(DOD_TEAM_ALLIES) && Dod_TeamIsParatroopers(DOD_TEAM_AXIS));
+	assert(strcmp(Dod_GetWeaponDef(DOD_WEAPON_K98)->title, "FG42") == 0);
+	assert(Dod_GetWeaponDef(DOD_WEAPON_K98)->mode == DOD_FIRE_AUTO && Dod_GetWeaponDef(DOD_WEAPON_K98)->clip == 20);
+	assert(strcmp(Dod_GetWeaponDef(DOD_WEAPON_GARAND)->title, "M1 Carbine") == 0);
+	assert(strcmp(Dod_GetWeaponDef(DOD_WEAPON_THOMPSON)->title, "Grease Gun") == 0);
+	assert(strcmp(Dod_ClassWeaponDef(DOD_TEAM_AXIS, DOD_CLASS_RIFLEMAN)->title, "FG42") == 0);
+	/* the para guns stand in for the stock ones: same ids, class names, slots, ammo pools and team, with animations */
+	for (id = DOD_WEAPON_NONE + 1; id < DOD_WEAPON_COUNT; ++id) {
+		const DodWeaponDef *para = Dod_GetWeaponDef((DodWeaponId)id);
+		const DodWeaponDef *stock;
+		Dod_SetParatroopers(0, 0);
+		stock = Dod_GetWeaponDef((DodWeaponId)id);
+		if (stock != para) {
+			ok &= para->id == stock->id && para->hl_id == stock->hl_id && para->team == stock->team &&
+				strcmp(para->classname, stock->classname) == 0 && strcmp(para->ammo, stock->ammo) == 0 &&
+				para->slot == stock->slot && para->position == stock->position &&
+				Dod_ViewAnim(para->view_model, DOD_ANIM_IDLE, 0) >= 0 && Dod_ViewAnim(para->view_model, DOD_ANIM_FIRE, 0) >= 0;
+		}
+		Dod_SetParatroopers(1, 1);
+	}
+	assert(ok);
+	/* the Axis only: the Allies keep the Garand */
+	Dod_SetParatroopers(0, 1);
+	assert(strcmp(Dod_GetWeaponDef(DOD_WEAPON_GARAND)->title, "M1 Garand") == 0 && strcmp(Dod_GetWeaponDef(DOD_WEAPON_K98)->title, "FG42") == 0);
+	/* British Allies keep the British kit even if the map said paras */
+	Dod_SetParatroopers(1, 0);
+	Dod_SetAlliesCountry(DOD_COUNTRY_BRITISH);
+	assert(strcmp(Dod_GetWeaponDef(DOD_WEAPON_GARAND)->title, "Lee-Enfield") == 0);
+	Dod_SetAlliesCountry(DOD_COUNTRY_US);
+	Dod_SetParatroopers(0, 0);
+}
+
 static void test_british_kit(void)
 {
 	DodLoadout load;
@@ -840,5 +888,6 @@ int main(void)
 	test_hurt_zone_team_flags();
 	test_view_animations();
 	test_british_kit();
+	test_para_kit();
 	return 0;
 }

@@ -417,6 +417,21 @@ PY
 			echo "staged the British kit MDLs for $stem"
 			;;
 	esac
+	# The paratrooper maps (src/dod_weapons.c Dod_ParatroopersForMap) carry the para guns and knife; DODGC_STAGE_PARAS=1
+	# stages them on any map (for a build that forces dod_paras).
+	case "$stem" in
+		dod_escape|dod_falaise|dod_flugplatz|dod_glider|dod_kraftstoff|dod_jagd|dod_sturm|dod_switch|dod_zalec) stage_paras=1 ;;
+		*) stage_paras="${DODGC_STAGE_PARAS:-0}" ;;
+	esac
+	if [[ "$stage_paras" == 1 ]]; then
+		for m in v_m1carbine.mdl v_greasegun.mdl v_fg42.mdl p_m1carb.mdl p_grease.mdl p_fg42.mdl v_paraknife.mdl p_paraknife.mdl; do
+			if [[ -f "$SRC/models/$m" ]]; then
+				cp -f "$SRC/models/$m" "$LEAN/models/"
+				cap_vm=$((cap_vm + 1))
+			fi
+		done
+		echo "staged the paratrooper kit MDLs for $stem"
+	fi
 	echo "staged CapFaces team weapon + grenade MDLs: $cap_vm files"
 
 	if (( FULL_MAP )); then

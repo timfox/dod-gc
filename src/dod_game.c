@@ -502,6 +502,11 @@ int Dod_GetWeaponModels(int player_index, DodWeaponModelKind kind,
 	if (kind == DOD_MODEL_MELEE) {
 		/* Retail: Allies carry the American knife (the British the Fairbairn), Axis the spade. */
 		const int british = player->team == DOD_TEAM_ALLIES && Dod_GetAlliesCountry() == DOD_COUNTRY_BRITISH;
+		if (Dod_TeamIsParatroopers(player->team)) {	/* both paratrooper teams carry the para knife */
+			if (view_model) *view_model = "models/v_paraknife.mdl";
+			if (player_model) *player_model = "models/p_paraknife.mdl";
+			return 1;
+		}
 		if (view_model) *view_model = player->team == DOD_TEAM_AXIS ? "models/v_spade.mdl" : (british ? "models/v_fairbairn.mdl" : "models/v_amerk.mdl");
 		if (player_model) *player_model = player->team == DOD_TEAM_AXIS ? "models/p_spade.mdl" : (british ? "models/p_fairbairn.mdl" : "models/p_amerk.mdl");
 		return 1;
@@ -717,6 +722,20 @@ int Dod_PlayerBodyValue(const char *model, DodClass player_class, int player_ind
 		gear = brit_gear[player_class];
 		helmet = player_class == DOD_CLASS_SNIPER ? 1 : 0;
 		head = who % 4;
+	} else if (!strcmp(model, "us-para")) {
+		/* one body; the gear is the weapon: Thompson 0, Springfield 1, Garand 2, MG 3, BAR 4, Carbine 5, Grease Gun 6 */
+		static const int gear_of[DOD_CLASS_COUNT] = { 0, 5, 6, 4, 1, 3, 2 };
+		part = 0;
+		gear = gear_of[player_class];
+		helmet = who % 2;
+		head = who % 7;
+	} else if (!strcmp(model, "axis-para")) {
+		/* MP40 0, sniper 1, K98 2, MG 3, MP44 4, K43 5, FG42 6 */
+		static const int gear_of[DOD_CLASS_COUNT] = { 0, 6, 0, 4, 1, 3, 2 };
+		part = 0;
+		gear = gear_of[player_class];
+		helmet = 0;
+		head = who % 7;
 	} else {
 		return 0;
 	}

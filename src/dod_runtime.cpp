@@ -27,6 +27,8 @@ static cvar_t dod_spectate = { "dod_spectate", "0", FCVAR_SERVER };
 static cvar_t dod_spec_auto = { "dod_spec_auto", "1", FCVAR_SERVER };
 /* Team body models (models/player/<name>/<name>.mdl, split onto the disc as
  * gc_studio/<name>.mdl). A map cfg can switch to us-para/axis-para/brit-inf. */
+/* Paratrooper teams: -1 follows the map (Dod_ParatroopersForMap), otherwise a bit mask: 1 Allies, 2 Axis. */
+static cvar_t dod_paras = { "dod_paras", "-1", FCVAR_SERVER };
 static cvar_t dod_allies_body = { "dod_allies_body", "us-inf", FCVAR_SERVER };
 static cvar_t dod_axis_body = { "dod_axis_body", "axis-inf", FCVAR_SERVER };
 static BOOL g_dod_cvars_registered;
@@ -240,13 +242,19 @@ static void DodGC_HoldForJoin( CBasePlayer *pPlayer )
  * for hulls. Bots are fake clients with their own infobuffer, so this covers them. */
 static const char *DodGC_BodyForTeam( DodTeam team )
 {
-	if( team == DOD_TEAM_AXIS )
-		return CVAR_GET_STRING( "dod_axis_body" );
+	if( team == DOD_TEAM_AXIS ) {
+		const char *body = CVAR_GET_STRING( "dod_axis_body" );
+		if( Dod_TeamIsParatroopers( DOD_TEAM_AXIS ) && !strcmp( body, "axis-inf" ) )
+			return "axis-para";
+		return body;
+	}
 	if( team == DOD_TEAM_ALLIES ) {
 		const char *body = CVAR_GET_STRING( "dod_allies_body" );
 		/* On the British maps the Allies are British unless the map cfg named another model. */
 		if( Dod_GetAlliesCountry() == DOD_COUNTRY_BRITISH && !strcmp( body, "us-inf" ) )
 			return "brit-inf";
+		if( Dod_TeamIsParatroopers( DOD_TEAM_ALLIES ) && !strcmp( body, "us-inf" ) )
+			return "us-para";
 		return body;
 	}
 	return NULL;
@@ -351,6 +359,7 @@ CHalfLifeDoD::CHalfLifeDoD()
 		CVAR_REGISTER( &dod_rounds );
 		CVAR_REGISTER( &dod_spectate );
 		CVAR_REGISTER( &dod_spec_auto );
+		CVAR_REGISTER( &dod_paras );
 		CVAR_REGISTER( &dod_allies_body );
 		CVAR_REGISTER( &dod_axis_body );
 		g_dod_cvars_registered = TRUE;
@@ -360,6 +369,13 @@ CHalfLifeDoD::CHalfLifeDoD()
 	Dod_SetAlliesCountry( Dod_AlliesCountryForMap( STRING( gpGlobals->mapname ) ) );
 	ALERT( at_console, "DoD: the Allies are %s on %s\n", Dod_GetAlliesCountry() == DOD_COUNTRY_BRITISH ? "British" : "American",
 		STRING( gpGlobals->mapname ) );
+	{
+		int paras = (int)CVAR_GET_FLOAT( "dod_paras" );
+		if( paras < 0 )
+			paras = Dod_ParatroopersForMap( STRING( gpGlobals->mapname ) );
+		Dod_SetParatroopers( paras & 1, paras & 2 );
+		ALERT( at_console, "DoD: paratroopers: Allies %s, Axis %s\n", paras & 1 ? "yes" : "no", paras & 2 ? "yes" : "no" );
+	}
 	Dod_ClearObjectives();
 	round_seconds = CVAR_GET_FLOAT( "mp_timelimit" ) * 60.0f;
 	if( round_seconds <= 0.0f )
