@@ -710,6 +710,72 @@ static void test_perception(void)
 	assert(Dod_BotBurstPause(1, 100.0f, 0.0f) < Dod_BotBurstPause(1, 100.0f, 1.0f) && Dod_BotBurstPause(0, 100.0f, 2.0f) <= 0.35f);
 }
 
+/* Eased turning: simulate it at 60 Hz and check the properties a human-looking turn needs. */
+static void test_ease(void)
+{
+	const float dt = 1.0f / 60.0f;
+	float angle, vel, prev_vel, max_vel, max_dv, time;
+	int skill, steps;
+
+	/* a 90 degree swing at medium: arrives, never overshoots, never exceeds the speed or acceleration limits */
+	{
+		const DodBotSkill med = Dod_BotSkillParams(1);
+		angle = 0.0f; vel = 0.0f; prev_vel = 0.0f; max_vel = 0.0f; max_dv = 0.0f;
+		for (steps = 0; steps < 600 && fabsf(Dod_BotAngleDelta(angle, 90.0f)) > 0.001f; ++steps) {
+			Dod_BotEase(&angle, &vel, 90.0f, med.turn_rate, med.turn_accel, dt);
+			assert(angle <= 90.0f + 0.001f && angle >= 0.0f);	/* no overshoot */
+			if (fabsf(vel) > max_vel) max_vel = fabsf(vel);
+			if (fabsf(vel - prev_vel) > max_dv) max_dv = fabsf(vel - prev_vel);
+			prev_vel = vel;
+		}
+		time = (float)steps * dt;
+		assert(angle == 90.0f && vel == 0.0f);
+		/* every step respects the speed and acceleration limits; only the last settling step onto the target may
+		 * drop the remaining speed (under 2 frames of acceleration: about a degree of motion) */
+		assert(max_vel <= med.turn_rate + 0.01f && max_dv <= 2.0f * med.turn_accel * dt + 0.01f);
+		assert(max_vel > med.turn_rate * 0.6f);	/* it does get up to speed */
+		assert(time > 0.3f && time < 0.8f);	/* a quarter turn takes a human-like fraction of a second */
+	}
+	/* never instant, even for the fastest skill: a half turn takes a visible time, and a single frame moves little */
+	for (skill = 0; skill < 4; ++skill) {
+		const DodBotSkill sk = Dod_BotSkillParams(skill);
+		float first_step;
+		angle = 0.0f; vel = 0.0f;
+		Dod_BotEase(&angle, &vel, 180.0f, sk.turn_rate, sk.turn_accel, dt);
+		first_step = angle;
+		assert(first_step < 0.1f * 180.0f);	/* the first frame moves a few degrees, not the lot */
+		for (steps = 1; steps < 600 && fabsf(Dod_BotAngleDelta(angle, 180.0f)) > 0.001f; ++steps)
+			Dod_BotEase(&angle, &vel, 180.0f, sk.turn_rate, sk.turn_accel, dt);
+		assert((float)steps * dt > 0.4f && (float)steps * dt < 1.6f);
+		assert(sk.turn_rate >= 150.0f && sk.turn_rate <= 500.0f && sk.turn_accel > 0.0f);
+	}
+	assert(Dod_BotSkillParams(0).turn_rate < Dod_BotSkillParams(1).turn_rate && Dod_BotSkillParams(1).turn_rate < Dod_BotSkillParams(2).turn_rate);
+	assert(Dod_BotSkillParams(2).turn_rate < Dod_BotSkillParams(3).turn_rate && Dod_BotSkillParams(1).turn_rate >= 180.0f && Dod_BotSkillParams(1).turn_rate <= 360.0f);
+	assert(Dod_BotSkillParams(0).turn_accel < Dod_BotSkillParams(1).turn_accel && Dod_BotSkillParams(2).turn_accel < Dod_BotSkillParams(3).turn_accel);
+	/* the short way round, across the +-180 seam */
+	angle = 170.0f; vel = 0.0f;
+	for (steps = 0; steps < 600 && fabsf(Dod_BotAngleDelta(angle, -170.0f)) > 0.001f; ++steps) {
+		Dod_BotEase(&angle, &vel, -170.0f, 270.0f, 1800.0f, dt);
+		assert(angle > 169.9f || angle < -169.9f);	/* it stays within the 20 degrees across the seam */
+	}
+	assert(angle == -170.0f);
+	/* a target that jumps mid-swing: the speed still changes smoothly (no jerk beyond the acceleration limit) */
+	angle = 0.0f; vel = 0.0f; prev_vel = 0.0f;
+	for (steps = 0; steps < 120; ++steps) {
+		Dod_BotEase(&angle, &vel, steps < 12 ? 120.0f : -120.0f, 270.0f, 1800.0f, dt);
+		assert(fabsf(vel - prev_vel) <= 2.0f * 1800.0f * dt + 0.01f);	/* (the settling step may drop up to two frames of speed) */
+		prev_vel = vel;
+	}
+	/* a tiny remaining error settles without hunting; bad input is harmless */
+	angle = 10.0f; vel = 0.0f;
+	for (steps = 0; steps < 60; ++steps)
+		Dod_BotEase(&angle, &vel, 10.02f, 270.0f, 1800.0f, dt);
+	assert(fabsf(angle - 10.02f) < 0.001f);
+	angle = 5.0f; vel = 3.0f;
+	assert(Dod_BotEase(&angle, &vel, 50.0f, 270.0f, 1800.0f, 0.0f) == 5.0f && angle == 5.0f);
+	assert(Dod_BotEase(NULL, &vel, 50.0f, 270.0f, 1800.0f, dt) == 0.0f && Dod_BotEase(&angle, NULL, 50.0f, 270.0f, 1800.0f, dt) == 5.0f);
+}
+
 int main(void)
 {
 	test_spectator();
@@ -727,5 +793,6 @@ int main(void)
 	test_nav_real();
 	test_goap();
 	test_perception();
+	test_ease();
 	return 0;
 }

@@ -76,6 +76,39 @@ DodClass Dod_BotPickClass(int roll, const int special_counts[DOD_CLASS_COUNT])
 	return DOD_CLASS_RIFLEMAN;
 }
 
+float Dod_BotEase(float *angle, float *vel, float target, float max_speed, float accel, float dt)
+{
+	float delta, want, dv, step;
+	if (!angle || !vel || dt <= 0.0f || max_speed <= 0.0f || accel <= 0.0f)
+		return angle ? *angle : 0.0f;
+	delta = Dod_BotAngleDelta(*angle, target);
+	/* the fastest speed that can still brake to zero on the target with the acceleration available, in steps of dt
+	 * (the exact discrete sum, not the continuous sqrt(2 a d), which leaves a hundred degrees/s of speed at arrival) */
+	want = sqrtf(2.0f * accel * (delta < 0.0f ? -delta : delta) + 0.25f * accel * dt * accel * dt) - 0.5f * accel * dt;
+	if (want < 0.0f)
+		want = 0.0f;
+	if (want > max_speed)
+		want = max_speed;
+	if (want * dt > (delta < 0.0f ? -delta : delta))
+		want = (delta < 0.0f ? -delta : delta) / dt;	/* do not overshoot in this step */
+	if (delta < 0.0f)
+		want = -want;
+	dv = want - *vel;
+	if (dv > accel * dt)
+		dv = accel * dt;
+	else if (dv < -accel * dt)
+		dv = -accel * dt;
+	*vel += dv;
+	step = *vel * dt;
+	if ((delta >= 0.0f && step >= delta) || (delta < 0.0f && step <= delta)) {
+		*angle = Dod_BotAngleDelta(0.0f, target);	/* arrived */
+		*vel = 0.0f;
+	} else {
+		*angle = Dod_BotAngleDelta(0.0f, *angle + step);
+	}
+	return *angle;
+}
+
 float Dod_BotAngleDelta(float a, float b)
 {
 	float d = fmodf(b - a, 360.0f);
@@ -119,10 +152,10 @@ DodBotSkill Dod_BotSkillParams(int skill)
 {
 	static const DodBotSkill table[4] = {
 		/* fov  react       aim: base dist tspd own   settle turn  hear  mem  recoil */
-		{ 45.0f, 0.40f, 0.70f, 4.5f, 4.0f, 3.0f, 2.5f, 0.35f, 150.0f, 0.70f, 4.0f, 7.0f },	/* easy */
-		{ 50.0f, 0.22f, 0.40f, 2.0f, 2.2f, 2.0f, 1.5f, 0.60f, 240.0f, 1.00f, 6.0f, 5.0f },	/* medium */
-		{ 55.0f, 0.16f, 0.30f, 1.4f, 1.8f, 1.2f, 0.9f, 0.90f, 330.0f, 1.20f, 8.0f, 3.5f },	/* hard */
-		{ 60.0f, 0.15f, 0.25f, 0.8f, 1.1f, 0.7f, 0.5f, 1.30f, 420.0f, 1.40f, 10.0f, 2.0f }	/* expert */
+		{ 45.0f, 0.40f, 0.70f, 4.5f, 4.0f, 3.0f, 2.5f, 0.35f, 160.0f, 0.70f, 4.0f, 7.0f, 900.0f },	/* easy */
+		{ 50.0f, 0.22f, 0.40f, 2.0f, 2.2f, 2.0f, 1.5f, 0.60f, 270.0f, 1.00f, 6.0f, 5.0f, 1800.0f },	/* medium */
+		{ 55.0f, 0.16f, 0.30f, 1.4f, 1.8f, 1.2f, 0.9f, 0.90f, 360.0f, 1.20f, 8.0f, 3.5f, 2600.0f },	/* hard */
+		{ 60.0f, 0.15f, 0.25f, 0.8f, 1.1f, 0.7f, 0.5f, 1.30f, 450.0f, 1.40f, 10.0f, 2.0f, 3500.0f }	/* expert */
 	};
 	if (skill < 0)
 		skill = 0;
