@@ -11,10 +11,9 @@ This repo does **not** overwrite the Half-Life 1 GameCube artifacts
 
 | Path | Points at |
 |------|-----------|
-| `engine/` | xash3d-gc checkout (symlink) |
+| `.deps/` | Pinned clones of the engine and the game-code SDK, made by `scripts/fetch-sources.sh` (see `scripts/sources.lock`); or set `DODGC_ENGINE` / `DODGC_HLSDK` |
 | `content/dod/` | Retail `Half-Life/dod` (symlink) |
 | `content/valve/` | Retail `Half-Life/valve` basedir fallback (symlink) |
-| `hlsdk-portable/` | HL1SDK used as the DM/code base (symlink) |
 | `src/` | Local DoD game-mode / feature port work |
 | `out/dodgc.iso` | DoD disc image |
 | `playtests/` | Screenshots, videos, and notes from every playtest |

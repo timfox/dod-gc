@@ -48,6 +48,18 @@ while [[ $# -gt 0 ]]; do
 done
 
 dodgc_require_content
+dodgc_require_hlsdk
+
+# The SDK must be the pinned commit (scripts/sources.lock); a different HEAD means the game DLL would
+# be built from code nobody recorded. DODGC_HLSDK_UNPINNED=1 is the explicit way to build another one.
+if git -C "$DODGC_HLSDK" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+	hlsdk_head="$(git -C "$DODGC_HLSDK" rev-parse HEAD)"
+	if [[ "$hlsdk_head" != "$DODGC_HLSDK_COMMIT" && "${DODGC_HLSDK_UNPINNED:-0}" != 1 ]]; then
+		echo "error: SDK $DODGC_HLSDK is at $hlsdk_head, pinned $DODGC_HLSDK_COMMIT ($DODGC_HLSDK_BRANCH)." >&2
+		echo "  scripts/fetch-sources.sh --update moves the .deps clone to the pin; or set DODGC_HLSDK_UNPINNED=1." >&2
+		exit 1
+	fi
+fi
 
 ENGINE_DOL="$DODGC_ENGINE/OUT/bin/dodgc.dol"
 ENGINE_HLSDK_DOD="$DODGC_ENGINE/OUT/hlsdk-gamecube/dod"
@@ -75,8 +87,9 @@ if (( ! ISO_ONLY )); then
 		HLSDK_GAMECUBE_DESTDIR="$SDK_PRIVATE" \
 		HLSDK_GAMECUBE_GAMEDIR=dod \
 			bash scripts/hlsdk-gamecube-build.sh || {
-			echo "warning: hlsdk-gamecube-build for dod failed or is incomplete." >&2
-			echo "  Continuing only if archives already exist; otherwise DOL link will fail." >&2
+			echo "error: hlsdk-gamecube-build for dod failed; not linking a DOL against stale game archives." >&2
+			echo "  (DODGC_ALLOW_STALE_HLSDK=1 keeps the old warn-and-continue behaviour.)" >&2
+			[[ "${DODGC_ALLOW_STALE_HLSDK:-0}" == 1 ]] || exit 1
 		}
 	fi
 

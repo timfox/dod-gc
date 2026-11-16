@@ -30,18 +30,17 @@ while [[ $# -gt 0 ]]; do
 	shift
 done
 
-[[ -d "$ENGINE/scripts" ]] || { echo "error: engine path invalid: $ENGINE" >&2; exit 1; }
+# The engine and SDK are no longer linked from here: a default build must not follow a symlink into
+# one developer's working tree. Use scripts/fetch-sources.sh (pinned clones) or set DODGC_ENGINE /
+# DODGC_HLSDK. --engine is accepted for old command lines and ignored.
+echo "note: engine/hlsdk-portable symlinks are not created any more (see scripts/fetch-sources.sh)" >&2
 [[ -d "$RETAIL_HL/dod" ]] || { echo "error: retail DoD missing: $RETAIL_HL/dod" >&2; exit 1; }
 [[ -d "$RETAIL_HL/valve" ]] || { echo "error: retail valve missing: $RETAIL_HL/valve" >&2; exit 1; }
 
 mkdir -p "$ROOT/content"
-ln -sfn "$ENGINE" "$ROOT/engine"
-ln -sfn "$ENGINE/3rdparty/hlsdk-portable" "$ROOT/hlsdk-portable"
 ln -sfn "$RETAIL_HL/dod" "$ROOT/content/dod"
 ln -sfn "$RETAIL_HL/valve" "$ROOT/content/valve"
 
 echo "linked:"
-printf '  %s -> %s\n' engine "$(readlink -f "$ROOT/engine")"
-printf '  %s -> %s\n' hlsdk-portable "$(readlink -f "$ROOT/hlsdk-portable")"
 printf '  %s -> %s\n' content/dod "$(readlink -f "$ROOT/content/dod")"
 printf '  %s -> %s\n' content/valve "$(readlink -f "$ROOT/content/valve")"
