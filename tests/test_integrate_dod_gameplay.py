@@ -257,6 +257,8 @@ class HudIntegrationTest(unittest.TestCase):
 		'\tgEngfuncs.Con_Printf( "Xash3D GameCube: CHud::Init begin quality=%d\\n", quality );\n#endif\n'
 		'\tm_Menu.Init();\n}\nvoid CHud::VidInit( void )\n{\n\tm_Menu.VidInit();\n}\n')
 	REDRAW = ("\t\t\tif( m_Menu.m_fMenuDisplayed )\n\t\t\t\tm_Menu.Draw( flTime );\n")
+	ENTITY_CPP = ('\t\tgHUD.m_Spectator.AddOverviewEntity( type, ent, modelname );\n\n'
+		'\t\tif( (\tg_iUser1 == OBS_IN_EYE || gHUD.m_Spectator.m_pip->value == INSET_IN_EYE ) &&')
 
 	def integrate(self):
 		with tempfile.TemporaryDirectory() as directory:
@@ -264,6 +266,7 @@ class HudIntegrationTest(unittest.TestCase):
 			(client / "hud.h").write_text(self.HUD_H)
 			(client / "hud.cpp").write_text(self.HUD_CPP)
 			(client / "hud_redraw.cpp").write_text(self.REDRAW)
+			(client / "entity.cpp").write_text(self.ENTITY_CPP)
 			INTEGRATOR.integrate_dod_hud(client)
 			first = {n: (client / n).read_text() for n in ("hud.h", "hud.cpp", "hud_redraw.cpp")}
 			INTEGRATOR.integrate_dod_hud(client)
