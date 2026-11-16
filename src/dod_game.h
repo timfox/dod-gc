@@ -224,6 +224,13 @@ int Dod_FormatStatus(char *buffer, int size);
  * Returns characters written, or 0 if the player is not connected. */
 int Dod_FormatPlayerLine(int player_index, const char *name, char *buffer, int size);
 
+/* The player model's body value (entvars body) for a class: class_body + 6 * helmet + 48 * head + 336 * gear, the layout
+ * of the retail infantry models (us-inf, axis-inf, brit-inf: four body groups of 6/8/7/7 sub-models). The class picks the
+ * body and gear by weight (light rifleman, medium assault, heavy support and rocket, mg, sniper; the British have one
+ * body and pick the gear: Enfield, Sten, Bren, sniper), the player index picks the helmet and head so a team does not
+ * look cloned. Other models (the paratrooper ones) get 0. */
+int Dod_PlayerBodyValue(const char *model, DodClass player_class, int player_index);
+
 /* Team-grouped scoreboard text for one HUD block: each team's header with its score, then its players best first
  * ("1. Name  RIF  7  5/2"), the viewer's line marked with '>'. names[i] is the name of player index i (may be NULL).
  * Lines that do not fit are dropped from the bottom. Returns characters written. */

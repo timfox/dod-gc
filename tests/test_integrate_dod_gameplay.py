@@ -228,6 +228,31 @@ class TriggerHurtIntegrationTest(unittest.TestCase):
 				INTEGRATOR.integrate_trigger_hurt(dlls)
 
 
+class DefaultItemsIntegrationTest(unittest.TestCase):
+	RULES = ('void CHalfLifeMultiplay::PlayerSpawn( CBasePlayer *pPlayer )\n{\n\tBOOL addDefault = TRUE;\n\n'
+		'\tif( addDefault )\n\t{\n\t\tpPlayer->GiveNamedItem( "weapon_crowbar" );\n'
+		'\t\tpPlayer->GiveNamedItem( "weapon_9mmhandgun" );\n\t}\n}\n')
+
+	def test_stock_grant_is_skipped_under_dod_rules_and_patched_once(self):
+		with tempfile.TemporaryDirectory() as directory:
+			dlls = Path(directory)
+			(dlls / "multiplay_gamerules.cpp").write_text(self.RULES)
+			INTEGRATOR.integrate_default_items(dlls)
+			first = (dlls / "multiplay_gamerules.cpp").read_text()
+			INTEGRATOR.integrate_default_items(dlls)
+			self.assertEqual((dlls / "multiplay_gamerules.cpp").read_text(), first, "must be idempotent")
+			self.assertEqual(first.count("DodGC_SkipDefaultItems"), 2)	# the declaration and the one condition
+			self.assertIn("if( addDefault && !DodGC_SkipDefaultItems() )", first)
+			self.assertLess(first.index("extern BOOL DodGC_SkipDefaultItems"), first.index("CHalfLifeMultiplay::PlayerSpawn"))
+
+	def test_missing_anchor_fails_loudly(self):
+		with tempfile.TemporaryDirectory() as directory:
+			dlls = Path(directory)
+			(dlls / "multiplay_gamerules.cpp").write_text("int unrelated;\n")
+			with self.assertRaises(SystemExit):
+				INTEGRATOR.integrate_default_items(dlls)
+
+
 class WeaponHookIntegrationTest(unittest.TestCase):
 	WEAPONS = ('#include "gamerules.h"\n\nvoid W_Precache( void )\n{\n'
 		'\tUTIL_PrecacheOtherWeapon( "weapon_crowbar" );\n'

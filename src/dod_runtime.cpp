@@ -242,8 +242,13 @@ static const char *DodGC_BodyForTeam( DodTeam team )
 {
 	if( team == DOD_TEAM_AXIS )
 		return CVAR_GET_STRING( "dod_axis_body" );
-	if( team == DOD_TEAM_ALLIES )
-		return CVAR_GET_STRING( "dod_allies_body" );
+	if( team == DOD_TEAM_ALLIES ) {
+		const char *body = CVAR_GET_STRING( "dod_allies_body" );
+		/* On the British maps the Allies are British unless the map cfg named another model. */
+		if( Dod_GetAlliesCountry() == DOD_COUNTRY_BRITISH && !strcmp( body, "us-inf" ) )
+			return "brit-inf";
+		return body;
+	}
 	return NULL;
 }
 
@@ -328,6 +333,12 @@ static void DodGC_ApplyClass( CBasePlayer *pPlayer, DodClass player_class )
 		DodBots_SetGranting( FALSE );
 	}
 	DodGC_ApplyBody( pPlayer );
+	{
+		/* the sub-models of the retail player model that make up this class (see Dod_PlayerBodyValue) */
+		const char *model = DodGC_BodyForTeam( DodGC_TeamForPlayer( pPlayer ) );
+		pPlayer->pev->body = Dod_PlayerBodyValue( model, player_class, index );
+		ALERT( at_console, "DoD player body %s: %s %s body %d\n", STRING( pPlayer->pev->netname ), model ? model : "-", Dod_ClassName( player_class ), pPlayer->pev->body );
+	}
 	DodGC_ClearMenu( pPlayer );
 }
 
@@ -626,6 +637,13 @@ void CHalfLifeDoD::InitHUD( CBasePlayer *pPlayer )
 		return;
 	}
 	DodGC_ShowTeamMenu( pPlayer );
+}
+
+/* Called from the SDK's CHalfLifeMultiplay::PlayerSpawn (patched in by scripts/integrate-dod-gameplay.py): in a DoD
+ * match the class kit is the only thing a player gets, not the Half-Life crowbar and 9mm. */
+BOOL DodGC_SkipDefaultItems( void )
+{
+	return Dod_GameIsActive() ? TRUE : FALSE;
 }
 
 void CHalfLifeDoD::PlayerSpawn( CBasePlayer *pPlayer )

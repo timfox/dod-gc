@@ -659,6 +659,34 @@ int Dod_FormatPlayerLine(int player_index, const char *name, char *buffer, int s
 	return written >= size ? size - 1 : written;
 }
 
+int Dod_PlayerBodyValue(const char *model, DodClass player_class, int player_index)
+{
+	/* indexes into the model's body (and gear) group, by class: rifleman, assault, support, sniper, mg, rocket */
+	static const int us_part[DOD_CLASS_COUNT] = { 0, 0, 1, 2, 4, 3, 2 };	/* light, medium, heavy, sniper, mg, heavy */
+	static const int axis_part[DOD_CLASS_COUNT] = { 0, 0, 2, 3, 5, 4, 3 };	/* light, medium, heavy, sniper, mg, heavy */
+	static const int brit_gear[DOD_CLASS_COUNT] = { 0, 0, 1, 2, 3, 2, 0 };	/* Enfield, Sten, Bren, sniper, Bren, Enfield */
+	int part, gear, helmet, head, who = player_index > 0 ? player_index : 0;
+	if (!model || player_class <= DOD_CLASS_NONE || player_class >= DOD_CLASS_COUNT)
+		return 0;
+	if (!strcmp(model, "us-inf")) {
+		part = gear = us_part[player_class];
+		helmet = who % 3;	/* helmet1..3 (hair, 3 and up, is for the paratroopers) */
+		head = who % 5;
+	} else if (!strcmp(model, "axis-inf")) {
+		part = gear = axis_part[player_class];
+		helmet = 0;
+		head = who % 6;
+	} else if (!strcmp(model, "brit-inf")) {
+		part = 0;
+		gear = brit_gear[player_class];
+		helmet = player_class == DOD_CLASS_SNIPER ? 1 : 0;
+		head = who % 4;
+	} else {
+		return 0;
+	}
+	return part + 6 * helmet + 48 * head + 336 * gear;
+}
+
 static const char *dod_class_tag(DodClass c)
 {
 	switch (c) {

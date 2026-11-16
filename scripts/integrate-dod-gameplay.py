@@ -204,6 +204,18 @@ def integrate_trigger_hurt(dlls: Path) -> None:
 		'\t}\n')
 
 
+def integrate_default_items(dlls: Path) -> None:
+	"""The Half-Life deathmatch spawn gives every player a crowbar and a 9mm handgun (and precaches/binds their models);
+	in a DoD match the class kit is the only thing handed out, so the stock grant is skipped while DoD rules are active."""
+	rules = dlls / "multiplay_gamerules.cpp"
+	replace_once(rules,
+		'void CHalfLifeMultiplay::PlayerSpawn( CBasePlayer *pPlayer )\n{\n',
+		'extern BOOL DodGC_SkipDefaultItems( void );\n\nvoid CHalfLifeMultiplay::PlayerSpawn( CBasePlayer *pPlayer )\n{\n')
+	replace_once(rules,
+		'\tif( addDefault )\n\t{\n',
+		'\tif( addDefault && !DodGC_SkipDefaultItems() )\n\t{\n')
+
+
 def integrate_grenades(dlls: Path) -> None:
 	"""DoD hand grenades: models, fuse, damage and a budgeted explosion."""
 	hand = dlls / "handgrenade.cpp"
@@ -493,6 +505,7 @@ def main() -> int:
 		integrate_weapon(dlls / filename, class_name, kind, animation, event, legacy_model, models)
 	integrate_grenades(dlls)
 	integrate_trigger_hurt(dlls)
+	integrate_default_items(dlls)
 	integrate_weapons(dlls)
 	integrate_dod_hud(client)
 	integrate_spectator_camera(client)

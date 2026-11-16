@@ -87,6 +87,36 @@ static void test_player_line(void)
 	Dod_GameShutdown();
 }
 
+static void test_player_body(void)
+{
+	/* us-inf: rifleman is light_body (0) + light_gear (0); player 1 has helmet2 (1) and head1 (1) */
+	assert(Dod_PlayerBodyValue("us-inf", DOD_CLASS_RIFLEMAN, 0) == 0);
+	assert(Dod_PlayerBodyValue("us-inf", DOD_CLASS_RIFLEMAN, 1) == 0 + 6 * 1 + 48 * 1 + 336 * 0);
+	assert(Dod_PlayerBodyValue("us-inf", DOD_CLASS_MG, 0) == 3 + 336 * 3);	/* mg_body and mg_gear */
+	assert(Dod_PlayerBodyValue("us-inf", DOD_CLASS_SNIPER, 2) == 4 + 6 * 2 + 48 * 2 + 336 * 4);
+	/* axis-inf has a k43 part at index 1, so medium is 2 and the sniper is 5 */
+	assert(Dod_PlayerBodyValue("axis-inf", DOD_CLASS_ASSAULT, 0) == 2 + 336 * 2);
+	assert(Dod_PlayerBodyValue("axis-inf", DOD_CLASS_SNIPER, 5) == 5 + 48 * 5 + 336 * 5);
+	/* brit-inf: one body, the gear is the class: Enfield 0, Sten 1, Bren 2, sniper gear 3 with the sniper helmet */
+	assert(Dod_PlayerBodyValue("brit-inf", DOD_CLASS_RIFLEMAN, 0) == 0);
+	assert(Dod_PlayerBodyValue("brit-inf", DOD_CLASS_ASSAULT, 3) == 0 + 48 * 3 + 336 * 1);
+	assert(Dod_PlayerBodyValue("brit-inf", DOD_CLASS_SNIPER, 0) == 6 * 1 + 336 * 3);
+	/* never past the model's groups (6 bodies, 8 helmets, 7 heads, 7 gear sets): the largest value is below 6*8*7*7 */
+	{
+		const char *models[3] = { "us-inf", "axis-inf", "brit-inf" };
+		int m, c, p;
+		for (m = 0; m < 3; ++m)
+			for (c = DOD_CLASS_RIFLEMAN; c < DOD_CLASS_COUNT; ++c)
+				for (p = 0; p < 32; ++p) {
+					const int v = Dod_PlayerBodyValue(models[m], (DodClass)c, p);
+					assert(v >= 0 && v < 6 * 8 * 7 * 7 && v % 6 < 6 && (v / 6) % 8 < 3 && (v / 48) % 7 < 6 && v / 336 < 6);
+				}
+	}
+	assert(Dod_PlayerBodyValue("us-para", DOD_CLASS_RIFLEMAN, 4) == 0);
+	assert(Dod_PlayerBodyValue(NULL, DOD_CLASS_RIFLEMAN, 4) == 0);
+	assert(Dod_PlayerBodyValue("us-inf", DOD_CLASS_NONE, 4) == 0);
+}
+
 static void test_scoreboard(void)
 {
 	char board[512], tiny[40];
@@ -761,6 +791,7 @@ int main(void)
 	test_status_line();
 	test_player_line();
 	test_scoreboard();
+	test_player_body();
 	test_loadouts();
 	test_contested_capture_flip_and_round_win();
 	test_kill_scoring_and_timed_tie();
