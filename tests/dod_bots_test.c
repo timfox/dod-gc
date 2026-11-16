@@ -1,6 +1,7 @@
 #include "dod_bots.h"
 
 #include <assert.h>
+#include <stdlib.h>
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
@@ -410,6 +411,100 @@ static void test_nav(void)
 }
 
 
+/* The heap A* against a brute-force Dijkstra on the real charlie graph (skipped when the file is not found):
+ * same cost for every sampled pair, and every step of the path is a real edge. */
+static float real_edge_cost(const DodNav *nav, int a, int b)
+{
+	float ax, ay, az, bx, by, bz, c;
+	const int kind = Dod_NavEdgeKind(nav, a, b);
+	Dod_NavNodePos(nav, a, &ax, &ay, &az);
+	Dod_NavNodePos(nav, b, &bx, &by, &bz);
+	c = sqrtf((bx - ax) * (bx - ax) + (by - ay) * (by - ay) + (bz - az) * (bz - az)) + 1.0f;
+	if (kind == DOD_NAV_JUMP)
+		c += 64.0f;
+	else if (kind == DOD_NAV_DROP)
+		c += 16.0f;
+	else if (kind == DOD_NAV_LADDER)
+		c = c * 1.5f + 64.0f;
+	return c;
+}
+
+static void test_nav_real(void)
+{
+	static const char *const paths[] = { "data/waypoints/dod_charlie.wpt", "../data/waypoints/dod_charlie.wpt", NULL };
+	unsigned char *buf = NULL;
+	long len = 0;
+	DodNav nav;
+	int pi, from, to, sampled = 0, n, e, k;
+	FILE *fh = NULL;
+	for (pi = 0; paths[pi] && !fh; ++pi)
+		fh = fopen(paths[pi], "rb");
+	if (!fh) {
+		printf("test_nav_real: charlie graph not found, skipped\n");
+		return;
+	}
+	fseek(fh, 0, SEEK_END);
+	len = ftell(fh);
+	fseek(fh, 0, SEEK_SET);
+	buf = (unsigned char *)malloc((size_t)len);
+	assert(buf && fread(buf, 1, (size_t)len, fh) == (size_t)len);
+	fclose(fh);
+	assert(Dod_NavLoad(&nav, buf, (int)len));
+	n = nav.node_count;
+	{
+		float *dist = (float *)malloc(sizeof(float) * (size_t)n);
+		char *done = (char *)malloc((size_t)n);
+		int path[DOD_NAV_MAX_PATH];
+		assert(dist && done);
+		for (from = 0; from < n; from += n / 7 + 1) {
+			int i, cur;
+			for (i = 0; i < n; ++i) {
+				dist[i] = 1e30f;
+				done[i] = 0;
+			}
+			dist[from] = 0.0f;
+			for (;;) {	/* brute-force Dijkstra */
+				cur = -1;
+				for (i = 0; i < n; ++i)
+					if (!done[i] && dist[i] < 1e29f && (cur < 0 || dist[i] < dist[cur]))
+						cur = i;
+				if (cur < 0)
+					break;
+				done[cur] = 1;
+				for (e = nav.first[cur]; e < nav.first[cur + 1]; ++e) {
+					const int nx = (int)(((unsigned)nav.edges[2 * e] << 8 | nav.edges[2 * e + 1]) & 0x3fff);
+					const float nd = dist[cur] + real_edge_cost(&nav, cur, nx);
+					if (nd < dist[nx])
+						dist[nx] = nd;
+				}
+			}
+			for (to = 0; to < n; to += n / 11 + 3) {
+				const int len_path = Dod_NavPath(&nav, from, to, path, DOD_NAV_MAX_PATH);
+				float cost = 0.0f;
+				if (dist[to] > 1e29f) {
+					assert(len_path == 0);
+					continue;
+				}
+				if (len_path == 0)
+					continue;	/* longer than the path buffer: the game falls back to heading for the goal */
+				assert(path[0] == from && path[len_path - 1] == to);
+				for (k = 0; k + 1 < len_path; ++k) {
+					assert(Dod_NavEdgeKind(&nav, path[k], path[k + 1]) >= 0);
+					cost += real_edge_cost(&nav, path[k], path[k + 1]);
+				}
+				assert(fabsf(cost - dist[to]) < 0.5f);	/* optimal */
+				++sampled;
+			}
+		}
+		free(dist);
+		free(done);
+	}
+	assert(sampled > 20);
+	Dod_NavFree(&nav);
+	free(buf);
+	printf("test_nav_real: %d optimal paths checked on %d waypoints\n", sampled, n);
+}
+
 static void test_goap(void)
 {
 	const unsigned ammo = DOD_WS_HAS_AMMO;
@@ -567,6 +662,7 @@ int main(void)
 	test_decide();
 	test_objectives();
 	test_nav();
+	test_nav_real();
 	test_goap();
 	test_perception();
 	return 0;

@@ -648,9 +648,12 @@ int Dod_NavLoad(DodNav *nav, const unsigned char *data, int len)
 	nav->edges = data + 20 + 7 * nav->node_count;
 	nav->first = (unsigned short *)malloc(sizeof(unsigned short) * (size_t)(nav->node_count + 1));
 	nav->g = (float *)malloc(sizeof(float) * (size_t)nav->node_count);
+	nav->f = (float *)malloc(sizeof(float) * (size_t)nav->node_count);
 	nav->parent = (short *)malloc(sizeof(short) * (size_t)nav->node_count);
 	nav->state = (unsigned char *)malloc((size_t)nav->node_count);
-	if (!nav->first || !nav->g || !nav->parent || !nav->state) {
+	nav->heap = (unsigned short *)malloc(sizeof(unsigned short) * (size_t)nav->node_count);
+	nav->hpos = (short *)malloc(sizeof(short) * (size_t)nav->node_count);
+	if (!nav->first || !nav->g || !nav->f || !nav->parent || !nav->state || !nav->heap || !nav->hpos) {
 		Dod_NavFree(nav);
 		return 0;
 	}
@@ -678,8 +681,11 @@ void Dod_NavFree(DodNav *nav)
 		return;
 	free(nav->first);
 	free(nav->g);
+	free(nav->f);
 	free(nav->parent);
 	free(nav->state);
+	free(nav->heap);
+	free(nav->hpos);
 	memset(nav, 0, sizeof(*nav));
 }
 
@@ -765,46 +771,82 @@ int Dod_NavPenalized(const DodNav *nav, int from, int to)
 	return 0;
 }
 
+static void nav_heap_up(DodNav *nav, int i)
+{
+	const unsigned short n = nav->heap[i];
+	while (i > 0) {
+		const int p = (i - 1) / 2;
+		if (nav->f[nav->heap[p]] <= nav->f[n])
+			break;
+		nav->heap[i] = nav->heap[p];
+		nav->hpos[nav->heap[i]] = (short)i;
+		i = p;
+	}
+	nav->heap[i] = n;
+	nav->hpos[n] = (short)i;
+}
+
+static void nav_heap_down(DodNav *nav, int i, int count)
+{
+	const unsigned short n = nav->heap[i];
+	for (;;) {
+		int c = 2 * i + 1;
+		if (c >= count)
+			break;
+		if (c + 1 < count && nav->f[nav->heap[c + 1]] < nav->f[nav->heap[c]])
+			++c;
+		if (nav->f[n] <= nav->f[nav->heap[c]])
+			break;
+		nav->heap[i] = nav->heap[c];
+		nav->hpos[nav->heap[i]] = (short)i;
+		i = c;
+	}
+	nav->heap[i] = n;
+	nav->hpos[n] = (short)i;
+}
+
+static float nav_dist(const DodNav *nav, int a, int b)
+{
+	float ax, ay, az, bx, by, bz;
+	Dod_NavNodePos(nav, a, &ax, &ay, &az);
+	Dod_NavNodePos(nav, b, &bx, &by, &bz);
+	return sqrtf((bx - ax) * (bx - ax) + (by - ay) * (by - ay) + (bz - az) * (bz - az));
+}
+
 int Dod_NavPath(DodNav *nav, int from, int to, int *path, int max_path)
 {
-	int i, e, count, n;
-	float tx, ty, tz;
+	int i, e, count, n, open = 0;
 	if (!nav || !path || from < 0 || to < 0 || from >= nav->node_count || to >= nav->node_count || max_path < 1)
 		return 0;
 	for (i = 0; i < nav->node_count; ++i) {
 		nav->state[i] = 0;
 		nav->parent[i] = -1;
 	}
-	Dod_NavNodePos(nav, to, &tx, &ty, &tz);
 	nav->g[from] = 0.0f;
+	nav->f[from] = nav_dist(nav, from, to);
 	nav->state[from] = 1;
-	for (;;) {
-		int cur = -1;
-		float cur_f = 0.0f;
-		for (i = 0; i < nav->node_count; ++i) {
-			float x, y, z, h, f;
-			if (nav->state[i] != 1)
-				continue;
-			Dod_NavNodePos(nav, i, &x, &y, &z);
-			h = sqrtf((x - tx) * (x - tx) + (y - ty) * (y - ty) + (z - tz) * (z - tz));
-			f = nav->g[i] + h;
-			if (cur < 0 || f < cur_f) {
-				cur = i;
-				cur_f = f;
-			}
-		}
-		if (cur < 0)
-			return 0;
+	nav->heap[0] = (unsigned short)from;
+	nav->hpos[from] = 0;
+	open = 1;
+	while (open > 0) {
+		const int cur = nav->heap[0];
 		if (cur == to)
 			break;
+		/* pop the best open node */
+		--open;
+		if (open > 0) {
+			nav->heap[0] = nav->heap[open];
+			nav->hpos[nav->heap[0]] = 0;
+			nav_heap_down(nav, 0, open);
+		}
 		nav->state[cur] = 2;
 		for (e = nav->first[cur]; e < nav->first[cur + 1]; ++e) {
 			const unsigned v = nav_be16(nav->edges + 2 * e);
 			const int next = (int)(v & 0x3fff), kind = (int)(v >> 14);
-			float cost, g, cx, cy, cz, nx, ny, nz;
-			Dod_NavNodePos(nav, cur, &cx, &cy, &cz);
-			Dod_NavNodePos(nav, next, &nx, &ny, &nz);
-			cost = sqrtf((nx - cx) * (nx - cx) + (ny - cy) * (ny - cy) + (nz - cz) * (nz - cz)) + 1.0f;
+			float cost, g;
+			if (nav->state[next] == 2)
+				continue;
+			cost = nav_dist(nav, cur, next) + 1.0f;
 			if (kind == DOD_NAV_JUMP)
 				cost += 64.0f;
 			else if (kind == DOD_NAV_DROP)
@@ -814,13 +856,24 @@ int Dod_NavPath(DodNav *nav, int from, int to, int *path, int max_path)
 			if (Dod_NavPenalized(nav, cur, next))
 				cost += 1500.0f;
 			g = nav->g[cur] + cost;
-			if (nav->state[next] == 2 || (nav->state[next] == 1 && g >= nav->g[next]))
+			if (nav->state[next] == 1 && g >= nav->g[next])
 				continue;
 			nav->g[next] = g;
+			nav->f[next] = g + nav_dist(nav, next, to);
 			nav->parent[next] = (short)cur;
-			nav->state[next] = 1;
+			if (nav->state[next] == 1) {
+				nav_heap_up(nav, nav->hpos[next]);
+			} else {
+				nav->state[next] = 1;
+				nav->heap[open] = (unsigned short)next;
+				nav->hpos[next] = (short)open;
+				nav_heap_up(nav, open);
+				++open;
+			}
 		}
 	}
+	if (open <= 0)
+		return 0;
 	count = 0;
 	for (n = to; n >= 0; n = nav->parent[n]) {
 		if (++count > max_path)

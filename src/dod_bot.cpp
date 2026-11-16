@@ -14,15 +14,31 @@
 #include "dod_runtime.h"
 
 #include <math.h>
+#if defined( __GAMECUBE__ )
+/* The PowerPC time base (40.5 MHz: 40500 ticks per millisecond), the GameCube's own clock, so the cost below is in
+ * console time, not host time. Read directly: libogc's headers redefine BOOL and its gettime() is an inline. */
+static inline unsigned long long gettime( void )
+{
+	unsigned int hi, lo, hi2;
+	do
+	{
+		__asm__ volatile( "mftbu %0" : "=r"( hi ) );
+		__asm__ volatile( "mftb %0" : "=r"( lo ) );
+		__asm__ volatile( "mftbu %0" : "=r"( hi2 ) );
+	} while( hi != hi2 );
+	return ( (unsigned long long)hi << 32 ) | lo;
+}
+#define DOD_BOT_TICKS_TO_US( t ) ( (t) * 1000ULL / 40500ULL )
+#endif
 #include <string.h>
 
 /* dod_bots: bots on top of the humans, filling free slots (0 = none). On
- * GameCube the engine decides how many slots there are (sv_gc_slots, 2 by
- * default), so 3 means "fill the server" without ever asking for more than the
- * slots allow. dod_bot_skill: aim 0-3. dod_bots_online: allow bots while the
+ * GameCube the engine decides how many slots there are (sv_gc_slots, 5 for a DoD
+ * build: the human and four bots), so 7 means "fill the server" without ever asking
+ * for more than the slots allow (and PlanBots stops short when edicts run low). dod_bot_skill: aim 0-3. dod_bots_online: allow bots while the
  * network link is up (otherwise the free slot is kept for the peer). */
 #if defined( __GAMECUBE__ )
-static cvar_t dod_bots = { "dod_bots", "3", FCVAR_SERVER };
+static cvar_t dod_bots = { "dod_bots", "7", FCVAR_SERVER };
 #else
 static cvar_t dod_bots = { "dod_bots", "1", FCVAR_SERVER };
 #endif
@@ -34,8 +50,11 @@ static cvar_t dod_bot_stage = { "dod_bot_stage", "0", FCVAR_SERVER };
 /* The most bots ever; the free slots are the real limit. */
 #define DOD_BOT_HARD_CAP 7
 
+/* Free edicts that must remain before another bot is added (see PlanBots). */
+#define DOD_BOT_EDICT_RESERVE 26
+
 #if defined( __GAMECUBE__ )
-#define DOD_BOT_MAX_SLOTS 4	/* the listen server has 2 client slots */
+#define DOD_BOT_MAX_SLOTS 10	/* bot state slots; the engine's slot count (XASH_GC_DEFAULT_SLOTS, 3 by default) is the real limit */
 #else
 #define DOD_BOT_MAX_SLOTS 32
 #endif
@@ -111,7 +130,7 @@ typedef struct DodBotState {
  * map change and when the last bot leaves; if the heap cannot give it, no bot
  * is added rather than failing later. */
 #if defined( __GAMECUBE__ )
-#define DOD_BOT_MEM_BUDGET 3072
+#define DOD_BOT_MEM_BUDGET 6144
 #else
 #define DOD_BOT_MEM_BUDGET 8192
 #endif
@@ -357,11 +376,30 @@ static BOOL NetworkUp( void )
 	return status && status[0] >= '0' && status[0] <= '9';
 }
 
+/* The bots' share of a frame (every RunBot incl. the player move each one costs the engine), in microseconds of
+ * console time, averaged and worst over the last log interval. */
+static unsigned long long g_think_us_sum, g_think_us_max;
+static unsigned g_think_frames;
+
 static void PlanBots( void )
 {
 	int humans, bots, team_counts[4], bot_team_counts[4], special_counts[4][DOD_CLASS_COUNT], target;
 
+	static float next_edict_log;
 	CountPlayers( &humans, &bots, team_counts, bot_team_counts, special_counts );
+	if( gpGlobals->time >= next_edict_log )
+	{
+		/* entities are the real ceiling for a crowded match (a respawn drops a weapon box); worth watching */
+		next_edict_log = gpGlobals->time + 10.0f;
+		ALERT( at_console, "DoD edicts: %d in use of %d (%d humans, %d bots)\n", g_engfuncs.pfnNumberOfEntities(), gpGlobals->maxEntities, humans, bots );
+		if( g_think_frames )
+		{
+			ALERT( at_console, "DoD bots: think %.2f ms average, %.2f ms worst over %u frames (%d bots)\n",
+				(double)g_think_us_sum / (double)g_think_frames / 1000.0, (double)g_think_us_max / 1000.0, g_think_frames, bots );
+			g_think_us_sum = g_think_us_max = 0;
+			g_think_frames = 0;
+		}
+	}
 	if( humans > 0 && g_first_human_time == 0.0f )
 		g_first_human_time = gpGlobals->time;
 	if( humans == 0 )
@@ -377,7 +415,22 @@ static void PlanBots( void )
 	if( bots > target )
 		KickOneBot();
 	else if( bots < target && gpGlobals->time - g_first_human_time > 3.0f )
+	{
+		/* Entities are the ceiling, not memory: a bot costs about 3 edicts and every respawn drops a weapon box, and
+		 * a map like charlie already uses 420 of the 460. Keep a reserve so a crowd never runs the table dry. */
+		if( gpGlobals->maxEntities - g_engfuncs.pfnNumberOfEntities() < DOD_BOT_EDICT_RESERVE )
+		{
+			static float next_note;
+			if( gpGlobals->time >= next_note )
+			{
+				next_note = gpGlobals->time + 30.0f;
+				ALERT( at_console, "DoD bots: %d of %d wanted, not adding more (%d of %d edicts in use)\n", bots, target,
+					g_engfuncs.pfnNumberOfEntities(), gpGlobals->maxEntities );
+			}
+			return;
+		}
 		AddBot( team_counts, bot_team_counts, special_counts );	/* one per plan tick: no spawn burst */
+	}
 }
 
 /* -------------------------------------------------------------------- AI */
@@ -753,10 +806,21 @@ static BOOL NodeVisible( CBasePlayer *pBot, int node )
 	return tr.flFraction >= 0.98f;
 }
 
+/* Planning is the one expensive thing a bot does (a search over the whole graph), so it is rationed: at most
+ * DOD_BOT_PLAN_SEARCHES searches per plan, and only one bot plans in a given server frame. */
+#define DOD_BOT_PLAN_SEARCHES 4
+static float g_plan_stamp = -1.0f;
+
 static BOOL PlanPath( CBasePlayer *pBot, DodBotState *state )
 {
-	int starts[6], goals[4], tmp[DOD_NAV_MAX_PATH], ns, ng, i, j, k, pass, len;
+	int starts[6], goals[4], tmp[DOD_NAV_MAX_PATH], ns, ng, i, j, k, pass, len, searches = 0;
 	const Vector origin = pBot->pev->origin;
+	if( gpGlobals->time <= g_plan_stamp )
+	{
+		state->path_replan = gpGlobals->time + 0.05f;	/* another bot planned this frame: try again in a moment */
+		return FALSE;
+	}
+	g_plan_stamp = gpGlobals->time;
 	Dod_NavSetTime( &g_nav, gpGlobals->time );
 	ns = Dod_NavNearest( &g_nav, origin.x, origin.y, origin.z, starts, 6 );
 	ng = Dod_NavNearest( &g_nav, state->nav_pos.x, state->nav_pos.y, state->nav_pos.z, goals, 4 );
@@ -768,6 +832,8 @@ static BOOL PlanPath( CBasePlayer *pBot, DodBotState *state )
 				continue;
 			for( j = 0; j < ng; j++ )
 			{
+				if( searches++ >= DOD_BOT_PLAN_SEARCHES )
+					return FALSE;
 				len = Dod_NavPath( &g_nav, starts[i], goals[j], tmp, DOD_NAV_MAX_PATH );
 				if( len <= 0 )
 					continue;
@@ -1716,10 +1782,22 @@ void DodBots_Think( void )
 		PlanBots();
 	}
 	StageStep();
+#if defined( __GAMECUBE__ )
+	const unsigned long long t0 = gettime();
+#endif
 	for( i = 1; i <= gpGlobals->maxClients && i <= DOD_BOT_MAX_SLOTS; i++ )
 	{
 		CBasePlayer *pBot = PlayerAt( i );
 		if( pBot && DodBots_IsBot( pBot ) )
 			RunBot( i, pBot );
 	}
+#if defined( __GAMECUBE__ )
+	{
+		const unsigned long long us = DOD_BOT_TICKS_TO_US( gettime() - t0 );
+		g_think_us_sum += us;
+		if( us > g_think_us_max )
+			g_think_us_max = us;
+		g_think_frames++;
+	}
+#endif
 }
