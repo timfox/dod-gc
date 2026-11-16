@@ -312,7 +312,15 @@ static int choose_attack(const DodBotObjectiveInfo *list, int count, DodTeam tea
 			continue;
 		if (o->id == current_id)
 			return o->id;
-		d = o->distance + (use_crowd ? DOD_BOT_CROWD_PENALTY * (float)o->crowd : 0.0f);
+		d = o->distance;
+		if (use_crowd) {
+			/* a point that needs more than one player: a group forming there is joined (each teammate already
+			 * heading there makes it nearer, until it has enough); otherwise teammates spread out */
+			if (o->need > 1 && o->crowd > 0 && o->crowd < o->need)
+				d -= DOD_BOT_CROWD_PENALTY * (float)o->crowd;
+			else
+				d += DOD_BOT_CROWD_PENALTY * (float)o->crowd;
+		}
 		if (best < 0 || d < best_dist) {
 			best = o->id;
 			best_dist = d;
@@ -845,6 +853,57 @@ int Dod_NavInside(const DodNav *nav, const float mins[3], const float maxs[3], f
 	return count;
 }
 
+void Dod_NavAddHazard(DodNav *nav, const float mins[3], const float maxs[3], int team_mask)
+{
+	int i;
+	if (!nav || !mins || !maxs || nav->zone_count >= DOD_NAV_MAX_ZONES || !team_mask)
+		return;
+	for (i = 0; i < 3; ++i) {
+		nav->zone_min[nav->zone_count][i] = mins[i];
+		nav->zone_max[nav->zone_count][i] = maxs[i];
+	}
+	nav->zone_teams[nav->zone_count] = (unsigned char)team_mask;
+	nav->zone_count++;
+}
+
+void Dod_NavSetAvoidTeam(DodNav *nav, DodTeam team)
+{
+	if (nav)
+		nav->avoid_team = team == DOD_TEAM_ALLIES || team == DOD_TEAM_AXIS ? (int)team : 0;
+}
+
+/* A player standing here (origin 36 above the floor) is in the zone: the box grown 16 sideways, from just
+ * below its floor to a head above its top. */
+static int nav_in_hazard(const DodNav *nav, int team, float x, float y, float z)
+{
+	int i;
+	for (i = 0; i < nav->zone_count; ++i) {
+		if (!(nav->zone_teams[i] & (1 << team)))
+			continue;
+		if (x >= nav->zone_min[i][0] - 16.0f && x <= nav->zone_max[i][0] + 16.0f && y >= nav->zone_min[i][1] - 16.0f &&
+			y <= nav->zone_max[i][1] + 16.0f && z >= nav->zone_min[i][2] - 40.0f && z <= nav->zone_max[i][2] + 36.0f)
+			return 1;
+	}
+	return 0;
+}
+
+/* Does the straight edge a -> b enter a zone hurting the team? Sampled every ~24 units. */
+static int nav_edge_hazard(const DodNav *nav, int team, int a, int b)
+{
+	float ax, ay, az, bx, by, bz, len;
+	int steps, i;
+	Dod_NavNodePos(nav, a, &ax, &ay, &az);
+	Dod_NavNodePos(nav, b, &bx, &by, &bz);
+	len = sqrtf((bx - ax) * (bx - ax) + (by - ay) * (by - ay));
+	steps = (int)(len / 24.0f) + 1;
+	for (i = 0; i <= steps; ++i) {
+		const float t = (float)i / (float)steps;
+		if (nav_in_hazard(nav, team, ax + (bx - ax) * t, ay + (by - ay) * t, az + (bz - az) * t))
+			return 1;
+	}
+	return 0;
+}
+
 int Dod_NavPath(DodNav *nav, int from, int to, int *path, int max_path)
 {
 	int i, e, count, n, open = 0;
@@ -887,6 +946,8 @@ int Dod_NavPath(DodNav *nav, int from, int to, int *path, int max_path)
 				cost = cost * 1.5f + 64.0f;
 			if (Dod_NavPenalized(nav, cur, next))
 				cost += 1500.0f;
+			if (nav->avoid_team && nav->zone_count && nav_edge_hazard(nav, nav->avoid_team, cur, next))
+				cost += DOD_NAV_HAZARD_COST;
 			g = nav->g[cur] + cost;
 			if (nav->state[next] == 1 && g >= nav->g[next])
 				continue;

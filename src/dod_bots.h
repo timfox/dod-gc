@@ -116,6 +116,7 @@ typedef struct DodBotObjectiveInfo {
 	float distance;			/* from the bot, ground plane */
 	int blocked;			/* blacklisted for this bot: it could not get there */
 	int crowd;			/* teammates already heading there (spreads attackers out) */
+	int need;			/* players of the bot's team that must be inside to capture (0 or 1: one) */
 } DodBotObjectiveInfo;
 
 typedef enum {
@@ -209,7 +210,8 @@ unsigned Dod_GoapStepApply(int action, unsigned state);
  * rest attack; a lone bot attacks, and defends only when there is nothing left to take. */
 int Dod_BotRole(int rank, int team_bots, int held_points);
 /* The objective for a role: an attacker takes the nearest uncaptured point (teammates already on it
- * make it count as farther by DOD_BOT_CROWD_PENALTY each so a team spreads out), a defender guards a
+ * make it count as farther by DOD_BOT_CROWD_PENALTY each so a team spreads out, except a point that needs
+ * several players, where a forming group is joined instead: each teammate already there makes it nearer), a defender guards a
  * point under attack, else the nearest held one. Each falls back to the other when it has no target. */
 #define DOD_BOT_CROWD_PENALTY 450.0f
 int Dod_BotChooseObjectiveRole(const DodBotObjectiveInfo *list, int count, DodTeam team, int current_id, int role, int *kind);
@@ -263,6 +265,8 @@ float Dod_BotBurstPause(int automatic, float distance, float roll);
  * and ladders between neighbouring nodes. The format is big-endian; see the tool for the layout. The search
  * is A* over the graph. Everything here is engine-independent so it can be host-tested. */
 #define DOD_NAV_MAX_PATH 72
+#define DOD_NAV_MAX_ZONES 12
+#define DOD_NAV_HAZARD_COST 4000.0f	/* added to an edge that crosses a zone that hurts the planning team */
 
 typedef enum {
 	DOD_NAV_WALK = 0,
@@ -286,6 +290,11 @@ typedef struct DodNav {
 	int pen_from[8], pen_to[8];	/* edges a bot got stuck on, avoided for a while (shared by all bots) */
 	float pen_until[8], now;
 	int pen_next;
+	/* damage zones (trigger_hurt boxes): a route through one is avoided by the teams it hurts */
+	int zone_count;
+	float zone_min[DOD_NAV_MAX_ZONES][3], zone_max[DOD_NAV_MAX_ZONES][3];
+	unsigned char zone_teams[DOD_NAV_MAX_ZONES];	/* bit (1 << team) for each team the zone hurts */
+	int avoid_team;				/* the team whose routes are being planned, or 0 */
 } DodNav;
 
 /* Parse a .wpt image into a zeroed or freed DodNav. The data must stay alive while the DodNav is used.
@@ -302,6 +311,10 @@ int Dod_NavNearest(const DodNav *nav, float x, float y, float z, int *out, int m
 void Dod_NavPenalize(DodNav *nav, int from, int to, float until);
 int Dod_NavPenalized(const DodNav *nav, int from, int to);
 void Dod_NavSetTime(DodNav *nav, float now);
+/* Register a damage zone (a box) that hurts the teams in team_mask (bit 1 << DodTeam); up to DOD_NAV_MAX_ZONES. */
+void Dod_NavAddHazard(DodNav *nav, const float mins[3], const float maxs[3], int team_mask);
+/* The team the next searches are for: edges that cross a zone hurting it cost DOD_NAV_HAZARD_COST more. 0 = none. */
+void Dod_NavSetAvoidTeam(DodNav *nav, DodTeam team);
 /* Up to max nodes inside a capture volume (the box grown by margin sideways and 72 vertically), nearest to its
  * centre first; returns how many. A bot heading for a point should route to one of these, not to the node nearest
  * the centre, which can lie outside a large or odd-shaped volume. */

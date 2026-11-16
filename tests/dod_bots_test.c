@@ -394,6 +394,27 @@ static void test_nav(void)
 	count = Dod_NavPath(&nav, 0, 4, path, DOD_NAV_MAX_PATH);
 	assert(count == 4 && path[2] == 2);
 
+	/* damage zones: a team routes round a zone that hurts it; the other team, and a search with no team, ignore it */
+	{
+		const float zmin[3] = { 150.0f, -40.0f, -60.0f }, zmax[3] = { 250.0f, 40.0f, 40.0f };	/* around node 2 (200,0,0) */
+		Dod_NavAddHazard(&nav, zmin, zmax, 1 << DOD_TEAM_AXIS);
+		Dod_NavSetAvoidTeam(&nav, DOD_TEAM_AXIS);
+		count = Dod_NavPath(&nav, 0, 4, path, DOD_NAV_MAX_PATH);
+		assert(count == 4 && path[2] == 3);	/* the ladder route, not the jump through the zone */
+		Dod_NavSetAvoidTeam(&nav, DOD_TEAM_ALLIES);
+		count = Dod_NavPath(&nav, 0, 4, path, DOD_NAV_MAX_PATH);
+		assert(count == 4 && path[2] == 2);	/* the zone does not hurt the Allies */
+		Dod_NavSetAvoidTeam(&nav, DOD_TEAM_UNASSIGNED);
+		count = Dod_NavPath(&nav, 0, 4, path, DOD_NAV_MAX_PATH);
+		assert(count == 4 && path[2] == 2);
+		/* when nothing else connects, the route still goes through */
+		Dod_NavSetAvoidTeam(&nav, DOD_TEAM_AXIS);
+		count = Dod_NavPath(&nav, 0, 2, path, DOD_NAV_MAX_PATH);
+		assert(count == 3 && path[2] == 2);
+		Dod_NavSetAvoidTeam(&nav, DOD_TEAM_UNASSIGNED);
+		nav.zone_count = 0;
+	}
+
 	/* nodes inside a capture volume, nearest the centre first; none when nothing is inside */
 	{
 		const float mins[3] = { 150.0f, -50.0f, -50.0f }, maxs[3] = { 250.0f, 50.0f, 50.0f };
@@ -596,6 +617,22 @@ static void test_goap(void)
 	o[0].capturing_team = DOD_TEAM_AXIS;	/* under attack: defenders go there */
 	id = Dod_BotChooseObjectiveRole(o, 3, DOD_TEAM_ALLIES, -1, DOD_ROLE_DEFENDER, &kind);
 	assert(id == 0 && kind == DOD_BOT_GOAL_DEFEND);
+	/* a point that needs two players: a bot joins the one teammate already heading there rather than spreading out */
+	memset(o, 0, sizeof(o));
+	o[0].id = 0; o[0].owner = DOD_TEAM_AXIS; o[0].distance = 1500.0f; o[0].need = 2; o[0].can_cap[DOD_TEAM_ALLIES] = 1;
+	o[1].id = 1; o[1].owner = DOD_TEAM_AXIS; o[1].distance = 800.0f; o[1].need = 1; o[1].can_cap[DOD_TEAM_ALLIES] = 1;
+	id = Dod_BotChooseObjectiveRole(o, 2, DOD_TEAM_ALLIES, -1, DOD_ROLE_ATTACKER, &kind);
+	assert(id == 1);	/* nobody there yet: the nearer single-player point */
+	o[0].crowd = 1;
+	id = Dod_BotChooseObjectiveRole(o, 2, DOD_TEAM_ALLIES, -1, DOD_ROLE_ATTACKER, &kind);
+	assert(id == 1);	/* a teammate is there, but 1500 - 450 = 1050 is still farther than the single-player point's 800 */
+	o[0].crowd = 1; o[0].distance = 1100.0f;
+	id = Dod_BotChooseObjectiveRole(o, 2, DOD_TEAM_ALLIES, -1, DOD_ROLE_ATTACKER, &kind);
+	assert(id == 0);	/* 1100 - 450 = 650 < 800 */
+	o[0].crowd = 2;	/* the group is complete: the extra bot does not pile on */
+	id = Dod_BotChooseObjectiveRole(o, 2, DOD_TEAM_ALLIES, -1, DOD_ROLE_ATTACKER, &kind);
+	assert(id == 1);	/* 1100 + 900 = 2000 > 800 */
+
 	/* a defender with nothing held takes something instead */
 	o[0].owner = DOD_TEAM_AXIS;
 	id = Dod_BotChooseObjectiveRole(o, 3, DOD_TEAM_ALLIES, -1, DOD_ROLE_DEFENDER, &kind);
