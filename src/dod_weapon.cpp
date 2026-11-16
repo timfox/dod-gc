@@ -213,6 +213,13 @@ BOOL CDodWeapon::Deploy( void )
 		return FALSE;
 	m_fScoped = FALSE;
 	m_fTriggerHeld = TRUE;	/* a held fire button from the last weapon does not shoot */
+	/* DoD viewmodels pick the sleeve with the body group the weapon anim
+	 * carries (SendWeaponAnim writes pev->body): 0 US, 1 British, 2 Axis.
+	 * Models without a sleeve group ignore it. */
+	{
+		const DodPlayerState *me = m_pPlayer ? Dod_GetPlayer( m_pPlayer->entindex() ) : NULL;
+		pev->body = ( me && me->team == DOD_TEAM_AXIS ) ? 2 : 0;
+	}
 	return DefaultDeploy( def->view_model, def->player_model, DODW_ANIM_DRAW, AnimExt( def ) );
 }
 
