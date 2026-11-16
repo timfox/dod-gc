@@ -150,7 +150,7 @@ void Dod_StartRound(float duration_seconds)
 	memset(g_score_remainder, 0, sizeof(g_score_remainder));
 }
 
-void Dod_EndRound(DodTeam winner)
+void Dod_EndRoundDelayed(DodTeam winner, float restart_delay_seconds)
 {
 	if (g_dod_state.phase != DOD_ROUND_ACTIVE)
 		return;
@@ -168,7 +168,41 @@ void Dod_EndRound(DodTeam winner)
 	g_dod_state.phase = DOD_ROUND_INTERMISSION;
 	g_dod_state.round_active = 0;
 	g_dod_state.round_time_remaining = 0.0f;
-	g_dod_state.intermission_remaining = DOD_INTERMISSION_SECONDS;
+	g_dod_state.intermission_remaining = restart_delay_seconds > 0.0f ? restart_delay_seconds : DOD_INTERMISSION_SECONDS;
+}
+
+void Dod_EndRound(DodTeam winner)
+{
+	Dod_EndRoundDelayed(winner, 0.0f);
+}
+
+void Dod_AddTeamScore(DodTeam team, int points)
+{
+	if (points > 0)
+		dod_add_team_score(team, (float)points);
+}
+
+void Dod_SetMasterDriven(int on)
+{
+	g_dod_state.master_driven = on ? 1 : 0;
+}
+
+void Dod_SetTimerDriven(int on)
+{
+	g_dod_state.timer_driven = on ? 1 : 0;
+}
+
+void Dod_SetRoundClock(float seconds)
+{
+	g_round_seconds = seconds > 0.0f ? seconds : 0.0f;
+	if (g_dod_state.phase == DOD_ROUND_ACTIVE)
+		g_dod_state.round_time_remaining = g_round_seconds;
+}
+
+int Dod_TeamOwnsAllObjectives(DodTeam team)
+{
+	return dod_valid_team(team) && g_dod_state.objective_count > 0 &&
+		g_dod_state.controlled_objectives[team] == g_dod_state.objective_count;
 }
 
 /* The intermission ran out: close the match if a team has won enough rounds,
@@ -209,8 +243,13 @@ void Dod_Think(float frametime)
 	if (g_dod_state.phase == DOD_ROUND_ACTIVE) {
 		if (g_dod_state.round_time_remaining > 0.0f) {
 			g_dod_state.round_time_remaining -= frametime;
-			if (g_dod_state.round_time_remaining <= 0.0f)
-				Dod_EndRound(DOD_TEAM_UNASSIGNED);
+			if (g_dod_state.round_time_remaining <= 0.0f) {
+				g_dod_state.round_time_remaining = 0.0f;
+				if (g_dod_state.timer_driven)
+					++g_dod_state.timeout_serial;	/* the map's dod_round_timer fires its target */
+				else
+					Dod_EndRound(DOD_TEAM_UNASSIGNED);
+			}
 		}
 		for (i = 0; i < DOD_MAX_OBJECTIVES; ++i) {
 			DodObjectiveState *objective = &g_dod_objectives[i];
@@ -667,8 +706,9 @@ int Dod_TickObjective(int id, int allies_inside, int axis_inside, float frametim
 	objective->owner = team;
 	dod_recount_objectives();
 	dod_add_team_score(team, 5.0f);
-	if (g_dod_state.objective_count > 0 &&
-		g_dod_state.controlled_objectives[team] == g_dod_state.objective_count)
+	++g_dod_state.capture_serial;
+	g_dod_state.last_capture_team = team;
+	if (!g_dod_state.master_driven && Dod_TeamOwnsAllObjectives(team))
 		Dod_EndRound(team);
 	return 1;
 }

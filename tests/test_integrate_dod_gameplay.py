@@ -24,6 +24,26 @@ GATE_VARIANTS = (
 )
 
 
+class StubRemovalTest(unittest.TestCase):
+	"""The DoD runtime defines dod_control_point, dod_control_point_master and dod_score_ent; the
+	hlsdk stubs for them must go (replace_once cannot remove: an empty replacement is "already in")."""
+
+	def test_remove_once_deletes_a_stub_and_is_idempotent(self):
+		with tempfile.TemporaryDirectory() as directory:
+			path = Path(directory) / "subs.cpp"
+			stub = "LINK_ENTITY_TO_CLASS( dod_score_ent, CPointEntity )\n"
+			path.write_text("a\n" + stub + "b\n")
+			INTEGRATOR.remove_once(path, stub)
+			self.assertEqual(path.read_text(), "a\nb\n")
+			INTEGRATOR.remove_once(path, stub)
+			self.assertEqual(path.read_text(), "a\nb\n")
+
+	def test_integrator_removes_the_three_stubs(self):
+		text = SCRIPT.read_text()
+		for name in ("dod_control_point", "dod_control_point_master", "dod_score_ent"):
+			self.assertIn(f'"{name}"', text)
+
+
 class StaticEdictGateTest(unittest.TestCase):
 	def test_legacy_and_intermediate_gates_get_menu_map_load_path(self):
 		for gate in GATE_VARIANTS:
@@ -237,6 +257,8 @@ class HudIntegrationTest(unittest.TestCase):
 		'\tgEngfuncs.Con_Printf( "Xash3D GameCube: CHud::Init begin quality=%d\\n", quality );\n#endif\n'
 		'\tm_Menu.Init();\n}\nvoid CHud::VidInit( void )\n{\n\tm_Menu.VidInit();\n}\n')
 	REDRAW = ("\t\t\tif( m_Menu.m_fMenuDisplayed )\n\t\t\t\tm_Menu.Draw( flTime );\n")
+	ENTITY_CPP = ('\t\tgHUD.m_Spectator.AddOverviewEntity( type, ent, modelname );\n\n'
+		'\t\tif( (\tg_iUser1 == OBS_IN_EYE || gHUD.m_Spectator.m_pip->value == INSET_IN_EYE ) &&')
 
 	def integrate(self):
 		with tempfile.TemporaryDirectory() as directory:
@@ -244,6 +266,7 @@ class HudIntegrationTest(unittest.TestCase):
 			(client / "hud.h").write_text(self.HUD_H)
 			(client / "hud.cpp").write_text(self.HUD_CPP)
 			(client / "hud_redraw.cpp").write_text(self.REDRAW)
+			(client / "entity.cpp").write_text(self.ENTITY_CPP)
 			INTEGRATOR.integrate_dod_hud(client)
 			first = {n: (client / n).read_text() for n in ("hud.h", "hud.cpp", "hud_redraw.cpp")}
 			INTEGRATOR.integrate_dod_hud(client)
@@ -272,6 +295,31 @@ class HudIntegrationTest(unittest.TestCase):
 				(client / name).write_text("int unrelated;\n")
 			with self.assertRaises(SystemExit):
 				INTEGRATOR.integrate_dod_hud(client)
+
+
+class SpectatorCameraIntegrationTest(unittest.TestCase):
+	VIEW = ('#include "view.h"\nvoid f()\n{\n\t\tif( gHUD.m_Spectator.m_pip->value )\n'
+		'\t\t\tpparams->nextView = 1;\t// force a second renderer view\n}\n')
+
+	def run_integration(self, text):
+		with tempfile.TemporaryDirectory() as directory:
+			client = Path(directory)
+			(client / "view.cpp").write_text(text)
+			INTEGRATOR.integrate_spectator_camera(client)
+			first = (client / "view.cpp").read_text()
+			INTEGRATOR.integrate_spectator_camera(client)
+			self.assertEqual(first, (client / "view.cpp").read_text(), "must be idempotent")
+			return first
+
+	def test_smoothing_hooked_before_the_inset_view(self):
+		text = self.run_integration(self.VIEW)
+		self.assertIn('#include "dod_cam.h"', text)
+		self.assertLess(text.index("DodCam_Smooth("), text.index("pparams->nextView = 1;"))
+		self.assertLess(text.index("DodCam_Smooth("), text.index("DodCam_Level("))
+
+	def test_missing_anchor_fails_loudly(self):
+		with self.assertRaises(SystemExit):
+			self.run_integration("int unrelated;\n")
 
 
 class ClientSourceSyncTest(unittest.TestCase):

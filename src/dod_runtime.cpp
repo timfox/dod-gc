@@ -3,6 +3,7 @@
 #include "util.h"
 #include "cbase.h"
 #include "player.h"
+#include "weapons.h"
 #include "gamerules.h"
 #include "teamplay_gamerules.h"
 #include "dod_runtime.h"
@@ -34,6 +35,11 @@ static float g_spec_hold_until[DOD_SPEC_SLOTS + 1];
 static float g_spec_target_since[DOD_SPEC_SLOTS + 1];
 static int g_spec_last_target[DOD_SPEC_SLOTS + 1];
 static float g_spec_next_think;
+/* dod_spectate 1: InitHUD asks for the join, SpectatorThink makes it. The first
+ * InitHUD runs inside CBasePlayer::Spawn, whose tail (game_playerspawn, the kit,
+ * observer flags reset) undid a join made there, and bots are not yet marked as
+ * bots at that point. */
+static BOOL g_spec_join_pending[DOD_MAX_PLAYERS + 1];
 static int gmsgDodHud;
 static float g_dod_next_hud;
 static int g_dod_seen_restart;
@@ -45,6 +51,11 @@ extern int gmsgShowMenu;
 extern int gmsgScoreInfo;
 
 static int g_dod_menu_state[DOD_MAX_PLAYERS + 1];
+/* Join flow (retail): a human starts on the side menu as an observer, picks a side, picks a class and
+ * is spawned on that side with no death. g_dod_joined: the human has been through that once.
+ * g_dod_pending_team: the side picked at the menu while still an observer (observers read as spectators). */
+static int g_dod_joined[DOD_MAX_PLAYERS + 1];
+static int g_dod_pending_team[DOD_MAX_PLAYERS + 1];
 static int g_dod_winner_announced;
 static float g_dod_next_status;
 
@@ -80,10 +91,19 @@ static void DodGC_ShowTeamMenu( CBasePlayer *pPlayer )
 
 static DodTeam DodGC_TeamForPlayer( CBasePlayer *pPlayer );
 
+/* The side the class menu is for: the pending pick while the player is still an observer. */
+static DodTeam DodGC_MenuTeam( CBasePlayer *pPlayer )
+{
+	const int index = DodGC_PlayerIndex( pPlayer );
+	if( index >= 1 && index <= DOD_MAX_PLAYERS && g_dod_pending_team[index] )
+		return (DodTeam)g_dod_pending_team[index];
+	return DodGC_TeamForPlayer( pPlayer );
+}
+
 static void DodGC_ShowClassMenu( CBasePlayer *pPlayer )
 {
 	const int index = DodGC_PlayerIndex( pPlayer );
-	const DodTeam team = DodGC_TeamForPlayer( pPlayer );
+	const DodTeam team = DodGC_MenuTeam( pPlayer );
 	char text[256];
 	int len;
 	if( index > 0 && index <= DOD_MAX_PLAYERS )
@@ -126,29 +146,49 @@ static void DodGC_EnsurePlayer( CBasePlayer *pPlayer )
 	Dod_AssignPlayerTeam( index, DodGC_TeamForPlayer( pPlayer ) );
 }
 
-/* Become a spectator: no class, no gun, no spawn, no collision. Only the local
- * human does this (a bot never watches), and no death or frag is recorded. */
-static void DodGC_JoinSpectator( CBasePlayer *pPlayer )
+/* Become an observer: no class, no gun, no spawn, no collision. Only the local human does this
+ * (a bot never watches), and no death or frag is recorded. announce: tell them they are spectating
+ * (not when they are only waiting at the side menu). */
+static void DodGC_EnterObserver( CBasePlayer *pPlayer, BOOL announce )
 {
-	if( !pPlayer || DodBots_IsBot( pPlayer ) )
+	/* StartObserver -> RemoveAllItems -> UpdateClientData calls InitHUD again
+	 * (m_fGameHUDInitialized is only set after InitHUD returns), and IsObserver()
+	 * is still false at that point, so InitHUD came straight back here. With
+	 * dod_spectate 1 that recursed ~770 times and ran the 128 KiB main stack
+	 * down into the engine's file system statics. Ignore the nested call. */
+	static bool joining;
+	if( !pPlayer || DodBots_IsBot( pPlayer ) || joining )
 		return;
+	joining = true;
 	DodGC_ClearMenu( pPlayer );
 	if( !pPlayer->IsObserver() ) {
 		pPlayer->StartObserver( pPlayer->pev->origin, pPlayer->pev->v_angle );
 		pPlayer->pev->iuser1 = 0;	/* force Observer_SetMode to pick the mode and a target */
 		pPlayer->Observer_SetMode( DOD_SPEC_CHASE_FREE );
 	}
+	joining = false;
 	DodGC_EnsurePlayer( pPlayer );
-	ClientPrint( pPlayer->pev, HUD_PRINTTALK, "You are spectating. Fire/Aim: next/previous player, Jump: camera mode.\n" );
+	if( announce )
+		ClientPrint( pPlayer->pev, HUD_PRINTTALK, "You are spectating. Fire/Aim: next/previous player, Jump: camera mode.\n" );
 }
 
-/* Leave spectating to play: the HLSDK respawns the player as an ordinary one. */
-static void DodGC_LeaveSpectator( CBasePlayer *pPlayer )
+static void DodGC_JoinSpectator( CBasePlayer *pPlayer )
 {
-	if( pPlayer && pPlayer->IsObserver() ) {
-		pPlayer->StopObserver();
-		pPlayer->pev->iuser1 = pPlayer->pev->iuser2 = 0;
-	}
+	DodGC_EnterObserver( pPlayer, TRUE );
+}
+
+static void DodGC_ShowTeamMenu( CBasePlayer *pPlayer );
+
+/* A human who has not joined yet waits at the side menu as an observer instead of being dropped
+ * onto a team with a default kit. */
+static void DodGC_HoldForJoin( CBasePlayer *pPlayer )
+{
+	const int index = DodGC_PlayerIndex( pPlayer );
+	DodGC_EnterObserver( pPlayer, FALSE );
+	if( index >= 1 && index <= DOD_MAX_PLAYERS )
+		g_dod_pending_team[index] = 0;
+	DodGC_ShowTeamMenu( pPlayer );
+	ALERT( at_console, "DoD join: %s waits at the side menu\n", STRING( pPlayer->pev->netname ) );
 }
 
 /* The body the engine draws for a player comes from the "model" userinfo key
@@ -206,6 +246,13 @@ static void DodGC_ApplyClass( CBasePlayer *pPlayer, DodClass player_class )
 		DodGrenadeDef grenade;
 
 		pPlayer->RemoveAllItems( FALSE );
+		/* RemoveAllItems -> UpdateClientData can run the first InitHUD, which
+		 * with dod_spectate 1 turns the human into a spectator right here: give
+		 * an observer no kit and no body. */
+		if( pPlayer->IsObserver() ) {
+			DodBots_SetGranting( FALSE );
+			return;
+		}
 		pPlayer->GiveNamedItem( "weapon_crowbar" );
 		if( sidearm ) {
 			pPlayer->GiveNamedItem( sidearm->classname );
@@ -254,12 +301,15 @@ CHalfLifeDoD::CHalfLifeDoD()
 	/* Registered here, before any client connects, so the client can hook it. */
 	gmsgDodHud = REG_USER_MSG( "DodHud", -1 );
 	memset( g_dod_menu_state, 0, sizeof( g_dod_menu_state ) );
+	memset( g_dod_joined, 0, sizeof( g_dod_joined ) );
+	memset( g_dod_pending_team, 0, sizeof( g_dod_pending_team ) );
 	g_dod_winner_announced = 0;
 	g_dod_next_status = 0.0f;
 	memset( g_spec_hold_until, 0, sizeof( g_spec_hold_until ) );
 	memset( g_spec_target_since, 0, sizeof( g_spec_target_since ) );
 	memset( g_spec_last_target, 0, sizeof( g_spec_last_target ) );
 	g_spec_next_think = 0.0f;
+	memset( g_spec_join_pending, 0, sizeof( g_spec_join_pending ) );
 }
 
 void DodGC_BotJoin( CBasePlayer *pPlayer, DodTeam team, DodClass player_class )
@@ -271,6 +321,10 @@ void DodGC_BotJoin( CBasePlayer *pPlayer, DodTeam team, DodClass player_class )
 	if( g_pGameRules && stricmp( pPlayer->m_szTeamName, Dod_TeamName( team ) ) )
 		( (CHalfLifeDoD *)g_pGameRules )->ChangePlayerTeam( pPlayer, Dod_TeamName( team ), TRUE, FALSE );
 	Dod_AssignPlayerTeam( index, team );
+	/* ClientPutInServer already spawned the bot with the default kit. A second Spawn() gives
+	 * the default crowbar again; a duplicate cannot attach (AddDuplicate fails), so it was left
+	 * loose on the floor at the bot's feet. Clear the inventory first. */
+	pPlayer->RemoveAllItems( FALSE );
 	/* ClientPutInServer spawned the bot before it had a team (default spot, no kit): spawn
 	 * again now so it uses its own team's info_player_* spawn points. */
 	pPlayer->Spawn();
@@ -278,22 +332,78 @@ void DodGC_BotJoin( CBasePlayer *pPlayer, DodTeam team, DodClass player_class )
 	DodGC_ApplyClass( pPlayer, player_class );
 }
 
+/* Pick a side at the menu or with dod_team. A player who is playing and alive and changes sides
+ * dies for it (retail: a suicide, no frag penalty); one who is still at the menu or already dead
+ * just switches. The class menu follows. */
+static void DodGC_PickTeam( CBasePlayer *pPlayer, DodTeam team )
+{
+	const int index = DodGC_PlayerIndex( pPlayer );
+	const BOOL playing = !pPlayer->IsObserver() && index >= 1 && index <= DOD_MAX_PLAYERS && g_dod_joined[index];
+	if( index < 1 || index > DOD_MAX_PLAYERS )
+		return;
+	if( stricmp( pPlayer->m_szTeamName, Dod_TeamName( team ) ) )
+		( (CHalfLifeDoD *)g_pGameRules )->ChangePlayerTeam( pPlayer, Dod_TeamName( team ), playing && pPlayer->IsAlive(), FALSE );
+	g_dod_pending_team[index] = pPlayer->IsObserver() ? (int)team : 0;
+	if( !pPlayer->IsObserver() )
+		Dod_AssignPlayerTeam( index, team );
+	DodGC_ShowClassMenu( pPlayer );
+}
+
+/* Pick a class. At the menu (an observer who has not spawned) it spawns the player on the picked
+ * side with that class at once, with no death. While playing it applies at the next respawn
+ * (retail: no suicide for a class change). */
+static void DodGC_PickClass( CBasePlayer *pPlayer, DodClass player_class )
+{
+	const int index = DodGC_PlayerIndex( pPlayer );
+	const DodTeam team = DodGC_MenuTeam( pPlayer );
+	if( index < 1 || index > DOD_MAX_PLAYERS || player_class <= DOD_CLASS_NONE || player_class >= DOD_CLASS_COUNT )
+		return;
+	if( team != DOD_TEAM_ALLIES && team != DOD_TEAM_AXIS ) {
+		DodGC_ShowTeamMenu( pPlayer );	/* no side yet */
+		return;
+	}
+	if( pPlayer->IsObserver() || !g_dod_joined[index] ) {
+		g_dod_joined[index] = 1;
+		g_dod_pending_team[index] = 0;
+		DodGC_ClearMenu( pPlayer );
+		if( pPlayer->IsObserver() )
+			pPlayer->StopObserver();	/* Spawn(): PlayerSpawn puts them on their side */
+		Dod_AssignPlayerTeam( index, team );	/* Spawn() resets the DoD team record */
+		DodGC_ApplyClass( pPlayer, player_class );
+		ALERT( at_console, "DoD join: %s spawned as %s %s\n", STRING( pPlayer->pev->netname ), Dod_TeamName( team ),
+			Dod_TeamClassName( team, player_class ) );
+		return;
+	}
+	if( Dod_SelectPlayerClass( index, player_class ) ) {
+		DodGC_ClearMenu( pPlayer );
+		ClientPrint( pPlayer->pev, HUD_PRINTTALK, UTIL_VarArgs( "You will respawn as %s.\n", Dod_TeamClassName( team, player_class ) ) );
+		ALERT( at_console, "DoD join: %s changes to %s at the next respawn\n", STRING( pPlayer->pev->netname ),
+			Dod_TeamClassName( team, player_class ) );
+	}
+}
+
+static void DodGC_CycleWeapon( CBasePlayer *pPlayer, int step );
+
 BOOL CHalfLifeDoD::ClientCommand( CBasePlayer *pPlayer, const char *pcmd )
 {
 	const int index = DodGC_PlayerIndex( pPlayer );
+	if( FStrEq( pcmd, "dod_nextweapon" ) || FStrEq( pcmd, "dod_prevweapon" ) ) {
+		DodGC_CycleWeapon( pPlayer, FStrEq( pcmd, "dod_nextweapon" ) ? 1 : -1 );
+		return TRUE;
+	}
+	if( FStrEq( pcmd, "dod_lastweapon" ) ) {
+		if( !pPlayer->IsObserver() && pPlayer->IsAlive() )
+			pPlayer->SelectLastItem();
+		return TRUE;
+	}
 	if( FStrEq( pcmd, "dod_team" ) ) {
 		const DodTeam team = (DodTeam)Dod_TeamFromName( CMD_ARGV( 1 ) );
 		if( team == DOD_TEAM_SPECTATOR ) {
 			DodGC_JoinSpectator( pPlayer );
 			return TRUE;
 		}
-		if( team == DOD_TEAM_ALLIES || team == DOD_TEAM_AXIS ) {
-			DodGC_LeaveSpectator( pPlayer );
-			if( stricmp( pPlayer->m_szTeamName, Dod_TeamName( team ) ) )
-				ChangePlayerTeam( pPlayer, Dod_TeamName( team ), TRUE, FALSE );
-			Dod_AssignPlayerTeam( index, team );
-			DodGC_ShowClassMenu( pPlayer );
-		}
+		if( team == DOD_TEAM_ALLIES || team == DOD_TEAM_AXIS )
+			DodGC_PickTeam( pPlayer, team );
 		return TRUE;
 	}
 	if( FStrEq( pcmd, "spectate" ) ) {
@@ -332,7 +442,7 @@ BOOL CHalfLifeDoD::ClientCommand( CBasePlayer *pPlayer, const char *pcmd )
 		else if( !stricmp( name, "mg" ) || !stricmp( name, "machinegunner" ) ) player_class = DOD_CLASS_MG;
 		else if( !stricmp( name, "rocket" ) ) player_class = DOD_CLASS_ROCKET;
 		if( player_class != DOD_CLASS_NONE )
-			DodGC_ApplyClass( pPlayer, player_class );
+			DodGC_PickClass( pPlayer, player_class );
 		return TRUE;
 	}
 	if( FStrEq( pcmd, "menuselect" ) ) {
@@ -344,22 +454,38 @@ BOOL CHalfLifeDoD::ClientCommand( CBasePlayer *pPlayer, const char *pcmd )
 				DodGC_JoinSpectator( pPlayer );
 				return TRUE;
 			}
-			if( slot == 1 || slot == 2 ) {
-				const DodTeam team = slot == 1 ? DOD_TEAM_ALLIES : DOD_TEAM_AXIS;
-				DodGC_LeaveSpectator( pPlayer );
-				if( stricmp( pPlayer->m_szTeamName, Dod_TeamName( team ) ) )
-					ChangePlayerTeam( pPlayer, Dod_TeamName( team ), TRUE, FALSE );
-				Dod_AssignPlayerTeam( index, team );
-				DodGC_ShowClassMenu( pPlayer );
-			}
+			if( slot == 1 || slot == 2 )
+				DodGC_PickTeam( pPlayer, slot == 1 ? DOD_TEAM_ALLIES : DOD_TEAM_AXIS );
 			return TRUE;
 		}
 		if( g_dod_menu_state[index] == 2 && slot >= 1 && slot <= 6 ) {
-			DodGC_ApplyClass( pPlayer, (DodClass)( DOD_CLASS_RIFLEMAN + slot - 1 ) );
+			DodGC_PickClass( pPlayer, (DodClass)( DOD_CLASS_RIFLEMAN + slot - 1 ) );
 			return TRUE;
 		}
 	}
 	return CHalfLifeTeamplay::ClientCommand( pPlayer, pcmd );
+}
+
+/* Weapon cycling for the pad. invnext / invprev / lastinv are client HUD commands that need the
+ * HUD's weapon list and selection overlay, which the lean GameCube client does not run, so the
+ * D-pad did nothing with them. The pad is bound to these server commands instead; they walk the
+ * carried weapons in slot order (melee, sidearm, primary, rocket, grenade) and select the next one. */
+static void DodGC_CycleWeapon( CBasePlayer *pPlayer, int step )
+{
+	CBasePlayerItem *list[16];
+	int count = 0, current = -1, i;
+	if( !pPlayer || pPlayer->IsObserver() || !pPlayer->IsAlive() )
+		return;
+	for( int slot = 0; slot < MAX_ITEM_TYPES; slot++ )
+		for( CBasePlayerItem *item = pPlayer->m_rgpPlayerItems[slot]; item && count < 16; item = item->m_pNext )
+			list[count++] = item;
+	if( count < 2 )
+		return;
+	for( i = 0; i < count; i++ )
+		if( list[i] == pPlayer->m_pActiveItem )
+			current = i;
+	i = ( ( current < 0 ? 0 : current ) + step + count ) % count;
+	pPlayer->SelectItem( STRING( list[i]->pev->classname ) );
 }
 
 void CHalfLifeDoD::InitHUD( CBasePlayer *pPlayer )
@@ -369,7 +495,9 @@ void CHalfLifeDoD::InitHUD( CBasePlayer *pPlayer )
 	if( pPlayer->IsObserver() )
 		return;	/* still spectating: nothing to choose */
 	if( !DodBots_IsBot( pPlayer ) && CVAR_GET_FLOAT( "dod_spectate" ) != 0.0f ) {
-		DodGC_JoinSpectator( pPlayer );
+		const int index = DodGC_PlayerIndex( pPlayer );
+		if( index >= 1 && index <= DOD_MAX_PLAYERS )
+			g_spec_join_pending[index] = TRUE;
 		return;
 	}
 	DodGC_ShowTeamMenu( pPlayer );
@@ -377,11 +505,20 @@ void CHalfLifeDoD::InitHUD( CBasePlayer *pPlayer )
 
 void CHalfLifeDoD::PlayerSpawn( CBasePlayer *pPlayer )
 {
+	/* A round restart respawns living players, who still hold their items. The base spawn gives a
+	 * crowbar again, and a duplicate crowbar (no ammo to extract) stays lying in the world: one
+	 * leaked edict per player per round until the edict pool ran out. Start from nothing. */
+	pPlayer->RemoveAllItems( FALSE );
 	CHalfLifeTeamplay::PlayerSpawn( pPlayer );
 	DodGC_EnsurePlayer( pPlayer );
 	if( pPlayer->IsObserver() )
 		return;
 	const int index = DodGC_PlayerIndex( pPlayer );
+	if( !DodBots_IsBot( pPlayer ) && index >= 1 && index <= DOD_MAX_PLAYERS && !g_dod_joined[index]
+		&& CVAR_GET_FLOAT( "dod_spectate" ) == 0.0f ) {
+		DodGC_HoldForJoin( pPlayer );
+		return;
+	}
 	const DodPlayerState *state = Dod_GetPlayer( index );
 	if( state && state->player_class != DOD_CLASS_NONE )
 		DodGC_ApplyClass( pPlayer, state->player_class );
@@ -398,8 +535,12 @@ void CHalfLifeDoD::PlayerKilled( CBasePlayer *pVictim, entvars_t *pKiller, entva
 
 void CHalfLifeDoD::ClientDisconnected( edict_t *pClient )
 {
-	if( pClient )
-		Dod_PlayerDisconnect( ENTINDEX( pClient ) );
+	if( pClient ) {
+		const int index = ENTINDEX( pClient );
+		if( index >= 1 && index <= DOD_MAX_PLAYERS )
+			g_dod_joined[index] = g_dod_pending_team[index] = 0;
+		Dod_PlayerDisconnect( index );
+	}
 	CHalfLifeMultiplay::ClientDisconnected( pClient );
 }
 
@@ -530,6 +671,11 @@ static void DodGC_SpectatorThink( void )
 		CBasePlayer *pSpec = (CBasePlayer *)UTIL_PlayerByIndex( i );
 		const int slot = i <= DOD_SPEC_SLOTS ? i : 0;
 		int count, mode, pick;
+		if( i <= DOD_MAX_PLAYERS && g_spec_join_pending[i] ) {
+			g_spec_join_pending[i] = FALSE;
+			if( pSpec && pSpec->IsPlayer() && !pSpec->IsObserver() && !DodBots_IsBot( pSpec ) )
+				DodGC_JoinSpectator( pSpec );
+		}
 		if( !pSpec || !pSpec->IsPlayer() || !pSpec->IsObserver() || DodBots_IsBot( pSpec ) )
 			continue;
 		if( slot && ( pSpec->pev->button & ( IN_ATTACK | IN_ATTACK2 | IN_JUMP ) ) )
@@ -579,18 +725,68 @@ void CHalfLifeDoD::ClientUserInfoChanged( CBasePlayer *pPlayer, char *infobuffer
 	DodGC_ApplyBody( pPlayer );
 }
 
+/* GC edict budget: the engine's CapFaces edict tip is 460 and a map already uses about 425, so
+ * every dead player's leftovers count. Retail drops the active gun in a weapon box that lives for
+ * two minutes (a box plus the weapons in it, several edicts), and a gibbed player leaves five gibs;
+ * after a few deaths the pool ran out and the game stalled. Dropping is off here (the dead player's
+ * weapons are just removed) and gibs are swept after a few seconds. */
+int CHalfLifeDoD::DeadPlayerWeapons( CBasePlayer *pPlayer )
+{
+	return GR_PLR_DROP_GUN_NO;
+}
+
+int CHalfLifeDoD::DeadPlayerAmmo( CBasePlayer *pPlayer )
+{
+	return GR_PLR_DROP_AMMO_NO;
+}
+
+#define DOD_GIB_SECONDS 6.0f
+
+/* Remove gibs older than DOD_GIB_SECONDS (all of them and any weapon box when `all`, at a round
+ * restart). Edicts past the clients; the first sighting stamps the gib's unused fuser4. */
+static void DodGC_TrimEdicts( BOOL all )
+{
+	int removed = 0;
+	for( int i = gpGlobals->maxClients + 1; i < gpGlobals->maxEntities; i++ ) {
+		edict_t *e = INDEXENT( i );
+		if( !e || e->free || !e->v.classname )
+			continue;
+		const char *cn = STRING( e->v.classname );
+		CBaseEntity *ent = NULL;
+		if( FStrEq( cn, "gib" ) ) {
+			if( e->v.fuser4 == 0.0f )
+				e->v.fuser4 = gpGlobals->time;
+			if( !all && gpGlobals->time - e->v.fuser4 <= DOD_GIB_SECONDS )
+				continue;
+			ent = CBaseEntity::Instance( e );
+			if( ent ) { UTIL_Remove( ent ); removed++; }
+		} else if( all && FStrEq( cn, "weaponbox" ) ) {
+			ent = CBaseEntity::Instance( e );
+			if( ent ) { ( (CWeaponBox *)ent )->Kill(); removed++; }
+		}
+	}
+	if( all && removed )
+		ALERT( at_console, "DoD round cleanup: removed %d gibs/weapon boxes\n", removed );
+}
+
+static float g_dod_next_trim;
+
 void CHalfLifeDoD::Think( void )
 {
 	CHalfLifeTeamplay::Think();
 	Dod_Think( gpGlobals->frametime );
 	DodBots_Think();
 	DodGC_SpectatorThink();
+	if( gpGlobals->time >= g_dod_next_trim ) {
+		g_dod_next_trim = gpGlobals->time + 1.0f;
+		DodGC_TrimEdicts( FALSE );
+	}
 	const DodGameRulesState *state = Dod_GetState();
 	if( state && state->phase == DOD_ROUND_INTERMISSION && !g_dod_winner_announced ) {
 		const char *winner = state->winner == DOD_TEAM_ALLIES ? "Allies win the round" :
 			state->winner == DOD_TEAM_AXIS ? "Axis win the round" : "Round tied";
 		UTIL_ClientPrintAll( HUD_PRINTCENTER, UTIL_VarArgs( "%s\nNext round in %d seconds", winner,
-			(int)DOD_INTERMISSION_SECONDS ) );
+			(int)( state->intermission_remaining + 0.5f ) ) );
 		g_dod_winner_announced = 1;
 	}
 	if( state && state->restart_serial != g_dod_seen_restart ) {
@@ -598,6 +794,8 @@ void CHalfLifeDoD::Think( void )
 		 * spawn with a fresh loadout (bots included). */
 		g_dod_seen_restart = state->restart_serial;
 		g_dod_winner_announced = 0;
+		ALERT( at_console, "DoD round restart: round %d, serial %d\n", state->round_number, state->restart_serial );
+		DodGC_TrimEdicts( TRUE );
 		if( state->match_serial != g_dod_seen_match ) {
 			g_dod_seen_match = state->match_serial;
 			UTIL_ClientPrintAll( HUD_PRINTCENTER, UTIL_VarArgs( "%s win the match",
@@ -648,10 +846,16 @@ public:
 	void Spawn( void );
 	void KeyValue( KeyValueData *pkvd );
 	void Think( void );
+	/* A dod_capture_area drives this point (retail): the sphere test is off and the area's
+	 * capture time replaces the default. */
+	void SetAreaDriven( float capture_seconds );
+	int PointIndex( void ) const { return m_iPointIndex; }
+	BOOL IsAreaDriven( void ) const { return m_bAreaDriven; }
 private:
 	int m_iPointIndex;
 	int m_iDefaultOwner;
 	char m_szPointName[64];
+	BOOL m_bAreaDriven;
 };
 
 LINK_ENTITY_TO_CLASS( dod_control_point, CDoDControlPoint )
@@ -661,6 +865,17 @@ CDoDControlPoint::CDoDControlPoint()
 	m_iPointIndex = -1;
 	m_iDefaultOwner = DOD_TEAM_UNASSIGNED;
 	m_szPointName[0] = '\0';
+	m_bAreaDriven = FALSE;
+}
+
+void CDoDControlPoint::SetAreaDriven( float capture_seconds )
+{
+	if( m_bAreaDriven )
+		return;
+	m_bAreaDriven = TRUE;
+	if( capture_seconds > 0.0f )
+		Dod_RegisterObjective( m_iPointIndex, DOD_OBJ_CAPTURE_POINT, (DodTeam)m_iDefaultOwner,
+			capture_seconds, DOD_POINT_SCORE_PER_MINUTE );
 }
 
 void CDoDControlPoint::KeyValue( KeyValueData *pkvd )
@@ -688,6 +903,10 @@ void CDoDControlPoint::Spawn( void )
 void CDoDControlPoint::Think( void )
 {
 	int allies = 0, axis = 0, i;
+	if( m_bAreaDriven ) {
+		pev->nextthink = gpGlobals->time + 0.25f;
+		return;
+	}
 	for( i = 1; i <= gpGlobals->maxClients; ++i ) {
 		CBasePlayer *player = (CBasePlayer *)UTIL_PlayerByIndex( i );
 		if( !player || player->pev->deadflag != DEAD_NO ) continue;
@@ -702,6 +921,378 @@ void CDoDControlPoint::Think( void )
 			UTIL_VarArgs( "%s captured control point %d", owner, m_iPointIndex ) );
 	}
 	pev->nextthink = gpGlobals->time + 0.25f;
+}
+
+/* ------------------------------------------------------------ capture areas */
+
+/* Retail dod_capture_area: a brush trigger around a control point. Living players of a team
+ * that may capture (area_<team>_cancap) and are at least area_<team>_numcap strong inside it
+ * capture the point named by `target` over area_time_to_cap seconds. `master` (an env_state)
+ * switches the area off. area_<team>_startcap / area_<team>_endcap are targets fired when a
+ * capture starts / completes. The capture itself runs in the rules core (Dod_TickObjective). */
+class CDoDCaptureArea : public CBaseEntity
+{
+public:
+	CDoDCaptureArea();
+	void Spawn( void );
+	void KeyValue( KeyValueData *pkvd );
+	void Think( void );
+private:
+	float m_flTimeToCap;
+	int m_iNumCap[3];	/* indexed by DodTeam: [DOD_TEAM_ALLIES], [DOD_TEAM_AXIS] */
+	int m_iCanCap[3];
+	string_t m_iszTarget;
+	string_t m_iszMaster;
+	string_t m_iszStartCap[3];
+	string_t m_iszEndCap[3];
+	BOOL m_bResolved;
+	BOOL m_bStarted;
+	CDoDControlPoint *m_pPoint;
+};
+
+LINK_ENTITY_TO_CLASS( dod_capture_area, CDoDCaptureArea )
+
+CDoDCaptureArea::CDoDCaptureArea()
+{
+	m_flTimeToCap = 5.0f;
+	m_iNumCap[DOD_TEAM_ALLIES] = m_iNumCap[DOD_TEAM_AXIS] = 1;
+	m_iCanCap[DOD_TEAM_ALLIES] = m_iCanCap[DOD_TEAM_AXIS] = 1;
+	m_iszTarget = m_iszMaster = 0;
+	m_iszStartCap[DOD_TEAM_ALLIES] = m_iszStartCap[DOD_TEAM_AXIS] = 0;
+	m_iszEndCap[DOD_TEAM_ALLIES] = m_iszEndCap[DOD_TEAM_AXIS] = 0;
+	m_bResolved = m_bStarted = FALSE;
+	m_pPoint = NULL;
+}
+
+void CDoDCaptureArea::KeyValue( KeyValueData *pkvd )
+{
+	if( FStrEq( pkvd->szKeyName, "area_time_to_cap" ) ) {
+		m_flTimeToCap = (float)atof( pkvd->szValue ); pkvd->fHandled = TRUE;
+	} else if( FStrEq( pkvd->szKeyName, "area_axis_numcap" ) ) {
+		m_iNumCap[DOD_TEAM_AXIS] = atoi( pkvd->szValue ); pkvd->fHandled = TRUE;
+	} else if( FStrEq( pkvd->szKeyName, "area_allies_numcap" ) ) {
+		m_iNumCap[DOD_TEAM_ALLIES] = atoi( pkvd->szValue ); pkvd->fHandled = TRUE;
+	} else if( FStrEq( pkvd->szKeyName, "area_axis_cancap" ) ) {
+		m_iCanCap[DOD_TEAM_AXIS] = atoi( pkvd->szValue ); pkvd->fHandled = TRUE;
+	} else if( FStrEq( pkvd->szKeyName, "area_allies_cancap" ) ) {
+		m_iCanCap[DOD_TEAM_ALLIES] = atoi( pkvd->szValue ); pkvd->fHandled = TRUE;
+	} else if( FStrEq( pkvd->szKeyName, "master" ) ) {
+		m_iszMaster = ALLOC_STRING( pkvd->szValue ); pkvd->fHandled = TRUE;
+	} else if( FStrEq( pkvd->szKeyName, "area_allies_startcap" ) ) {
+		m_iszStartCap[DOD_TEAM_ALLIES] = ALLOC_STRING( pkvd->szValue ); pkvd->fHandled = TRUE;
+	} else if( FStrEq( pkvd->szKeyName, "area_axis_startcap" ) ) {
+		m_iszStartCap[DOD_TEAM_AXIS] = ALLOC_STRING( pkvd->szValue ); pkvd->fHandled = TRUE;
+	} else if( FStrEq( pkvd->szKeyName, "area_allies_endcap" ) ) {
+		m_iszEndCap[DOD_TEAM_ALLIES] = ALLOC_STRING( pkvd->szValue ); pkvd->fHandled = TRUE;
+	} else if( FStrEq( pkvd->szKeyName, "area_axis_endcap" ) ) {
+		m_iszEndCap[DOD_TEAM_AXIS] = ALLOC_STRING( pkvd->szValue ); pkvd->fHandled = TRUE;
+	} else if( FStrEq( pkvd->szKeyName, "area_hud_sprite" ) || FStrEq( pkvd->szKeyName, "area_object_group" ) ) {
+		pkvd->fHandled = TRUE;	/* HUD/object-group data: not used by the lean HUD */
+	} else CBaseEntity::KeyValue( pkvd );
+}
+
+void CDoDCaptureArea::Spawn( void )
+{
+	pev->solid = SOLID_TRIGGER;
+	pev->movetype = MOVETYPE_NONE;
+	SET_MODEL( ENT( pev ), STRING( pev->model ) );
+	pev->effects |= EF_NODRAW;
+	SetThink( &CDoDCaptureArea::Think );
+	pev->nextthink = gpGlobals->time + 0.5f;
+}
+
+void CDoDCaptureArea::Think( void )
+{
+	int inside[3] = { 0, 0, 0 }, i;
+	pev->nextthink = gpGlobals->time + 0.25f;
+	if( !m_bResolved ) {
+		/* Every entity has spawned by the first think: find the point this area drives.
+		 * `target` is a standard key the engine stores in pev->target. */
+		m_iszTarget = pev->target;
+		CBaseEntity *e = m_iszTarget ? UTIL_FindEntityByTargetname( NULL, STRING( m_iszTarget ) ) : NULL;
+		while( e && !FClassnameIs( e->pev, "dod_control_point" ) )
+			e = UTIL_FindEntityByTargetname( e, STRING( m_iszTarget ) );
+		m_bResolved = TRUE;
+		if( e ) {
+			m_pPoint = (CDoDControlPoint *)e;
+			m_pPoint->SetAreaDriven( m_flTimeToCap );
+		}
+		ALERT( at_console, "DoD capture area target=%s point=%d time=%.0f absmin=%.0f,%.0f,%.0f absmax=%.0f,%.0f,%.0f\n",
+			m_iszTarget ? STRING( m_iszTarget ) : "-", m_pPoint ? m_pPoint->PointIndex() : -1, m_flTimeToCap,
+			pev->absmin.x, pev->absmin.y, pev->absmin.z, pev->absmax.x, pev->absmax.y, pev->absmax.z );
+	}
+	if( !m_pPoint )
+		return;	/* an area without a point (charlie's `*8`) only gates map logic */
+	if( m_iszMaster && !UTIL_IsMasterTriggered( m_iszMaster, NULL ) )
+		return;
+	for( i = 1; i <= gpGlobals->maxClients; ++i ) {
+		CBasePlayer *player = (CBasePlayer *)UTIL_PlayerByIndex( i );
+		DodTeam team;
+		if( !player || player->pev->deadflag != DEAD_NO ) continue;
+		if( player->pev->absmin.x > pev->absmax.x || player->pev->absmax.x < pev->absmin.x
+			|| player->pev->absmin.y > pev->absmax.y || player->pev->absmax.y < pev->absmin.y
+			|| player->pev->absmin.z > pev->absmax.z || player->pev->absmax.z < pev->absmin.z )
+			continue;
+		team = DodGC_TeamForPlayer( player );
+		if( team == DOD_TEAM_ALLIES || team == DOD_TEAM_AXIS )
+			++inside[team];
+	}
+	{
+		int allies = ( m_iCanCap[DOD_TEAM_ALLIES] && inside[DOD_TEAM_ALLIES] >= m_iNumCap[DOD_TEAM_ALLIES] ) ? inside[DOD_TEAM_ALLIES] : 0;
+		int axis = ( m_iCanCap[DOD_TEAM_AXIS] && inside[DOD_TEAM_AXIS] >= m_iNumCap[DOD_TEAM_AXIS] ) ? inside[DOD_TEAM_AXIS] : 0;
+		const DodObjectiveState *before = Dod_GetObjective( m_pPoint->PointIndex() );
+		const int owner_before = before ? (int)before->owner : -1;
+
+		if( ( allies || axis ) && !m_bStarted ) {
+			const DodTeam starter = allies >= axis ? DOD_TEAM_ALLIES : DOD_TEAM_AXIS;
+			if( owner_before == (int)starter )
+				return;	/* already theirs: nothing to start */
+			m_bStarted = TRUE;
+			ALERT( at_console, "DoD capture start point %d by %s\n", m_pPoint->PointIndex(), starter == DOD_TEAM_ALLIES ? "Allies" : "Axis" );
+			if( m_iszStartCap[starter] )
+				FireTargets( STRING( m_iszStartCap[starter] ), this, this, USE_TOGGLE, 0 );
+		} else if( !allies && !axis ) {
+			m_bStarted = FALSE;
+		}
+		if( Dod_TickObjective( m_pPoint->PointIndex(), allies, axis, 0.25f ) ) {
+			const DodObjectiveState *after = Dod_GetObjective( m_pPoint->PointIndex() );
+			const DodTeam owner = after ? after->owner : DOD_TEAM_UNASSIGNED;
+			ALERT( at_console, "DoD capture complete point %d owner %s\n", m_pPoint->PointIndex(), owner == DOD_TEAM_ALLIES ? "Allies" : "Axis" );
+			UTIL_ClientPrintAll( HUD_PRINTCENTER, UTIL_VarArgs( "%s captured control point %d",
+				owner == DOD_TEAM_ALLIES ? "Allies" : "Axis", m_pPoint->PointIndex() ) );
+			if( ( owner == DOD_TEAM_ALLIES || owner == DOD_TEAM_AXIS ) && m_iszEndCap[owner] )
+				FireTargets( STRING( m_iszEndCap[owner] ), this, this, USE_TOGGLE, 0 );
+			m_bStarted = FALSE;
+		}
+	}
+}
+
+/* dod_point_relay: forwards a use to its target (retail relays capture events to map logic). */
+class CDoDPointRelay : public CPointEntity
+{
+public:
+	void KeyValue( KeyValueData *pkvd );
+	void Use( CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TYPE useType, float value );
+};
+
+LINK_ENTITY_TO_CLASS( dod_point_relay, CDoDPointRelay )
+
+void CDoDPointRelay::KeyValue( KeyValueData *pkvd )
+{
+	if( FStrEq( pkvd->szKeyName, "dod_relay_team" ) )
+		pkvd->fHandled = TRUE;	/* team filter: not applied (unverified retail semantics) */
+	else
+		CPointEntity::KeyValue( pkvd );
+}
+
+void CDoDPointRelay::Use( CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TYPE useType, float value )
+{
+	if( pev->target )
+		FireTargets( STRING( pev->target ), pActivator, this, useType, value );
+}
+
+/* Fire a map target by name. Entities the GC engine drops while loading a dense map (the
+ * CapFaces optional-entity filter skips multi_manager, trigger_relay, ...) are simply absent, so
+ * say so instead of failing silently: a missing win target means the round never ends. */
+static void DodGC_FireMapTarget( const char *target, CBaseEntity *caller, const char *what )
+{
+	if( !target || !target[0] )
+		return;
+	CBaseEntity *found = UTIL_FindEntityByTargetname( NULL, target );
+	if( !found ) {
+		ALERT( at_console, "DoD %s: target '%s' does not exist (dropped by the GC entity filter?)\n", what, target );
+		return;
+	}
+	ALERT( at_console, "DoD %s fires '%s' (%s)\n", what, target, STRING( found->pev->classname ) );
+	FireTargets( target, caller, caller, USE_TOGGLE, 0 );
+}
+
+/* dod_round_timer: retail's round clock. It sets the round length (round_timer_length seconds,
+ * every round) and fires its target when the clock runs out, so the map decides who wins a
+ * timeout (charlie: axiswin_mm, an Axis win). The rules core counts the clock down and only
+ * reports the timeout (timeout_serial); with a timer present it no longer ends the round. */
+class CDoDRoundTimer : public CPointEntity
+{
+public:
+	void Spawn( void );
+	void KeyValue( KeyValueData *pkvd );
+	void Think( void );
+private:
+	float m_flLength;
+	int m_iSeenTimeout;
+};
+
+LINK_ENTITY_TO_CLASS( dod_round_timer, CDoDRoundTimer )
+
+void CDoDRoundTimer::KeyValue( KeyValueData *pkvd )
+{
+	if( FStrEq( pkvd->szKeyName, "round_timer_length" ) ) {
+		m_flLength = (float)atof( pkvd->szValue ); pkvd->fHandled = TRUE;
+	} else CPointEntity::KeyValue( pkvd );
+}
+
+void CDoDRoundTimer::Spawn( void )
+{
+	pev->solid = SOLID_NOT;
+	pev->movetype = MOVETYPE_NONE;
+	if( m_flLength > 0.0f ) {
+		Dod_SetTimerDriven( 1 );
+		Dod_SetRoundClock( m_flLength );
+		m_iSeenTimeout = Dod_GetState()->timeout_serial;
+		SetThink( &CDoDRoundTimer::Think );
+		pev->nextthink = gpGlobals->time + 0.25f;
+		ALERT( at_console, "DoD round timer %.0f s target=%s\n", m_flLength, pev->target ? STRING( pev->target ) : "-" );
+	}
+}
+
+void CDoDRoundTimer::Think( void )
+{
+	const DodGameRulesState *state = Dod_GetState();
+	pev->nextthink = gpGlobals->time + 0.25f;
+	if( state->timeout_serial == m_iSeenTimeout )
+		return;
+	m_iSeenTimeout = state->timeout_serial;
+	ALERT( at_console, "DoD round timer expired (round %d)\n", state->round_number );
+	if( pev->target )
+		DodGC_FireMapTarget( STRING( pev->target ), this, "round timer" );
+}
+
+/* dod_control_point_master: when a capture leaves one team holding every control point it fires
+ * that team's capture target once (charlie: allies_capture_target = allieswin_mm). Capture events
+ * come from the rules core (capture_serial); a team that already held every point at round start
+ * (Axis on charlie) does not trigger anything, as in retail where only a capture completes it.
+ * point_give_delay_time / point_pointvalue (periodic point score) are not used: charlie sets the
+ * point value to 0, and the core awards the per-point score continuously. */
+class CDoDControlPointMaster : public CPointEntity
+{
+public:
+	CDoDControlPointMaster();
+	void Spawn( void );
+	void KeyValue( KeyValueData *pkvd );
+	void Think( void );
+private:
+	string_t m_iszTarget[3];	/* indexed by DodTeam */
+	int m_iSeenCapture;
+};
+
+LINK_ENTITY_TO_CLASS( dod_control_point_master, CDoDControlPointMaster )
+
+CDoDControlPointMaster::CDoDControlPointMaster()
+{
+	m_iszTarget[0] = m_iszTarget[DOD_TEAM_ALLIES] = m_iszTarget[DOD_TEAM_AXIS] = 0;
+	m_iSeenCapture = 0;
+}
+
+void CDoDControlPointMaster::KeyValue( KeyValueData *pkvd )
+{
+	if( FStrEq( pkvd->szKeyName, "allies_capture_target" ) ) {
+		m_iszTarget[DOD_TEAM_ALLIES] = ALLOC_STRING( pkvd->szValue ); pkvd->fHandled = TRUE;
+	} else if( FStrEq( pkvd->szKeyName, "axis_capture_target" ) ) {
+		m_iszTarget[DOD_TEAM_AXIS] = ALLOC_STRING( pkvd->szValue ); pkvd->fHandled = TRUE;
+	} else if( FStrEq( pkvd->szKeyName, "cpm_group" ) || FStrEq( pkvd->szKeyName, "point_give_delay_time" ) ) {
+		pkvd->fHandled = TRUE;
+	} else CPointEntity::KeyValue( pkvd );
+}
+
+void CDoDControlPointMaster::Spawn( void )
+{
+	pev->solid = SOLID_NOT;
+	pev->movetype = MOVETYPE_NONE;
+	Dod_SetMasterDriven( 1 );
+	m_iSeenCapture = Dod_GetState()->capture_serial;
+	SetThink( &CDoDControlPointMaster::Think );
+	pev->nextthink = gpGlobals->time + 0.25f;
+	ALERT( at_console, "DoD control point master allies=%s axis=%s\n",
+		m_iszTarget[DOD_TEAM_ALLIES] ? STRING( m_iszTarget[DOD_TEAM_ALLIES] ) : "-",
+		m_iszTarget[DOD_TEAM_AXIS] ? STRING( m_iszTarget[DOD_TEAM_AXIS] ) : "-" );
+}
+
+void CDoDControlPointMaster::Think( void )
+{
+	const DodGameRulesState *state = Dod_GetState();
+	pev->nextthink = gpGlobals->time + 0.25f;
+	if( state->capture_serial == m_iSeenCapture )
+		return;
+	m_iSeenCapture = state->capture_serial;
+	ALERT( at_console, "DoD master: capture #%d by %s, Allies hold %d / Axis hold %d of %d points\n", state->capture_serial,
+		state->last_capture_team == DOD_TEAM_ALLIES ? "Allies" : "Axis", state->controlled_objectives[DOD_TEAM_ALLIES],
+		state->controlled_objectives[DOD_TEAM_AXIS], state->objective_count );
+	if( state->phase != DOD_ROUND_ACTIVE || !Dod_TeamOwnsAllObjectives( state->last_capture_team ) )
+		return;
+	const DodTeam team = state->last_capture_team;
+	ALERT( at_console, "DoD master: %s hold every control point, target=%s\n", team == DOD_TEAM_ALLIES ? "Allies" : "Axis",
+		m_iszTarget[team] ? STRING( m_iszTarget[team] ) : "-" );
+	if( m_iszTarget[team] )
+		DodGC_FireMapTarget( STRING( m_iszTarget[team] ), this, "master" );
+}
+
+/* dod_score_ent: gives its team score_points when used. With score_resetplayerstime > 0 it is a
+ * round win (retail resets the players after that many seconds): the round ends with that team as
+ * the winner and restarts after the delay. score_nextmapdelay (a map change) is not implemented;
+ * charlie sets it to 0. message is a localisation key (MAP_AXIS_VICTORY2), which the lean HUD
+ * cannot resolve, so the round announcement text comes from CHalfLifeDoD::Think. */
+class CDoDScoreEnt : public CPointEntity
+{
+public:
+	CDoDScoreEnt();
+	void Spawn( void );
+	void KeyValue( KeyValueData *pkvd );
+	void Use( CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TYPE useType, float value );
+private:
+	int m_iTeam;
+	int m_iPoints;
+	float m_flResetPlayersTime;
+};
+
+LINK_ENTITY_TO_CLASS( dod_score_ent, CDoDScoreEnt )
+
+CDoDScoreEnt::CDoDScoreEnt()
+{
+	m_iTeam = DOD_TEAM_UNASSIGNED;
+	m_iPoints = 0;
+	m_flResetPlayersTime = 0.0f;
+}
+
+void CDoDScoreEnt::KeyValue( KeyValueData *pkvd )
+{
+	if( FStrEq( pkvd->szKeyName, "team" ) ) {
+		m_iTeam = atoi( pkvd->szValue ); pkvd->fHandled = TRUE;
+	} else if( FStrEq( pkvd->szKeyName, "score_points" ) ) {
+		m_iPoints = atoi( pkvd->szValue ); pkvd->fHandled = TRUE;
+	} else if( FStrEq( pkvd->szKeyName, "score_resetplayerstime" ) ) {
+		m_flResetPlayersTime = (float)atof( pkvd->szValue ); pkvd->fHandled = TRUE;
+	} else if( FStrEq( pkvd->szKeyName, "score_nextmapdelay" ) || FStrEq( pkvd->szKeyName, "score_resetitemtime" )
+		|| FStrEq( pkvd->szKeyName, "noise" ) || FStrEq( pkvd->szKeyName, "message" ) ) {
+		pkvd->fHandled = TRUE;
+	} else CPointEntity::KeyValue( pkvd );
+}
+
+void CDoDScoreEnt::Spawn( void )
+{
+	pev->solid = SOLID_NOT;
+	pev->movetype = MOVETYPE_NONE;
+	ALERT( at_console, "DoD score ent '%s' team=%d points=%d restart=%.0f\n", pev->targetname ? STRING( pev->targetname ) : "-",
+		m_iTeam ? m_iTeam : pev->team, m_iPoints, m_flResetPlayersTime );
+}
+
+void CDoDScoreEnt::Use( CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TYPE useType, float value )
+{
+	/* The engine stores the `team` key in pev->team itself, so KeyValue never sees it. */
+	const DodTeam team = (DodTeam)( m_iTeam ? m_iTeam : pev->team );
+	if( team != DOD_TEAM_ALLIES && team != DOD_TEAM_AXIS )
+		return;
+	const DodGameRulesState *state = Dod_GetState();
+	if( state->phase != DOD_ROUND_ACTIVE )
+		return;
+	Dod_AddTeamScore( team, m_iPoints );
+	ALERT( at_console, "DoD score ent '%s' used: %s +%d%s\n", pev->targetname ? STRING( pev->targetname ) : "-", team == DOD_TEAM_ALLIES ? "Allies" : "Axis", m_iPoints,
+		m_flResetPlayersTime > 0.0f ? " (round win)" : "" );
+	if( m_flResetPlayersTime > 0.0f ) {
+		Dod_EndRoundDelayed( team, m_flResetPlayersTime );
+		ALERT( at_console, "DoD round %d won by %s, restart in %.0f s (rounds won allies=%d axis=%d)\n", state->round_number,
+			team == DOD_TEAM_ALLIES ? "Allies" : "Axis", m_flResetPlayersTime,
+			state->rounds_won[DOD_TEAM_ALLIES], state->rounds_won[DOD_TEAM_AXIS] );
+	}
 }
 
 void DodGC_ResetMapObjectives( void )

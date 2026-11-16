@@ -17,6 +17,8 @@ public:
 	virtual void ClientUserInfoChanged( CBasePlayer *pPlayer, char *infobuffer );
 	virtual const char *GetGameDescription( void ) { return "Day of Defeat"; }
 	virtual edict_t *GetPlayerSpawnSpot( CBasePlayer *pPlayer );
+	virtual int DeadPlayerWeapons( CBasePlayer *pPlayer );
+	virtual int DeadPlayerAmmo( CBasePlayer *pPlayer );
 };
 
 void DodGC_ResetMapObjectives( void );

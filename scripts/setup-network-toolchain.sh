@@ -18,8 +18,8 @@ checkout() {
 	fi
 	[[ "$(git -C "$dir" rev-parse HEAD)" == "$rev" ]] || git -C "$dir" checkout --detach "$rev"
 }
-checkout https://github.com/extremscorner/libogc2.git "$DEST/sources/libogc2" "$OGC_REV"
-checkout https://github.com/extremscorner/libfat.git "$DEST/sources/libfat" "$FAT_REV"
+checkout https://github.com/timfox/libogc2.git "$DEST/sources/libogc2" "$OGC_REV"
+checkout https://github.com/timfox/libfat.git "$DEST/sources/libfat" "$FAT_REV"
 export DEVKITPRO="$DEST/devkitpro" DEVKITPPC="$BASE/devkitPPC"
 # Lean lwIP pools (PBUF_POOL_SIZE 24, MEM_SIZE 64K): the stock desktop-sized pools cost
 # ~420 KiB of MEM1 .bss and starve the engine heap on BBA-linked builds. Idempotent.

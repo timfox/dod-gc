@@ -153,11 +153,12 @@ static CBasePlayer *PlayerAt( int index )
 
 /* ------------------------------------------------------------- bot count */
 
-static void CountPlayers( int *humans, int *bots, int team_counts[4], int special_counts[4][DOD_CLASS_COUNT] )
+static void CountPlayers( int *humans, int *bots, int team_counts[4], int bot_team_counts[4], int special_counts[4][DOD_CLASS_COUNT] )
 {
 	int i;
 	*humans = *bots = 0;
 	memset( team_counts, 0, sizeof( int ) * 4 );
+	memset( bot_team_counts, 0, sizeof( int ) * 4 );
 	memset( special_counts, 0, sizeof( int ) * 4 * DOD_CLASS_COUNT );
 	for( i = 1; i <= gpGlobals->maxClients; i++ )
 	{
@@ -174,6 +175,9 @@ static void CountPlayers( int *humans, int *bots, int team_counts[4], int specia
 		if( team == DOD_TEAM_ALLIES || team == DOD_TEAM_AXIS )
 		{
 			team_counts[team]++;
+	bot_team_counts[team]++;
+			if( DodBots_IsBot( pPlayer ) )
+				bot_team_counts[team]++;
 			state = Dod_GetPlayer( i );
 			if( state && state->player_class > DOD_CLASS_NONE && state->player_class < DOD_CLASS_COUNT )
 				special_counts[team][state->player_class]++;
@@ -186,7 +190,7 @@ static const char *const g_bot_names[] = {
 	"Sgt. Walker", "Pvt. Brandt", "Cpl. Hayes", "Ofw. Vogel"
 };
 
-static void AddBot( int team_counts[4], int special_counts[4][DOD_CLASS_COUNT] )
+static void AddBot( int team_counts[4], int bot_team_counts[4], int special_counts[4][DOD_CLASS_COUNT] )
 {
 	static int name_index;
 	const char *name = g_bot_names[name_index++ % ( sizeof( g_bot_names ) / sizeof( g_bot_names[0] ) )];
@@ -202,15 +206,9 @@ static void AddBot( int team_counts[4], int special_counts[4][DOD_CLASS_COUNT] )
 	if( FNullEnt( pEdict ) )
 		return;	/* no free client slot after all */
 	reject[0] = '\0';
-	ClientConnect( pEdict, name, "127.0.0.1", reject );
-	ClientPutInServer( pEdict );
-
-	pBot = (CBasePlayer *)CBaseEntity::Instance( pEdict );
-	if( !pBot )
-		return;
-	team = Dod_BotPickTeam( team_counts[DOD_TEAM_ALLIES], team_counts[DOD_TEAM_AXIS] );
-	player_class = Dod_BotPickClass( RANDOM_LONG( 0, 1000 ), special_counts[team] );
 	{
+		/* Mark the slot a bot before ClientPutInServer spawns it: the first PlayerSpawn must already
+		 * know it is a bot (a human waits at the side menu, a bot does not). */
 		DodBotState *state = BotState( ENTINDEX( pEdict ) );
 		if( state )
 		{
@@ -218,6 +216,15 @@ static void AddBot( int team_counts[4], int special_counts[4][DOD_CLASS_COUNT] )
 			state->active = 1;
 		}
 	}
+	ClientConnect( pEdict, name, "127.0.0.1", reject );
+	ClientPutInServer( pEdict );
+
+	pBot = (CBasePlayer *)CBaseEntity::Instance( pEdict );
+	if( !pBot )
+		return;
+	team = Dod_BotPickTeamBalanced( team_counts[DOD_TEAM_ALLIES], team_counts[DOD_TEAM_AXIS],
+		bot_team_counts[DOD_TEAM_ALLIES], bot_team_counts[DOD_TEAM_AXIS] );
+	player_class = Dod_BotPickClass( RANDOM_LONG( 0, 1000 ), special_counts[team] );
 	DodGC_BotJoin( pBot, team, player_class );
 	pBot->pev->flags |= FL_FAKECLIENT;	/* Spawn() inside BotJoin resets flags to FL_CLIENT */
 	team_counts[team]++;
@@ -251,9 +258,9 @@ static BOOL NetworkUp( void )
 
 static void PlanBots( void )
 {
-	int humans, bots, team_counts[4], special_counts[4][DOD_CLASS_COUNT], target;
+	int humans, bots, team_counts[4], bot_team_counts[4], special_counts[4][DOD_CLASS_COUNT], target;
 
-	CountPlayers( &humans, &bots, team_counts, special_counts );
+	CountPlayers( &humans, &bots, team_counts, bot_team_counts, special_counts );
 	if( humans > 0 && g_first_human_time == 0.0f )
 		g_first_human_time = gpGlobals->time;
 	if( humans == 0 )
@@ -269,7 +276,7 @@ static void PlanBots( void )
 	if( bots > target )
 		KickOneBot();
 	else if( bots < target && gpGlobals->time - g_first_human_time > 3.0f )
-		AddBot( team_counts, special_counts );	/* one per plan tick: no spawn burst */
+		AddBot( team_counts, bot_team_counts, special_counts );	/* one per plan tick: no spawn burst */
 }
 
 /* -------------------------------------------------------------------- AI */
@@ -356,7 +363,11 @@ static void RunBot( int index, CBasePlayer *pBot )
 	if( msec_value < 1 ) msec_value = 1;
 	if( msec_value > 100 ) msec_value = 100;
 	const byte msec = (byte)msec_value;
-	const float speed = pBot->pev->maxspeed > 0.0f ? pBot->pev->maxspeed : 220.0f;
+	/* pmove clamps to pev->maxspeed; the engine leaves it 0 on some builds, which froze the bots
+	 * in place (fwd=220 commanded, velocity 0). Give the bot a walking speed of its own. */
+	if( pBot->pev->maxspeed <= 0.0f )
+		pBot->pev->maxspeed = 220.0f;
+	const float speed = pBot->pev->maxspeed;
 	float viewangles[3], aim_error = 0.0f, enemy_distance = 0.0f;
 	unsigned short buttons = 0;
 	CBasePlayer *enemy;
@@ -403,6 +414,15 @@ static void RunBot( int index, CBasePlayer *pBot )
 		floor_end = ahead - Vector( 0, 0, 100 );
 		UTIL_TraceLine( ahead, floor_end, ignore_monsters, pBot->edict(), &tr );
 		in.ledge = tr.flFraction >= 1.0f;
+		{
+			/* The lean GameCube server has no line-trace hull for the world: a trace straight
+			 * down from the bot's own feet misses. Then ledge/blocked mean nothing and would
+			 * pin the bot in place (forward 0 forever), so distrust them. */
+			TraceResult own;
+			UTIL_TraceLine( pBot->pev->origin, pBot->pev->origin - Vector( 0, 0, 100 ), ignore_monsters, pBot->edict(), &own );
+			if( own.flFraction >= 1.0f )
+				in.ledge = in.blocked = 0;
+		}
 	}
 
 	enemy = FindEnemy( pBot, &enemy_distance );
@@ -477,8 +497,17 @@ static void RunBot( int index, CBasePlayer *pBot )
 	viewangles[0] = state->pitch;
 	viewangles[1] = state->yaw;
 	viewangles[2] = 0.0f;
+	/* The engine does not copy a fake client's command angles into pev->v_angle on every build
+	 * (Allies bots kept v_angle 0,0 and every shot flew along +X). Weapons fire along v_angle, so
+	 * set it from the command, with the same sign convention (positive pitch = looking down). */
+	pBot->pev->v_angle.x = viewangles[0];
+	pBot->pev->v_angle.y = viewangles[1];
+	pBot->pev->v_angle.z = 0.0f;
+	pBot->pev->angles.x = viewangles[0] * ( 1.0f / 3.0f );
+	pBot->pev->angles.y = viewangles[1];
 	( *g_engfuncs.pfnRunPlayerMove )( pBot->edict(), viewangles, move.forward * speed, move.side * speed, 0, buttons, 0, msec );
 }
+
 
 void DodBots_Think( void )
 {

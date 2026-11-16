@@ -1,0 +1,14 @@
+# Pinned sources for a dod-gc build (read by scripts/env.sh and scripts/fetch-sources.sh).
+# A build uses the clones scripts/fetch-sources.sh makes under .deps/, or the checkouts named by
+# DODGC_ENGINE / DODGC_HLSDK. It never follows a symlink into somebody's working tree.
+
+# Engine: tracks this branch of the engine repo; its submodules are the commits that branch records.
+DODGC_ENGINE_URL="https://github.com/timfox/xash3d-gc.git"
+DODGC_ENGINE_REF="master"
+
+# Game-code SDK: engine master does not carry one (3rdparty/hlsdk-portable is neither tracked nor a
+# submodule), and its build script checks out a local branch named mobile_hacks that only exists on
+# some machines. The published fork branch below is what dod-gc integrates into; the commit is pinned.
+DODGC_HLSDK_URL="https://github.com/timfox/hlsdk-portable.git"
+DODGC_HLSDK_BRANCH="claude/dod-hlsdk-integration"
+DODGC_HLSDK_COMMIT="da97665bbd273ba7f46eb5e8e3df071a48ae104a"

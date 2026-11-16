@@ -6,9 +6,14 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
+# The engine checkout the headers come from: DODGC_ENGINE, else the pinned clone (scripts/fetch-sources.sh).
+ENGINE = Path(os.environ.get("DODGC_ENGINE") or ROOT / ".deps" / "xash3d-gc")
+NEEDS_ENGINE = unittest.skipUnless((ENGINE / "engine/platform/gamecube").is_dir(),
+                                   "set DODGC_ENGINE or run scripts/fetch-sources.sh")
 
 
 class NetworkConfigTests(unittest.TestCase):
+    @NEEDS_ENGINE
     def test_native_static_validation(self):
         with tempfile.TemporaryDirectory() as tmp:
             source = Path(tmp) / "config.c"
@@ -34,15 +39,16 @@ int main(void) {
 }
 ''')
             binary = Path(tmp) / "config"
-            subprocess.run(["cc", "-std=c99", "-Wall", "-Wextra", "-Werror", "-fsanitize=address,undefined", "-I", str(ROOT / "engine/engine/platform/gamecube"), str(source), "-o", str(binary)], check=True)
+            subprocess.run(["cc", "-std=c99", "-Wall", "-Wextra", "-Werror", "-fsanitize=address,undefined", "-I", str(ENGINE / "engine/platform/gamecube"), str(source), "-o", str(binary)], check=True)
             subprocess.run([str(binary)], check=True)
 
+    @NEEDS_ENGINE
     def test_native_socket_errors(self):
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
             (base / "network.h").write_bytes((ROOT / "tests/network_mock.h").read_bytes())
             binary = base / "sockets"
-            subprocess.run(["cc", "-std=c99", "-Wall", "-Wextra", "-Werror", "-DXASH_GAMECUBE_LIBOGC2=1", "-I", str(base), "-I", str(ROOT / "engine/engine/platform/gamecube"), str(ROOT / "tests/network_socket_shim.c"), "-o", str(binary)], check=True)
+            subprocess.run(["cc", "-std=c99", "-Wall", "-Wextra", "-Werror", "-DXASH_GAMECUBE_LIBOGC2=1", "-I", str(base), "-I", str(ENGINE / "engine/platform/gamecube"), str(ROOT / "tests/network_socket_shim.c"), "-o", str(binary)], check=True)
             subprocess.run([str(binary)], check=True)
 
     def package(self, *args):

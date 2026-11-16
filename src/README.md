@@ -1,6 +1,6 @@
 # Day of Defeat game code
 
-This port uses the HL1SDK-based `hlsdk-portable` game DLL because Steam DoD
+This port uses the HL1SDK-based `hlsdk-portable` game DLL because retail DoD
 provides assets but no game source, and its retail client depends on VGUI2,
 which the current Xash3D GameCube build does not support.
 
@@ -218,6 +218,15 @@ The local human can watch the bots fight instead of playing.
   (chase, in-eye, free-fly). The two overview-map modes are skipped (they need
   map overview data the GameCube build does not ship). With nobody to follow the
   camera free-flies and returns to the chosen camera as soon as a bot spawns.
+- **Smooth chase.** Chase cameras follow the target's entity origin, which only
+  changes on a network update, so the view used to step. `client/dod_cam.h`
+  low-passes the camera origin (about 0.11 s) and angles in the two chase
+  modes, independent of frame rate, and snaps on a new target, a mode change,
+  a jump over 300 units (respawn) or a hitch over 0.25 s. It is hooked into
+  `V_CalcSpectatorRefdef` by `integrate-dod-gameplay.py`; in-eye and roaming are
+  untouched. `DodCam_Level` also zeroes roll and clamps pitch to +-89 in the chase
+  and roaming cameras so the horizon stays level (in-eye keeps the followed
+  player's own view). Host-tested; not yet seen in Dolphin.
 - **Director.** `dod_spec_auto` (default 1) moves the follow camera by itself
   to the bot in the closest fight, staying at least 4 s and at most 14 s on one
   target, and straight away when the followed bot dies. Any Fire, Alt-fire or

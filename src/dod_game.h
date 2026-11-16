@@ -92,6 +92,14 @@ typedef struct DodGameRulesState {
 	int restart_serial;
 	int match_serial;
 	DodTeam match_winner;		/* valid after match_serial changes */
+	/* Map-driven round flow (retail): dod_control_point_master and dod_round_timer decide when
+	 * a round ends by firing map targets, so the core only reports events and the map ends the
+	 * round through Dod_EndRoundDelayed (dod_score_ent). */
+	int capture_serial;		/* +1 whenever a control point changes owner */
+	DodTeam last_capture_team;	/* who made the latest capture */
+	int timeout_serial;		/* +1 when the round clock runs out in timer-driven mode */
+	int master_driven;		/* a control point master owns the "all points held" win */
+	int timer_driven;		/* a dod_round_timer owns the timeout */
 } DodGameRulesState;
 
 /* Game lifecycle and round clock. A zero duration disables the time limit. */
@@ -104,6 +112,18 @@ void Dod_SetRoundsToWin(int rounds);
 /* Zero everybody's kills, deaths and objective score; teams and classes stay. */
 void Dod_ResetPlayerStats(void);
 void Dod_EndRound(DodTeam winner);
+/* End the round with an explicit winner and restart delay (0 = DOD_INTERMISSION_SECONDS). */
+void Dod_EndRoundDelayed(DodTeam winner, float restart_delay_seconds);
+/* Add points to a team's score for the current round. */
+void Dod_AddTeamScore(DodTeam team, int points);
+/* Map flow flags: when set, the core stops ending the round by itself on "team holds every
+ * objective" (master) or on clock expiry (timer) and reports the event for the map to act on. */
+void Dod_SetMasterDriven(int on);
+void Dod_SetTimerDriven(int on);
+/* Set the round clock (dod_round_timer round_timer_length); applies to the running round and
+ * to every later one. */
+void Dod_SetRoundClock(float seconds);
+int Dod_TeamOwnsAllObjectives(DodTeam team);
 void Dod_Think(float frametime);
 const DodGameRulesState *Dod_GetState(void);
 
