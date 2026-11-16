@@ -49,6 +49,11 @@ static inline unsigned long long BotClockUs( void )
  * D the rest (the player move). The worst of each, and of the whole call, since the last log line. */
 static unsigned long long g_seg_max_us[5];
 
+/* How fast the bots' view turned, per bot-frame, since the last log line: the largest rates and how many frames
+ * turned faster than a human wrist can (a smooth turn is a few hundred degrees per second). */
+static float g_turn_max_yaw_rate, g_turn_max_pitch_rate;
+static unsigned g_turn_frames, g_turn_over_540, g_turn_over_1080;
+
 struct SegTimer
 {
 	unsigned long long t[4];
@@ -172,6 +177,12 @@ typedef struct DodBotState {
 	float track_since, last_fight_time, react_until;
 	float burst_until, pause_until;
 	float next_unseen_log, last_fire;
+	/* The view: yaw/pitch are the angles the bot looks along (and what v_angle and the body yaw are written from); the
+	 * rest of the code only says where it wants to look (want_*) and one eased step per frame (Dod_BotEase) turns
+	 * the view towards it, so nothing ever snaps. */
+	float want_yaw, want_pitch, yaw_vel, pitch_vel;
+	float prev_yaw, prev_pitch;	/* last written view angles, for the turn log */
+	int have_prev_angles;
 	int was_alive;			/* for the death log */
 	int stage_role;			/* test scenario: 1 watcher (holds still, perceives), 2 idle and blind */
 	float stage_yaw;
@@ -510,6 +521,10 @@ static void PlanBots( void )
 			ALERT( at_console, "DoD bots: worst RunBot segments (ms): start-to-obstacles %.1f, perceive+think %.1f, decisions %.1f, player move %.1f; whole call %.1f\n",
 				(double)g_seg_max_us[0] / 1000.0, (double)g_seg_max_us[1] / 1000.0, (double)g_seg_max_us[2] / 1000.0,
 				(double)g_seg_max_us[3] / 1000.0, (double)g_seg_max_us[4] / 1000.0 );
+			ALERT( at_console, "DoD bots: view turn: max yaw %.0f deg/s, max pitch %.0f deg/s; %u of %u bot-frames over 540 deg/s, %u over 1080\n",
+				g_turn_max_yaw_rate, g_turn_max_pitch_rate, g_turn_over_540, g_turn_frames, g_turn_over_1080 );
+			g_turn_max_yaw_rate = g_turn_max_pitch_rate = 0.0f;
+			g_turn_frames = g_turn_over_540 = g_turn_over_1080 = 0;
 			memset( g_seg_max_us, 0, sizeof( g_seg_max_us ) );
 			memset( g_phase_max_us, 0, sizeof( g_phase_max_us ) );
 			g_think_us_sum = g_think_us_max = 0;
@@ -1336,8 +1351,9 @@ static void StagePlace( CBasePlayer *pBot, const Vector &pos, float yaw )
 	UTIL_SetOrigin( pBot->pev, pos );
 	if( state )
 	{
-		state->yaw = yaw;
-		state->pitch = 0.0f;
+		state->yaw = state->want_yaw = yaw;	/* a teleport, not a turn */
+		state->pitch = state->want_pitch = 0.0f;
+		state->yaw_vel = state->pitch_vel = 0.0f;
 		state->stage_yaw = yaw;
 		state->path_len = 0;
 	}
@@ -1667,8 +1683,9 @@ static void RunBot( int index, CBasePlayer *pBot )
 				ALERT( at_console, "DoD bot %s: respawned, the spawn took %.0f ms\n", STRING( pBot->pev->netname ),
 					(double)( BotClockUs() - t0 ) / 1000.0 );
 		}
-		state->yaw = pBot->pev->v_angle.y;
-		state->pitch = pBot->pev->v_angle.x;
+		state->yaw = state->want_yaw = pBot->pev->v_angle.y;
+		state->pitch = state->want_pitch = pBot->pev->v_angle.x;
+		state->yaw_vel = state->pitch_vel = 0.0f;
 		state->has_goal = 0;
 		state->goal_id = -1;
 		state->arrived = 0;
@@ -1681,6 +1698,7 @@ static void RunBot( int index, CBasePlayer *pBot )
 		state->known_until = 0.0f;
 		state->tgt = 0;
 		state->burst_until = 0.0f;
+		state->have_prev_angles = 0;
 		state->cell_n = 0;
 		state->path_len = 0;
 		state->ladder_dir = 0;
@@ -1699,7 +1717,7 @@ static void RunBot( int index, CBasePlayer *pBot )
 	}
 	EnsureNav();
 	if( state->yaw == 0.0f && state->pitch == 0.0f )
-		state->yaw = pBot->pev->v_angle.y;
+		state->yaw = state->want_yaw = pBot->pev->v_angle.y;
 	if( gpGlobals->time >= state->next_goal )
 		PickGoal( pBot, state );
 	RecordCell( state, pBot->pev->origin );
@@ -1768,8 +1786,7 @@ static void RunBot( int index, CBasePlayer *pBot )
 			gpGlobals->time, !fight && !state->nav_arrived && !state->ladder_dir && state->behavior != DOD_ACT_RELOAD, RANDOM_FLOAT( 0.0f, 1.0f ) );
 		if( esc.stuck )
 		{
-			state->heading = Dod_BotAngleDelta( 0.0f, state->yaw + esc.turn );
-			state->yaw = state->heading;
+			state->heading = Dod_BotAngleDelta( 0.0f, state->yaw + esc.turn );	/* the view eases round to it; the legs go at once */
 			state->hold_heading_until = gpGlobals->time + esc.hold;
 			if( esc.jump )
 				buttons |= IN_JUMP;
@@ -1811,8 +1828,8 @@ static void RunBot( int index, CBasePlayer *pBot )
 			state->noise_pitch = RANDOM_FLOAT( -err, err ) * 0.5f;
 			state->next_noise = now + 0.3f;
 		}
-		state->yaw = Dod_BotTurn( state->yaw, want_yaw + state->noise_yaw, sk.turn_rate * dt );
-		state->pitch = Dod_BotTurn( state->pitch, want_pitch + state->noise_pitch, sk.turn_rate * dt );
+		state->want_yaw = want_yaw + state->noise_yaw;
+		state->want_pitch = want_pitch + state->noise_pitch;
 		{
 			/* fire when the view is on where the bot is trying to aim; the noise is what makes shots miss */
 			const float dy = fabsf( Dod_BotAngleDelta( state->yaw, want_yaw + state->noise_yaw ) );
@@ -1842,9 +1859,8 @@ static void RunBot( int index, CBasePlayer *pBot )
 			{
 				/* climbing: face the ladder's far end, look up (or down) and push forward */
 				state->heading = YawTo( pBot->pev->origin, target );
-				state->yaw = state->heading;
 			}
-			else if( on_path )
+			else if( on_path && gpGlobals->time >= state->hold_heading_until )
 			{
 				/* the graph's edges are walkable in a straight line (tools/gen_waypoints.py checks that), so go
 				 * straight at the node: the free-run probing below mistakes steps and stairs for walls */
@@ -1862,15 +1878,28 @@ static void RunBot( int index, CBasePlayer *pBot )
 				state->heading = state->steer_yaw;
 			}
 		}
-		/* Following a route the view has to be able to swing round a node that is off to the side: at 220 units/s and
-		 * 120 degrees/s the turning circle is ~105 units, wider than the node reach, so the bot orbited it. */
-		state->yaw = Dod_BotTurn( state->yaw, state->heading, ( path_follow ? 300.0f : 120.0f ) * dt );
-		state->pitch = Dod_BotTurn( state->pitch, state->ladder_dir > 0 ? -50.0f : ( state->ladder_dir < 0 ? 50.0f : 0.0f ), 120.0f * dt );
+		state->want_yaw = state->heading;
+		state->want_pitch = state->ladder_dir > 0 ? -50.0f : ( state->ladder_dir < 0 ? 50.0f : 0.0f );
 	}
 
 	move = Dod_BotDecide( &in );
-	if( path_follow && !fight && fabsf( Dod_BotAngleDelta( state->yaw, state->heading ) ) > 45.0f )
-		move.forward = fminf( move.forward, 0.3f );	/* point at the node first, then run at it */
+	if( !fight && state->nav_has && !state->ladder_dir && ( move.forward != 0.0f || move.side != 0.0f ) )
+	{
+		/* The movement command is relative to the view, which eases round to the heading over a few frames: rotate
+		 * the command by the difference so the legs go the way the bot means to at once, as a person running while
+		 * turning does, instead of running off along the old view. */
+		const float d = Dod_BotAngleDelta( state->yaw, state->heading ) * (float)M_PI / 180.0f;
+		const float c = cos( d ), sn = sin( d ), f = move.forward, sd = move.side;
+		float len;
+		move.forward = f * c + sd * sn;
+		move.side = sd * c - f * sn;
+		len = sqrtf( move.forward * move.forward + move.side * move.side );
+		if( len > 1.0f )
+		{
+			move.forward /= len;
+			move.side /= len;
+		}
+	}
 	seg.mark();
 	if( g_nav.zone_count )
 	{
@@ -1927,7 +1956,6 @@ static void RunBot( int index, CBasePlayer *pBot )
 	{
 		const float turn = RANDOM_FLOAT( 70.0f, 140.0f ) * ( RANDOM_LONG( 0, 1 ) ? 1.0f : -1.0f );
 		state->heading = Dod_BotAngleDelta( 0.0f, state->yaw + turn );
-		state->yaw = state->heading;
 		state->hold_heading_until = gpGlobals->time + 0.7f;
 	}
 	if( fight )
@@ -1984,7 +2012,8 @@ static void RunBot( int index, CBasePlayer *pBot )
 		move.jump = 0;
 		buttons &= ~IN_JUMP;
 		if( !fight )
-			state->yaw = state->heading = state->stage_yaw;
+			state->yaw = state->want_yaw = state->heading = state->stage_yaw;
+			state->yaw_vel = 0.0f;
 		if( fight )
 		{
 			state->stage_sightings++;
@@ -2004,6 +2033,13 @@ static void RunBot( int index, CBasePlayer *pBot )
 	if( move.jump )
 		buttons |= IN_JUMP;
 
+	{
+		/* The one place the view turns: an eased step towards where the bot wants to look. Human-like limits
+		 * (skill: peak speed and acceleration; the head pitches slower than it yaws). */
+		const DodBotSkill turn_sk = BotSkill();
+		Dod_BotEase( &state->yaw, &state->yaw_vel, state->want_yaw, turn_sk.turn_rate, turn_sk.turn_accel, dt );
+		Dod_BotEase( &state->pitch, &state->pitch_vel, state->want_pitch, turn_sk.turn_rate * 0.6f, turn_sk.turn_accel * 0.6f, dt );
+	}
 	viewangles[0] = state->pitch;
 	viewangles[1] = state->yaw;
 	viewangles[2] = 0.0f;
@@ -2015,6 +2051,23 @@ static void RunBot( int index, CBasePlayer *pBot )
 	pBot->pev->v_angle.z = 0.0f;
 	pBot->pev->angles.x = viewangles[0] * ( 1.0f / 3.0f );
 	pBot->pev->angles.y = viewangles[1];
+	if( state->have_prev_angles && dt > 0.0f )
+	{
+		const float yr = fabsf( Dod_BotAngleDelta( state->prev_yaw, viewangles[1] ) ) / dt;
+		const float pr = fabsf( Dod_BotAngleDelta( state->prev_pitch, viewangles[0] ) ) / dt;
+		g_turn_frames++;
+		if( yr > g_turn_max_yaw_rate )
+			g_turn_max_yaw_rate = yr;
+		if( pr > g_turn_max_pitch_rate )
+			g_turn_max_pitch_rate = pr;
+		if( yr > 540.0f )
+			g_turn_over_540++;
+		if( yr > 1080.0f )
+			g_turn_over_1080++;
+	}
+	state->prev_yaw = viewangles[1];
+	state->prev_pitch = viewangles[0];
+	state->have_prev_angles = 1;
 	{
 		PhaseTimer timer( DOD_PH_MOVE );
 		( *g_engfuncs.pfnRunPlayerMove )( pBot->edict(), viewangles, move.forward * speed, move.side * speed, 0, buttons, 0, msec );

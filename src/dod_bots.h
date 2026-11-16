@@ -36,6 +36,13 @@ DodTeam Dod_BotPickTeamBalanced(int allies, int axis, int allies_bots, int axis_
  * special_counts[] is per class on that team. */
 DodClass Dod_BotPickClass(int roll, const int special_counts[DOD_CLASS_COUNT]);
 
+/* Eased turning: one step of a view angle (degrees) toward a target. The turn speed builds up and brakes at most
+ * `accel` degrees/s per second and never exceeds `max_speed`, and the speed it aims for is the one from which it can
+ * still brake to a stop on the target (sqrt(2 * accel * distance)), so the view swings, slows and settles without
+ * overshoot or a snap. *vel is the current angular speed (deg/s, signed), kept between calls. The short way
+ * round, result normalised to [-180, 180). */
+float Dod_BotEase(float *angle, float *vel, float target, float max_speed, float accel, float dt);
+
 /* Turn from current toward target (degrees) by at most max_step, the short
  * way around. Result is normalised to [-180, 180). */
 float Dod_BotTurn(float current, float target, float max_step);
@@ -234,6 +241,7 @@ typedef struct DodBotSkill {
 	float hear_scale;	/* multiplies the hearing radii */
 	float memory;		/* seconds an enemy position is remembered after it was seen */
 	float recoil;		/* degrees per second the view climbs while an automatic weapon fires */
+	float turn_accel;	/* degrees per second squared the view's turn speed can build up or brake: eased, never instant */
 } DodBotSkill;
 
 #define DOD_BOT_SETTLE_FLOOR 0.4f
