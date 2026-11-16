@@ -328,7 +328,7 @@ PY
 	echo
 	echo "## OSReport keys"
 	echo '```'
-	rg -a -n "gc_menu_ready|steam background|mainui key|probe menu|CreateGame|Internet|xfb_k1|CopyDisp ok|presents=|FATAL|MISSING" "$LOG" 2>/dev/null | head -100 || true
+	rg -a -n "gc_menu_ready|(steam )?background|mainui key|probe menu|CreateGame|Internet|xfb_k1|CopyDisp ok|presents=|FATAL|MISSING" "$LOG" 2>/dev/null | head -100 || true
 	echo '```'
 } > "$NOTE"
 

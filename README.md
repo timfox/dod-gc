@@ -1,7 +1,7 @@
 # dod-gc
 
 Isolated GameCube port of **Day of Defeat**, built on the **xash3d-gc** engine
-and **HL1SDK** deathmatch code while mirroring legally owned Steam DoD assets.
+and **HL1SDK** deathmatch code while mirroring legally owned retail DoD assets.
 
 This repo does **not** overwrite the Half-Life 1 GameCube artifacts
 (`halflife1.dol` / `boot.dol` / `xash3d-gc.iso`). The deliverable here is
@@ -12,8 +12,8 @@ This repo does **not** overwrite the Half-Life 1 GameCube artifacts
 | Path | Points at |
 |------|-----------|
 | `engine/` | xash3d-gc checkout (symlink) |
-| `content/dod/` | Steam `Half-Life/dod` (symlink) |
-| `content/valve/` | Steam `Half-Life/valve` basedir fallback (symlink) |
+| `content/dod/` | Retail `Half-Life/dod` (symlink) |
+| `content/valve/` | Retail `Half-Life/valve` basedir fallback (symlink) |
 | `hlsdk-portable/` | HL1SDK used as the DM/code base (symlink) |
 | `src/` | Local DoD game-mode / feature port work |
 | `out/dodgc.iso` | DoD disc image |
@@ -27,8 +27,8 @@ Symlinks are created for this machine as:
 
 ```bash
 engine        → /run/media/tim/Expansion/xash3d-gc
-content/dod   → …/Steam/steamapps/common/Half-Life/dod
-content/valve → …/Steam/steamapps/common/Half-Life/valve
+content/dod   → …/Half-Life/dod
+content/valve → …/Half-Life/valve
 ```
 
 Re-link if paths move:
@@ -79,7 +79,7 @@ scripts/build-lean-iso.sh --no-world-render   # diagnostics only
 
 ## Approach
 
-Steam DoD provides **assets only** (source unavailable; client is vgui2-blocked
+Retail DoD provides **assets only** (source unavailable; client is vgui2-blocked
 on stock Xash). We take HL1SDK deathmatch features and port DoD game modes /
 systems on top, matching retail assets under `content/dod`. Engine multi-game
 notes live in `engine/docs/gamecube/MULTI_GAME.md`.

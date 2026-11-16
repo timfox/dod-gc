@@ -42,7 +42,7 @@ class StageBspMapmodelsTest(unittest.TestCase):
 	def test_avalanche_refs_are_tiny(self):
 		bsp = ROOT / "content" / "dod" / "maps" / "dod_avalanche.bsp"
 		if not bsp.is_file():
-			self.skipTest("Steam dod_avalanche.bsp not linked")
+			self.skipTest("retail dod_avalanche.bsp not linked")
 		refs = self.mod.bsp_model_refs(bsp)
 		self.assertLessEqual(len(refs), 32)
 		self.assertTrue(all("mapmodels/" in r or r.startswith("models/") for r in refs))
