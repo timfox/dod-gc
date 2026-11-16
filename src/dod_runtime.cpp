@@ -35,6 +35,11 @@ static float g_spec_hold_until[DOD_SPEC_SLOTS + 1];
 static float g_spec_target_since[DOD_SPEC_SLOTS + 1];
 static int g_spec_last_target[DOD_SPEC_SLOTS + 1];
 static float g_spec_next_think;
+/* dod_spectate 1: InitHUD asks for the join, SpectatorThink makes it. The first
+ * InitHUD runs inside CBasePlayer::Spawn, whose tail (game_playerspawn, the kit,
+ * observer flags reset) undid a join made there, and bots are not yet marked as
+ * bots at that point. */
+static BOOL g_spec_join_pending[DOD_MAX_PLAYERS + 1];
 static int gmsgDodHud;
 static float g_dod_next_hud;
 static int g_dod_seen_restart;
@@ -276,6 +281,7 @@ CHalfLifeDoD::CHalfLifeDoD()
 	memset( g_spec_target_since, 0, sizeof( g_spec_target_since ) );
 	memset( g_spec_last_target, 0, sizeof( g_spec_last_target ) );
 	g_spec_next_think = 0.0f;
+	memset( g_spec_join_pending, 0, sizeof( g_spec_join_pending ) );
 }
 
 void DodGC_BotJoin( CBasePlayer *pPlayer, DodTeam team, DodClass player_class )
@@ -389,7 +395,9 @@ void CHalfLifeDoD::InitHUD( CBasePlayer *pPlayer )
 	if( pPlayer->IsObserver() )
 		return;	/* still spectating: nothing to choose */
 	if( !DodBots_IsBot( pPlayer ) && CVAR_GET_FLOAT( "dod_spectate" ) != 0.0f ) {
-		DodGC_JoinSpectator( pPlayer );
+		const int index = DodGC_PlayerIndex( pPlayer );
+		if( index >= 1 && index <= DOD_MAX_PLAYERS )
+			g_spec_join_pending[index] = TRUE;
 		return;
 	}
 	DodGC_ShowTeamMenu( pPlayer );
@@ -554,6 +562,11 @@ static void DodGC_SpectatorThink( void )
 		CBasePlayer *pSpec = (CBasePlayer *)UTIL_PlayerByIndex( i );
 		const int slot = i <= DOD_SPEC_SLOTS ? i : 0;
 		int count, mode, pick;
+		if( i <= DOD_MAX_PLAYERS && g_spec_join_pending[i] ) {
+			g_spec_join_pending[i] = FALSE;
+			if( pSpec && pSpec->IsPlayer() && !pSpec->IsObserver() && !DodBots_IsBot( pSpec ) )
+				DodGC_JoinSpectator( pSpec );
+		}
 		if( !pSpec || !pSpec->IsPlayer() || !pSpec->IsObserver() || DodBots_IsBot( pSpec ) )
 			continue;
 		if( slot && ( pSpec->pev->button & ( IN_ATTACK | IN_ATTACK2 | IN_JUMP ) ) )
