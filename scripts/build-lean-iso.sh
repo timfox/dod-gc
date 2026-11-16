@@ -193,6 +193,7 @@ dodgc_require_content
 	echo "error: missing $DODGC_DOL — build DOL first" >&2
 	exit 1
 }
+bash "$SCRIPT_DIR/check-menu-provenance.sh" --dol "$DODGC_DOL" || exit 1
 
 if (( ! SKIP_STAGE )); then
 	bash "$SCRIPT_DIR/stage-lean-dod.sh" "${STAGE_ARGS[@]+"${STAGE_ARGS[@]}"}"
