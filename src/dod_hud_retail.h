@@ -123,6 +123,15 @@ static inline DodRetailCell Dod_RetailTimerDigit(int digit)
 }
 
 /* One draw: cell (possibly cropped) at screen x, y. */
+/* Sheets every frame may draw (panel, timer, crosshair, flags); the clip
+ * and rocket sheets are only needed while a gun that uses them is held. */
+static inline int Dod_RetailSheetAlwaysOn(int sheet)
+{
+	return sheet == DOD_SHEET_LAYOUT || sheet == DOD_SHEET_CROSS
+		|| sheet == DOD_SHEET_OBJ_NEUTRAL || sheet == DOD_SHEET_OBJ_ALLIES
+		|| sheet == DOD_SHEET_OBJ_AXIS;
+}
+
 typedef struct DodRetailDraw {
 	DodRetailCell cell;
 	int x, y;

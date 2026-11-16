@@ -22,6 +22,7 @@ void CHudDod::InitState( void )
 	for( i = 0; i < DOD_SHEET_COUNT; i++ )
 		m_hSheets[i] = 0;
 	m_fSheetsTried = 0;
+	m_fSheetTried = 0;
 	m_fDrawLogged = 0;
 	m_szLoggedWeapon[0] = 0;
 	m_pCvar = gEngfuncs.pfnRegisterVariable( "cl_dodhud", "1", FCVAR_ARCHIVE );
@@ -44,6 +45,7 @@ int CHudDod::VidInit( void )
 	for( i = 0; i < DOD_SHEET_COUNT; i++ )
 		m_hSheets[i] = 0;
 	m_fSheetsTried = 0;
+	m_fSheetTried = 0;
 	return 1;
 }
 
@@ -86,8 +88,17 @@ int CHudDod::DrawRetail( float flTime )
 	if( !m_fSheetsTried )
 	{
 		m_fSheetsTried = 1;
+		/* The always-on pieces load now; the clip and rocket sheets (65 KB
+		 * each while loading) only when a gun that uses them is held. */
 		for( i = 0; i < DOD_SHEET_COUNT; i++ )
-			m_hSheets[i] = SPR_Load( dod_retail_sheet_files[i] );
+		{
+			m_hSheets[i] = 0;
+			if( Dod_RetailSheetAlwaysOn( i ))
+			{
+				m_fSheetTried |= 1u << i;
+				m_hSheets[i] = SPR_Load( dod_retail_sheet_files[i] );
+			}
+		}
 		gEngfuncs.Con_Printf( "Xash3D GameCube: DoD retail HUD sheets layout=%d cross=%d\n",
 			m_hSheets[DOD_SHEET_LAYOUT] ? 1 : 0, m_hSheets[DOD_SHEET_CROSS] ? 1 : 0 );
 		for( i = 0; i < DOD_SHEET_COUNT; i++ )
@@ -157,8 +168,17 @@ int CHudDod::DrawRetail( float flTime )
 	}
 	for( i = 0; i < count; i++ )
 	{
-		const HSPRITE spr = m_hSheets[draws[i].cell.sheet];
+		const int sheet = draws[i].cell.sheet;
 		wrect_t rc;
+
+		if( !m_hSheets[sheet] && !( m_fSheetTried & ( 1u << sheet )))
+		{
+			m_fSheetTried |= 1u << sheet;
+			m_hSheets[sheet] = SPR_Load( dod_retail_sheet_files[sheet] );
+			gEngfuncs.Con_Printf( "Xash3D GameCube: DoD retail HUD sheet %s loaded on use h=%d\n",
+				dod_retail_sheet_files[sheet], m_hSheets[sheet] );
+		}
+		const HSPRITE spr = m_hSheets[sheet];
 
 		if( !spr )
 			continue;
@@ -185,12 +205,12 @@ int CHudDod::DrawRetail( float flTime )
 	}
 	if( spare.count > 0 && spare.x >= 0 )
 	{
+		/* retail: DrawHudString( x, base, x + 64, "x %d", white ) */
 		char buf[16];
+		const int tx = (int)( spare.x * sx + 0.5f );
 
-		sprintf( buf, "x%d", spare.count );
-		gEngfuncs.pfnDrawSetTextColor( 1.0f, 1.0f, 1.0f );
-		gEngfuncs.pfnDrawConsoleString( (int)( spare.x * sx + 0.5f ),
-			(int)( spare.y * sy + 0.5f ), buf );
+		sprintf( buf, "x %d", spare.count );
+		gHUD.DrawHudString( tx, (int)( spare.y * sy + 0.5f ), tx + (int)( 64 * sx + 0.5f ), buf, 255, 255, 255 );
 	}
 	if( !m_fDrawLogged )
 	{

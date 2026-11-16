@@ -33,6 +33,7 @@ private:
 	int m_fSheetsTried;
 	int m_fDrawLogged;
 	char m_szLoggedWeapon[32];
+	unsigned m_fSheetTried;	/* on-use sheets already attempted (bit per sheet) */
 	cvar_t *m_pCvar;
 };
 
