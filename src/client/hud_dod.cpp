@@ -96,6 +96,7 @@ int CHudDod::MsgFunc_DodHud( const char *pszName, int iSize, void *pbuf )
 	m_state.grenades = (unsigned char)READ_BYTE();
 	m_state.kit = (unsigned char)READ_BYTE();
 	m_state.stamina = (unsigned char)READ_BYTE();
+	m_state.respawn = (unsigned char)READ_BYTE();
 	m_flLastUpdate = m_flTimerBase = gEngfuncs.GetClientTime();
 	m_fHaveState = 1;
 	return 1;
@@ -462,6 +463,16 @@ int CHudDod::DrawRetail( float flTime )
 	DrawBoard();
 	DrawVoice();
 	DrawKills();
+	/* a dead player waits for the next wave of their side */
+	if( m_fHaveState && m_state.respawn > 0 && gHUD.m_Health.m_iHealth <= 0 && gEngfuncs.GetClientTime() - m_flLastUpdate < 3.0f )
+	{
+		char text[40];
+		const int w = ScreenWidth > 0 ? ScreenWidth : 320, h = ScreenHeight > 0 ? ScreenHeight : 240;
+		const int n = sprintf( text, "Respawn in %d", (int)m_state.respawn );
+
+		gHUD.DrawHudString( ( w - gHUD.DrawHudStringLen( text )) / 2, h / 2 - 20, w, text, 255, 255, 255 );
+		(void)n;
+	}
 	if( !m_fDrawLogged )
 	{
 		m_fDrawLogged = 1;

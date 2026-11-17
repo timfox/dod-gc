@@ -16,6 +16,9 @@ static float g_score_remainder[4];
 static float g_give_delay = 20.0f;	/* seconds between timed point awards */
 static float g_give_timer;
 static float g_round_seconds;
+static float g_round_clock;	/* seconds of the active round, for the respawn waves */
+static float g_respawn_base = DOD_RESPAWN_BASE_SECONDS;
+static float g_respawn_factor[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
 static int g_rounds_to_win;
 static int g_dod_active;
 
@@ -97,6 +100,9 @@ void Dod_GameInit(void)
 	memset(g_score_remainder, 0, sizeof(g_score_remainder));
 	g_give_timer = 0.0f;
 	g_give_delay = 20.0f;
+	g_round_clock = 0.0f;
+	g_respawn_base = DOD_RESPAWN_BASE_SECONDS;
+	g_respawn_factor[1] = g_respawn_factor[2] = 1.0f;
 	g_dod_state.phase = DOD_ROUND_WAITING;
 	g_dod_state.winner = DOD_TEAM_UNASSIGNED;
 	g_round_seconds = 0.0f;
@@ -147,6 +153,7 @@ void Dod_ResetPlayerStats(void)
 void Dod_StartRound(float duration_seconds)
 {
 	g_round_seconds = duration_seconds > 0.0f ? duration_seconds : 0.0f;
+	g_round_clock = 0.0f;
 	++g_dod_state.round_number;
 	g_dod_state.phase = DOD_ROUND_ACTIVE;
 	g_dod_state.round_active = 1;
@@ -250,6 +257,7 @@ void Dod_Think(float frametime)
 	if (frametime <= 0.0f)
 		return;
 	if (g_dod_state.phase == DOD_ROUND_ACTIVE) {
+		g_round_clock += frametime;
 		if (g_dod_state.round_time_remaining > 0.0f) {
 			g_dod_state.round_time_remaining -= frametime;
 			if (g_dod_state.round_time_remaining <= 0.0f) {
@@ -869,6 +877,62 @@ int Dod_RetailClassMask(DodTeam team, int retail_mask)
 		if (retail_mask & bits[c])
 			mask |= 1 << c;
 	return mask;
+}
+
+float Dod_RoundClock(void)
+{
+	return g_round_clock;
+}
+
+void Dod_SetRespawnFactor(DodTeam team, float factor)
+{
+	if (team == DOD_TEAM_ALLIES || team == DOD_TEAM_AXIS)
+		g_respawn_factor[team] = factor > 0.1f ? (factor < 10.0f ? factor : 10.0f) : 0.1f;
+}
+
+void Dod_SetRespawnBase(float seconds)
+{
+	g_respawn_base = seconds > 0.5f ? seconds : 0.5f;
+}
+
+void Dod_NoteDeath(int player_index)
+{
+	DodPlayerState *player = dod_valid_player(player_index) ? &g_dod_players[player_index] : 0;
+	if (player && player->connected) {
+		player->dead = 1;
+		player->death_clock = g_round_clock;
+	}
+}
+
+void Dod_NoteRespawn(int player_index)
+{
+	DodPlayerState *player = dod_valid_player(player_index) ? &g_dod_players[player_index] : 0;
+	if (player)
+		player->dead = 0;
+}
+
+float Dod_RespawnWaveTime(float death_clock, float interval, float min_delay)
+{
+	float earliest = death_clock + min_delay;
+	int wave;
+	if (interval <= 0.0f)
+		return earliest;
+	wave = (int)(earliest / interval);
+	if ((float)wave * interval < earliest)
+		++wave;
+	return (float)wave * interval;
+}
+
+float Dod_RespawnSeconds(int player_index)
+{
+	const DodPlayerState *player = dod_valid_player(player_index) ? &g_dod_players[player_index] : 0;
+	float at, left;
+	if (!player || !player->connected || !player->dead || g_dod_state.phase != DOD_ROUND_ACTIVE ||
+		(player->team != DOD_TEAM_ALLIES && player->team != DOD_TEAM_AXIS))
+		return 0.0f;
+	at = Dod_RespawnWaveTime(player->death_clock, g_respawn_base * g_respawn_factor[player->team], DOD_RESPAWN_MIN_SECONDS);
+	left = at - g_round_clock;
+	return left > 0.0f ? left : 0.0f;
 }
 
 static int g_class_limit[4][DOD_CLASS_COUNT];

@@ -19,6 +19,7 @@ public:
 	virtual edict_t *GetPlayerSpawnSpot( CBasePlayer *pPlayer );
 	virtual int DeadPlayerWeapons( CBasePlayer *pPlayer );
 	virtual int DeadPlayerAmmo( CBasePlayer *pPlayer );
+	virtual BOOL FPlayerCanRespawn( CBasePlayer *pPlayer );
 };
 
 /* A control point as the bots see it: who owns it, who is capturing it, who may capture it, and

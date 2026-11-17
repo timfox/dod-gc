@@ -69,6 +69,8 @@ typedef struct DodPlayerState {
 	float stamina_rest_until;	/* no refill before this time after spending */
 	float sprint_started_at;
 	int sprint_locked;		/* the tube ran dry: no sprint until it has refilled a bit */
+	int dead;			/* killed and not yet respawned */
+	float death_clock;		/* the round clock when they died */
 } DodPlayerState;
 
 /* Stamina and sprint. A double tap of forward starts a sprint that lasts while forward is held and stamina remains; it
@@ -277,6 +279,21 @@ const char *Dod_KillWeaponLabel(const char *classname, DodTeam team, int british
  * capped server-wide because the client has 8 temporary entities. */
 int Dod_PuffScale(float size);
 int Dod_PuffAllowed(float now, float *window_start, int *in_window, int per_second);
+
+/* Respawn waves. A dead player comes back at the next wave of their side: waves fall every (base * the side's factor) seconds of
+ * round time, and nobody comes back sooner than DOD_RESPAWN_MIN_SECONDS after dying. The factor is the map's
+ * info_doddetect detect_allies_respawnfactor / detect_axis_respawnfactor (charlie: Allies 0.5, Axis 1.5); the base is the port's own
+ * (DOD_RESPAWN_BASE_SECONDS, cvar dod_respawn_delay), as retail's is not recorded here. Between rounds everyone may respawn. */
+#define DOD_RESPAWN_BASE_SECONDS 10.0f
+#define DOD_RESPAWN_MIN_SECONDS 2.0f
+void Dod_SetRespawnFactor(DodTeam team, float factor);
+void Dod_SetRespawnBase(float seconds);
+void Dod_NoteDeath(int player_index);
+void Dod_NoteRespawn(int player_index);
+/* Seconds until the player may respawn (0: now). Pure function of the clock, for tests and the HUD. */
+float Dod_RespawnSeconds(int player_index);
+float Dod_RespawnWaveTime(float death_clock, float interval, float min_delay);
+float Dod_RoundClock(void);
 
 /* Class limits (retail mp_limit<side><gun> cvars and mp_alliesclasses / mp_axisclasses): a limit of -1 is unlimited, 0 turns the
  * class off; the class mask has bit (1 << class) per allowed class, -1 allows all. A class is available to a player when it is
