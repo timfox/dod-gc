@@ -48,6 +48,8 @@ static const struct DodLimitCvar { const char *name; int team; int player_class;
 static cvar_t g_limit_cvar_storage[DOD_LIMIT_CVARS];
 static cvar_t mp_alliesclasses = { "mp_alliesclasses", "-1", FCVAR_SERVER };
 static cvar_t mp_axisclasses = { "mp_axisclasses", "-1", FCVAR_SERVER };
+/* mp_spawnbazookas (every retail map cfg sets it): whether the map spawns bazooka pickups at the start; read by nothing yet, registered so the cfg line is not an unknown command */
+static cvar_t mp_spawnbazookas = { "mp_spawnbazookas", "1", FCVAR_SERVER };
 
 static cvar_t dod_allies_body = { "dod_allies_body", "us-inf", FCVAR_SERVER };
 static cvar_t dod_axis_body = { "dod_axis_body", "axis-inf", FCVAR_SERVER };
@@ -157,8 +159,8 @@ static void DodGC_SyncClassLimits( void )
 		Dod_SetClassLimit( (DodTeam)g_limit_cvars[k].team, (DodClass)g_limit_cvars[k].player_class,
 			(int)CVAR_GET_FLOAT( g_limit_cvars[k].name ) );
 	}
-	Dod_SetClassMask( DOD_TEAM_ALLIES, (int)CVAR_GET_FLOAT( "mp_alliesclasses" ) );
-	Dod_SetClassMask( DOD_TEAM_AXIS, (int)CVAR_GET_FLOAT( "mp_axisclasses" ) );
+	Dod_SetClassMask( DOD_TEAM_ALLIES, Dod_RetailClassMask( DOD_TEAM_ALLIES, (int)CVAR_GET_FLOAT( "mp_alliesclasses" ) ) );
+	Dod_SetClassMask( DOD_TEAM_AXIS, Dod_RetailClassMask( DOD_TEAM_AXIS, (int)CVAR_GET_FLOAT( "mp_axisclasses" ) ) );
 }
 
 static BOOL DodGC_ClassOpen( DodTeam team, DodClass player_class, int player_index )
@@ -429,6 +431,7 @@ CHalfLifeDoD::CHalfLifeDoD()
 		}
 		CVAR_REGISTER( &mp_alliesclasses );
 		CVAR_REGISTER( &mp_axisclasses );
+		CVAR_REGISTER( &mp_spawnbazookas );
 		CVAR_REGISTER( &dod_allies_body );
 		CVAR_REGISTER( &dod_axis_body );
 		g_dod_cvars_registered = TRUE;
@@ -1656,6 +1659,7 @@ public:
 	void Spawn( void );
 	void KeyValue( KeyValueData *pkvd );
 	void EXPORT PuffThink( void );
+	void EXPORT CheckThink( void );
 	void Use( CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TYPE useType, float value );
 private:
 	int m_iSprite;
@@ -1694,11 +1698,32 @@ void CDoDParticleShooter::Spawn( void )
 	m_iSprite = MODEL_INDEX( DOD_PUFF_SPRITE );
 	m_iRemaining = m_iCount;
 	m_bOn = FALSE;
-	SetThink( &CDoDParticleShooter::PuffThink );
+	SetThink( &CDoDParticleShooter::CheckThink );
+	pev->nextthink = gpGlobals->time + 2.0f;	/* once the whole map is loaded: does this emitter earn its edict? */
 	ALERT( at_console, "DoD particle_shooter at %.0f %.0f %.0f: %s, delay %.2f, puffs %d, size %.0f\n", pev->origin.x, pev->origin.y, pev->origin.z, ( pev->spawnflags & 32 ) ? "starts on" : "waits for use", m_flDelay, m_iCount, m_flSize );
-	if( pev->spawnflags & 32 ) {	/* start on */
+}
+
+/* An emitter is an edict, and charlie sits at about 420 of 460 with the bots needing 26 free: an emitter that nothing can switch on
+ * (no entity targets it: the map logic that would is dropped on this build) or that would leave less than DOD_PUFF_EDICT_MARGIN free
+ * removes itself two seconds after the map has loaded. */
+#define DOD_PUFF_EDICT_MARGIN 50
+void CDoDParticleShooter::CheckThink( void )
+{
+	const BOOL start_on = ( pev->spawnflags & 32 ) != 0;
+	const BOOL targeted = pev->targetname && !FNullEnt( FIND_ENTITY_BY_STRING( NULL, "target", STRING( pev->targetname ) ) );
+	const int free_edicts = gpGlobals->maxEntities - g_engfuncs.pfnNumberOfEntities();
+	if( ( !start_on && !targeted ) || free_edicts < DOD_PUFF_EDICT_MARGIN ) {
+		ALERT( at_console, "DoD particle_shooter at %.0f %.0f %.0f removed (%s, %d edicts free)\n", pev->origin.x, pev->origin.y, pev->origin.z,
+			( !start_on && !targeted ) ? "nothing switches it on" : "edict budget", free_edicts );
+		UTIL_Remove( this );
+		return;
+	}
+	SetThink( &CDoDParticleShooter::PuffThink );
+	if( start_on ) {
 		m_bOn = TRUE;
-		pev->nextthink = gpGlobals->time + 1.0f + RANDOM_FLOAT( 0.0f, m_flDelay );
+		pev->nextthink = gpGlobals->time + RANDOM_FLOAT( 0.0f, m_flDelay );
+	} else {
+		pev->nextthink = 0.0f;
 	}
 }
 

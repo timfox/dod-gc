@@ -123,6 +123,33 @@ static void test_player_body(void)
 	assert(Dod_PlayerBodyValue("us-inf", DOD_CLASS_NONE, 4) == 0);
 }
 
+static void test_retail_class_masks(void)
+{
+	const int rocket = 1 << DOD_CLASS_ROCKET;
+	int allies, axis, c;
+	assert(Dod_RetailClassMask(DOD_TEAM_ALLIES, -1) == -1 && Dod_RetailClassMask(DOD_TEAM_AXIS, -1) == -1);
+	/* dod_charlie.cfg: mp_alliesclasses 895, mp_axisclasses 3583: every class but the Rocket class */
+	allies = Dod_RetailClassMask(DOD_TEAM_ALLIES, 895);
+	axis = Dod_RetailClassMask(DOD_TEAM_AXIS, 3583);
+	for (c = DOD_CLASS_RIFLEMAN; c < DOD_CLASS_COUNT; ++c) {
+		assert(((allies >> c) & 1) == (c != DOD_CLASS_ROCKET));
+		assert(((axis >> c) & 1) == (c != DOD_CLASS_ROCKET));
+	}
+	assert(!(allies & rocket) && !(axis & rocket));
+	/* a class stays on while any of its guns is: Allies with only the Carbine bit still have riflemen; only the Panzerschreck: rockets */
+	assert(Dod_RetailClassMask(DOD_TEAM_ALLIES, 1 << 1) == (1 << DOD_CLASS_RIFLEMAN));
+	assert(Dod_RetailClassMask(DOD_TEAM_AXIS, 1 << 9) == rocket);
+	assert(Dod_RetailClassMask(DOD_TEAM_AXIS, 1 << 8) == (1 << DOD_CLASS_MG) && Dod_RetailClassMask(DOD_TEAM_AXIS, 0) == 0);
+	assert(Dod_RetailClassMask(DOD_TEAM_SPECTATOR, 895) == -1);
+	/* the mask drives availability */
+	Dod_GameInit();
+	assert(Dod_PlayerConnect(1) && Dod_AssignPlayerTeam(1, DOD_TEAM_ALLIES));
+	Dod_SetClassMask(DOD_TEAM_ALLIES, allies);
+	assert(!Dod_ClassAvailable(DOD_TEAM_ALLIES, DOD_CLASS_ROCKET, 1) && Dod_ClassAvailable(DOD_TEAM_ALLIES, DOD_CLASS_SNIPER, 1));
+	Dod_SetClassMask(DOD_TEAM_ALLIES, -1);
+	Dod_GameShutdown();
+}
+
 static void test_puffs(void)
 {
 	float window = 0.0f;
@@ -1020,6 +1047,7 @@ int main(void)
 	test_retail_class_names();
 	test_status_line();
 	test_player_line();
+	test_retail_class_masks();
 	test_puffs();
 	test_kill_labels();
 	test_class_limits();

@@ -281,6 +281,12 @@ int Dod_PuffAllowed(float now, float *window_start, int *in_window, int per_seco
 /* Class limits (retail mp_limit<side><gun> cvars and mp_alliesclasses / mp_axisclasses): a limit of -1 is unlimited, 0 turns the
  * class off; the class mask has bit (1 << class) per allowed class, -1 allows all. A class is available to a player when it is
  * enabled and fewer than its limit of the side's other players hold it. */
+/* mp_alliesclasses / mp_axisclasses as the retail map cfgs write them (dod_charlie.cfg: 895 and 3583): a bit per retail gun in the order
+ * of the game's class table (Allies: Garand 0, Carbine 1, Thompson 2, Grease Gun 3, Springfield 4, BAR 5, 30cal 6, Bazooka 7, Mortar 8;
+ * Axis: Kar98k 0, K43 1, scoped Kar98k 2, MP40 3, MP44 4, FG42 5, scoped FG42 6, MG34 7, MG42 8, Panzerschreck 9, Mortar 10), -1 for all.
+ * Returns the mask in this port's six classes (bit 1 << class) for Dod_SetClassMask: a class is allowed when any of its guns' bits is set.
+ * So 895 / 3583 switch off the Rocket class on both sides, as on retail charlie. */
+int Dod_RetailClassMask(DodTeam team, int retail_mask);
 void Dod_SetClassLimit(DodTeam team, DodClass player_class, int limit);
 void Dod_SetClassMask(DodTeam team, int mask);
 int Dod_ClassLimit(DodTeam team, DodClass player_class);
