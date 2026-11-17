@@ -148,6 +148,15 @@ static void test_world_models(void)
 	assert(Dod_WeaponWorldModel(0, model, sizeof(model)) == 0);
 }
 
+static void test_round_end_sound(void)
+{
+	assert(strcmp(Dod_RoundEndSound(DOD_TEAM_ALLIES, 0), "ambience/uswin.wav") == 0);
+	assert(strcmp(Dod_RoundEndSound(DOD_TEAM_ALLIES, 1), "ambience/britwin.wav") == 0);
+	assert(strcmp(Dod_RoundEndSound(DOD_TEAM_AXIS, 0), "ambience/germanwin.wav") == 0);
+	assert(strcmp(Dod_RoundEndSound(DOD_TEAM_AXIS, 1), "ambience/germanwin.wav") == 0);
+	assert(Dod_RoundEndSound(DOD_TEAM_UNASSIGNED, 0) == 0 && Dod_RoundEndSound(DOD_TEAM_SPECTATOR, 0) == 0);
+}
+
 static void test_death_sequences(void)
 {
 	/* the retail order of us-inf/axis-inf/brit-inf: die_simple 19 ... die_prone1 29 */
@@ -1132,6 +1141,7 @@ int main(void)
 	test_player_line();
 	test_world_models();
 	test_death_sequences();
+	test_round_end_sound();
 	test_respawn_waves();
 	test_retail_class_masks();
 	test_puffs();

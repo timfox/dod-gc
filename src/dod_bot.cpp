@@ -1517,6 +1517,27 @@ static void StageStep( void )
 	static float armed_at;
 	static int g_track_victim;
 	static float g_track_until, g_track_next;
+	if( stage == 7 && g_stage_phase >= 9 )
+	{
+		/* test scenario 7: the Allies win the round 20 s after the human joined, the Axis win the next one 40 s after that (round-end fanfares) */
+		static float t7;
+		static int ended;
+		if( !t7 )
+			t7 = now;
+		if( ended == 0 && now - t7 > 20.0f )
+		{
+			ended = 1;
+			ALERT( at_console, "DoD STAGE rounds: ending the round, Allies win\n" );
+			Dod_EndRound( DOD_TEAM_ALLIES );
+		}
+		else if( ended == 1 && now - t7 > 60.0f && Dod_GetState()->phase == DOD_ROUND_ACTIVE )
+		{
+			ended = 2;
+			ALERT( at_console, "DoD STAGE rounds: ending the round, Axis win\n" );
+			Dod_EndRound( DOD_TEAM_AXIS );
+		}
+		return;
+	}
 	if( stage == 6 && g_stage_phase >= 9 )
 	{
 		/* test scenario 6 (dod_caen): the human stands 140 units from the particle_shooter at 1280 2928 159, looking at it, for smoke close-ups */
@@ -1673,7 +1694,7 @@ static void StageStep( void )
 	}
 	if( !stage || g_stage_phase >= 9 )
 		return;
-	if( stage == 3 || stage == 4 || stage == 5 || stage == 6 )
+	if( stage == 3 || stage == 4 || stage == 5 || stage == 6 || stage == 7 )
 	{
 		/* put the human on the Allies as a rifleman so the pad can fire, reload and cycle weapons (view model checks) */
 		static float arm;
@@ -2381,6 +2402,25 @@ static void RefreshToggleWalls( void )
 	}
 	if( sig == last_sig )
 		return;
+	{
+		/* what do the bots stand on where they stall on charlie: player-hull and line traces straight down from z 300 */
+		static int probed;
+		if( !probed && !strcmp( STRING( gpGlobals->mapname ), "dod_charlie" ) )
+		{
+			static const float xy[3][2] = { { 500.0f, -100.0f }, { 700.0f, -120.0f }, { 840.0f, -80.0f } };
+			probed = 1;
+			for( int k = 0; k < 3; k++ )
+			{
+				TraceResult th, tl;
+				UTIL_TraceHull( Vector( xy[k][0], xy[k][1], 300.0f ), Vector( xy[k][0], xy[k][1], -300.0f ), ignore_monsters, human_hull, NULL, &th );
+				UTIL_TraceLine( Vector( xy[k][0], xy[k][1], 300.0f ), Vector( xy[k][0], xy[k][1], -300.0f ), ignore_monsters, NULL, &tl );
+				ALERT( at_console, "DoD floor probe (%.0f %.0f): hull hits %s (ent %d, model %s) normal %.2f %.2f %.2f end z %.0f (origin height; floor %.0f); line hits %s normal z %.2f end z %.0f\n",
+					xy[k][0], xy[k][1], th.pHit ? STRING( th.pHit->v.classname ) : "none", th.pHit ? ENTINDEX( th.pHit ) : -1, th.pHit ? STRING( th.pHit->v.model ) : "-",
+					th.vecPlaneNormal.x, th.vecPlaneNormal.y, th.vecPlaneNormal.z, th.vecEndPos.z, th.vecEndPos.z - 36.0f,
+					tl.pHit ? STRING( tl.pHit->v.classname ) : "none", tl.vecPlaneNormal.z, tl.vecEndPos.z );
+			}
+		}
+	}
 	last_sig = sig;
 	Dod_NavClearEdgeBlocks( &g_nav );
 	int crossing = 0;
