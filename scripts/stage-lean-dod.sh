@@ -401,7 +401,9 @@ PY
 		p_bren.mdl p_stg44.mdl p_spring.mdl p_30cal.mdl p_mg42pr.mdl p_bazooka.mdl p_pschreck.mdl \
 		p_colt.mdl p_luger.mdl p_amerk.mdl p_spade.mdl \
 		v_bar.mdl p_barbu.mdl \
-		p_garand.mdl p_mp40.mdl p_k98.mdl p_tommy.mdl; do
+		p_garand.mdl p_mp40.mdl p_k98.mdl p_tommy.mdl \
+		w_garand.mdl w_spring.mdl w_tommy.mdl w_bar.mdl w_30cal.mdl w_bazooka.mdl w_colt.mdl w_98k.mdl w_scoped98k.mdl \
+		w_mp40.mdl w_mp44.mdl w_mg42.mdl w_pschreck.mdl w_luger.mdl; do
 		if [[ -f "$SRC/models/$m" ]]; then
 			cp -f "$SRC/models/$m" "$LEAN/models/"
 			cap_vm=$((cap_vm + 1))
@@ -413,7 +415,7 @@ PY
 		dod_caen|dod_flash|dod_jagd)
 			for m in v_enfield.mdl v_enfield_scoped.mdl v_sten.mdl v_piat.mdl v_webley.mdl v_mills.mdl v_fairbairn.mdl \
 				p_enfield.mdl p_enfields.mdl p_sten.mdl p_piat.mdl p_webley.mdl p_mills.mdl p_fairbairn.mdl \
-				w_mills.mdl w_piat_rocket.mdl; do
+				w_mills.mdl w_piat_rocket.mdl w_enfield.mdl w_enfield_scoped.mdl w_sten.mdl w_bren.mdl w_piat.mdl w_webley.mdl; do
 				if [[ -f "$SRC/models/$m" ]]; then
 					cp -f "$SRC/models/$m" "$LEAN/models/"
 					cap_vm=$((cap_vm + 1))
@@ -429,7 +431,7 @@ PY
 		*) stage_paras="${DODGC_STAGE_PARAS:-0}" ;;
 	esac
 	if [[ "$stage_paras" == 1 ]]; then
-		for m in v_m1carbine.mdl v_greasegun.mdl v_fg42.mdl p_m1carb.mdl p_grease.mdl p_fg42.mdl v_paraknife.mdl p_paraknife.mdl; do
+		for m in v_m1carbine.mdl v_greasegun.mdl v_fg42.mdl p_m1carb.mdl p_grease.mdl p_fg42.mdl v_paraknife.mdl p_paraknife.mdl w_m1carb.mdl w_greasegun.mdl w_fg42.mdl; do
 			if [[ -f "$SRC/models/$m" ]]; then
 				cp -f "$SRC/models/$m" "$LEAN/models/"
 				cap_vm=$((cap_vm + 1))

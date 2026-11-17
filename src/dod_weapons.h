@@ -75,6 +75,9 @@ typedef struct DodWeaponDef {
 } DodWeaponDef;
 
 const DodWeaponDef *Dod_GetWeaponDef(DodWeaponId id);
+/* The retail world model of a gun lying on the ground ("models/w_garand.mdl"): the view model's name with w_ for v_, except the two that
+ * differ (v_panzerschreck -> w_pschreck, v_m1carbine -> w_m1carb). Returns characters written, 0 if the def has no view model. */
+int Dod_WeaponWorldModel(const DodWeaponDef *def, char *buffer, int size);
 const DodWeaponDef *Dod_FindWeaponDef(const char *classname);
 /* The primary weapon a class is issued, NULL for bad input. */
 const DodWeaponDef *Dod_ClassWeaponDef(DodTeam team, DodClass player_class);

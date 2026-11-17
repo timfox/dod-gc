@@ -1197,9 +1197,26 @@ void CHalfLifeDoD::ClientUserInfoChanged( CBasePlayer *pPlayer, char *infobuffer
  * two minutes (a box plus the weapons in it, several edicts), and a gibbed player leaves five gibs;
  * after a few deaths the pool ran out and the game stalled. Dropping is off here (the dead player's
  * weapons are just removed) and gibs are swept after a few seconds. */
+/* Weapon drops: a dead player drops the gun they hold into a weapon box that others can walk over to pick up. Every box is an edict, and
+ * charlie sits near 420 of 460 with 26 kept free for the bots, so a box is only dropped while at least DOD_DROP_EDICT_MARGIN are free and
+ * fewer than DOD_MAX_BOXES lie about, and each one is removed DOD_BOX_SECONDS after it fell. */
+#define DOD_DROP_EDICT_MARGIN 45
+#define DOD_MAX_BOXES 6
+#define DOD_BOX_SECONDS 20.0f
+static int DodGC_CountBoxes( void )
+{
+	int n = 0;
+	edict_t *box = NULL;
+	while( !FNullEnt( box = FIND_ENTITY_BY_STRING( box, "classname", "weaponbox" ) ) )
+		n++;
+	return n;
+}
+
 int CHalfLifeDoD::DeadPlayerWeapons( CBasePlayer *pPlayer )
 {
-	return GR_PLR_DROP_GUN_NO;
+	if( gpGlobals->maxEntities - g_engfuncs.pfnNumberOfEntities() < DOD_DROP_EDICT_MARGIN || DodGC_CountBoxes() >= DOD_MAX_BOXES )
+		return GR_PLR_DROP_GUN_NO;
+	return GR_PLR_DROP_GUN_ACTIVE;
 }
 
 /* Waves: a dead player comes back when the next wave of their side falls (Dod_RespawnSeconds). */
@@ -1211,7 +1228,7 @@ BOOL CHalfLifeDoD::FPlayerCanRespawn( CBasePlayer *pPlayer )
 
 int CHalfLifeDoD::DeadPlayerAmmo( CBasePlayer *pPlayer )
 {
-	return GR_PLR_DROP_AMMO_NO;
+	return GR_PLR_DROP_AMMO_ACTIVE;
 }
 
 #define DOD_GIB_SECONDS 6.0f
@@ -1247,6 +1264,69 @@ static float g_dod_next_trim;
 
 /* Stamina and sprint for every human playing: a double tap of forward sprints, and the speed the engine's player move
  * uses is the player's maxspeed (the pad's stick sets forward; bots run their own movement). */
+/* Weapon boxes on the ground: dress each new one in the retail world model of the gun it holds, remove it after DOD_BOX_SECONDS, and
+ * log when somebody takes one. */
+static void DodGC_ManageWeaponBoxes( void )
+{
+	static float next_check;
+	static int seen_edict[DOD_MAX_BOXES * 2];
+	static float seen_time[DOD_MAX_BOXES * 2];
+	static int seen_count;
+	edict_t *box = NULL;
+	int i, alive[DOD_MAX_BOXES * 2], alive_count = 0;
+	if( gpGlobals->time < next_check )
+		return;
+	next_check = gpGlobals->time + 0.5f;
+	while( !FNullEnt( box = FIND_ENTITY_BY_STRING( box, "classname", "weaponbox" ) ) && alive_count < DOD_MAX_BOXES * 2 ) {
+		const int ent = ENTINDEX( box );
+		int slot = -1;
+		for( i = 0; i < seen_count; i++ )
+			if( seen_edict[i] == ent ) { slot = i; break; }
+		if( slot < 0 && seen_count < DOD_MAX_BOXES * 2 ) {
+			CWeaponBox *wb = (CWeaponBox *)CBaseEntity::Instance( box );
+			char model[64] = "";
+			if( wb ) {
+				for( int t = 0; t < MAX_ITEM_TYPES && !model[0]; t++ ) {
+					CBasePlayerItem *item = wb->m_rgpPlayerItems[t];
+					if( item )
+						Dod_WeaponWorldModel( Dod_FindWeaponDef( STRING( item->pev->classname ) ), model, sizeof( model ) );
+				}
+				if( model[0] ) {
+					PRECACHE_MODEL( model );
+					SET_MODEL( box, model );
+				}
+			}
+			slot = seen_count++;
+			seen_edict[slot] = ent;
+			seen_time[slot] = gpGlobals->time;
+			ALERT( at_console, "DoD weapon box %d dropped (%s), %d on the ground\n", ent, model[0] ? model : "no gun", alive_count + 1 );
+		}
+		if( slot >= 0 ) {
+			alive[alive_count++] = slot;
+			if( gpGlobals->time - seen_time[slot] > DOD_BOX_SECONDS ) {
+				CWeaponBox *wb = (CWeaponBox *)CBaseEntity::Instance( box );
+				ALERT( at_console, "DoD weapon box %d removed after %.0f s\n", ent, DOD_BOX_SECONDS );
+				if( wb )
+					wb->Kill();
+			}
+		}
+	}
+	/* a tracked box that is gone and was not timed out was picked up */
+	for( i = 0; i < seen_count; i++ ) {
+		int still = 0;
+		for( int a = 0; a < alive_count; a++ )
+			if( alive[a] == i ) { still = 1; break; }
+		if( !still ) {
+			if( gpGlobals->time - seen_time[i] <= DOD_BOX_SECONDS )
+				ALERT( at_console, "DoD weapon box %d taken after %.1f s\n", seen_edict[i], gpGlobals->time - seen_time[i] );
+			seen_edict[i] = seen_edict[seen_count - 1];
+			seen_time[i] = seen_time[seen_count - 1];
+			seen_count--;
+			i--;
+		}
+	}
+}
+
 /* The newest usercmd of each player (CmdStart, patched in by the integrator): the stick's forwardmove is not a button. */
 static float g_dod_cmd_forward[DOD_MAX_PLAYERS + 1];
 void DodGC_UserCmd( CBasePlayer *pPlayer, const struct usercmd_s *cmd )
@@ -1298,6 +1378,7 @@ void CHalfLifeDoD::Think( void )
 	DodBots_Think();
 	DodGC_SpectatorThink();
 	DodGC_UpdateMovement();
+	DodGC_ManageWeaponBoxes();
 	if( gpGlobals->time >= g_dod_next_trim ) {
 		g_dod_next_trim = gpGlobals->time + 1.0f;
 		DodGC_TrimEdicts( FALSE );

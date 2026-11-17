@@ -1,6 +1,7 @@
 /* Day of Defeat weapon table; see dod_weapons.h. */
 #include "dod_weapons.h"
 
+#include <stdio.h>
 #include <string.h>
 
 #define A DOD_TEAM_ALLIES
@@ -190,6 +191,28 @@ const DodWeaponDef *Dod_GetWeaponDef(DodWeaponId id)
 	if (g_paras[1] && g_para_axis[id].id == id)
 		return &g_para_axis[id];
 	return &g_weapons[id];
+}
+
+int Dod_WeaponWorldModel(const DodWeaponDef *def, char *buffer, int size)
+{
+	const char *stem;
+	int written;
+	if (!buffer || size <= 0)
+		return 0;
+	buffer[0] = '\0';
+	if (!def || strncmp(def->view_model, "models/v_", 9))
+		return 0;
+	stem = def->view_model + 9;
+	if (!strcmp(stem, "panzerschreck.mdl"))
+		stem = "pschreck.mdl";
+	else if (!strcmp(stem, "m1carbine.mdl"))
+		stem = "m1carb.mdl";
+	written = snprintf(buffer, (size_t)size, "models/w_%s", stem);
+	if (written < 0 || written >= size) {
+		buffer[0] = '\0';
+		return 0;
+	}
+	return written;
 }
 
 const DodWeaponDef *Dod_FindWeaponDef(const char *classname)

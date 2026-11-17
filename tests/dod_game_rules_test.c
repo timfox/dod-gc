@@ -123,6 +123,31 @@ static void test_player_body(void)
 	assert(Dod_PlayerBodyValue("us-inf", DOD_CLASS_NONE, 4) == 0);
 }
 
+static void test_world_models(void)
+{
+	char model[64];
+	int id;
+	Dod_SetAlliesCountry(DOD_COUNTRY_US);
+	Dod_SetParatroopers(0, 0);
+	assert(Dod_WeaponWorldModel(Dod_GetWeaponDef(DOD_WEAPON_GARAND), model, sizeof(model)) > 0 && !strcmp(model, "models/w_garand.mdl"));
+	assert(Dod_WeaponWorldModel(Dod_GetWeaponDef(DOD_WEAPON_PSCHRECK), model, sizeof(model)) > 0 && !strcmp(model, "models/w_pschreck.mdl"));
+	assert(Dod_WeaponWorldModel(Dod_GetWeaponDef(DOD_WEAPON_K98_SCOPED), model, sizeof(model)) > 0 && !strcmp(model, "models/w_scoped98k.mdl"));
+	assert(Dod_WeaponWorldModel(Dod_GetWeaponDef(DOD_WEAPON_THOMPSON), model, sizeof(model)) > 0 && !strcmp(model, "models/w_tommy.mdl"));
+	Dod_SetAlliesCountry(DOD_COUNTRY_BRITISH);
+	assert(Dod_WeaponWorldModel(Dod_GetWeaponDef(DOD_WEAPON_GARAND), model, sizeof(model)) > 0 && !strcmp(model, "models/w_enfield.mdl"));
+	assert(Dod_WeaponWorldModel(Dod_GetWeaponDef(DOD_WEAPON_BAZOOKA), model, sizeof(model)) > 0 && !strcmp(model, "models/w_piat.mdl"));
+	Dod_SetAlliesCountry(DOD_COUNTRY_US);
+	Dod_SetParatroopers(1, 1);
+	assert(Dod_WeaponWorldModel(Dod_GetWeaponDef(DOD_WEAPON_GARAND), model, sizeof(model)) > 0 && !strcmp(model, "models/w_m1carb.mdl"));
+	assert(Dod_WeaponWorldModel(Dod_GetWeaponDef(DOD_WEAPON_K98), model, sizeof(model)) > 0 && !strcmp(model, "models/w_fg42.mdl"));
+	Dod_SetParatroopers(0, 0);
+	/* every gun has one and it fits a small buffer check */
+	for (id = DOD_WEAPON_NONE + 1; id < DOD_WEAPON_COUNT; ++id)
+		assert(Dod_WeaponWorldModel(Dod_GetWeaponDef((DodWeaponId)id), model, sizeof(model)) > 9 && !strncmp(model, "models/w_", 9));
+	assert(Dod_WeaponWorldModel(Dod_GetWeaponDef(DOD_WEAPON_GARAND), model, 8) == 0 && model[0] == '\0');
+	assert(Dod_WeaponWorldModel(0, model, sizeof(model)) == 0);
+}
+
 static void test_respawn_waves(void)
 {
 	int i;
@@ -1085,6 +1110,7 @@ int main(void)
 	test_retail_class_names();
 	test_status_line();
 	test_player_line();
+	test_world_models();
 	test_respawn_waves();
 	test_retail_class_masks();
 	test_puffs();
