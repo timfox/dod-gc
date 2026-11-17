@@ -14,6 +14,7 @@
 #include "dod_weapons.h"
 #include "dod_bot.h"
 #include "dod_bots.h"
+#include "animation.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -1534,6 +1535,13 @@ private:
 	int m_iTeamPoints, m_iTimePoints;	/* point_team_points (on capture), point_pointvalue (timed) */
 	char m_szPointName[64];
 	BOOL m_bAreaDriven;
+	/* Retail point_allies_model / point_axis_model / point_reset_model and
+	 * their _bodygroup: the flag the point shows for its owner (reset =
+	 * neutral). Indexed by DodTeam; 0 is the neutral (reset) flag. */
+	string_t m_iszOwnerModel[3];
+	int m_iOwnerBody[3];
+	int m_iShownOwner;
+	void ShowOwner( int owner );
 };
 
 LINK_ENTITY_TO_CLASS( dod_control_point, CDoDControlPoint )
@@ -1550,6 +1558,38 @@ CDoDControlPoint::CDoDControlPoint()
 	m_bHasBounds = FALSE;
 	m_iAreaCanCap[0] = m_iAreaCanCap[DOD_TEAM_ALLIES] = m_iAreaCanCap[DOD_TEAM_AXIS] = 1;
 	m_iAreaNumCap[0] = m_iAreaNumCap[DOD_TEAM_ALLIES] = m_iAreaNumCap[DOD_TEAM_AXIS] = 1;
+	m_iszOwnerModel[0] = m_iszOwnerModel[DOD_TEAM_ALLIES] = m_iszOwnerModel[DOD_TEAM_AXIS] = 0;
+	m_iOwnerBody[0] = m_iOwnerBody[DOD_TEAM_ALLIES] = m_iOwnerBody[DOD_TEAM_AXIS] = 0;
+	m_iShownOwner = -1;
+}
+
+/* Show the owner's flag: its model with the map's body group value, waving. */
+void CDoDControlPoint::ShowOwner( int owner )
+{
+	int slot = ( owner == DOD_TEAM_ALLIES || owner == DOD_TEAM_AXIS ) ? owner : 0;
+
+	if( owner == m_iShownOwner )
+		return;
+	m_iShownOwner = owner;
+	if( !m_iszOwnerModel[slot] ) {
+		pev->effects |= EF_NODRAW;
+		return;
+	}
+	SET_MODEL( ENT( pev ), STRING( m_iszOwnerModel[slot] ) );
+	UTIL_SetSize( pev, g_vecZero, g_vecZero );
+	pev->effects &= ~EF_NODRAW;
+	{
+		void *studio = GET_MODEL_PTR( ENT( pev ) );
+
+		/* Without the header (lean load) group 0 with base 1 is the flags.mdl layout. */
+		pev->body = studio ? 0 : m_iOwnerBody[slot];
+		if( studio )
+			SetBodygroup( studio, pev, 0, m_iOwnerBody[slot] );
+	}
+	pev->sequence = 0;
+	pev->frame = 0;
+	pev->framerate = 1.0f;
+	pev->animtime = gpGlobals->time;
 }
 
 void CDoDControlPoint::SetAreaBounds( const Vector &mins, const Vector &maxs, const int can_cap[3], const int num_cap[3] )
@@ -1611,6 +1651,18 @@ void CDoDControlPoint::KeyValue( KeyValueData *pkvd )
 		m_iTimePoints = atoi( pkvd->szValue ); pkvd->fHandled = TRUE;
 	} else if( FStrEq( pkvd->szKeyName, "point_name" ) ) {
 		strlcpy( m_szPointName, pkvd->szValue, sizeof( m_szPointName ) ); pkvd->fHandled = TRUE;
+	} else if( FStrEq( pkvd->szKeyName, "point_allies_model" ) ) {
+		m_iszOwnerModel[DOD_TEAM_ALLIES] = ALLOC_STRING( pkvd->szValue ); pkvd->fHandled = TRUE;
+	} else if( FStrEq( pkvd->szKeyName, "point_axis_model" ) ) {
+		m_iszOwnerModel[DOD_TEAM_AXIS] = ALLOC_STRING( pkvd->szValue ); pkvd->fHandled = TRUE;
+	} else if( FStrEq( pkvd->szKeyName, "point_reset_model" ) ) {
+		m_iszOwnerModel[0] = ALLOC_STRING( pkvd->szValue ); pkvd->fHandled = TRUE;
+	} else if( FStrEq( pkvd->szKeyName, "point_allies_model_bodygroup" ) ) {
+		m_iOwnerBody[DOD_TEAM_ALLIES] = atoi( pkvd->szValue ); pkvd->fHandled = TRUE;
+	} else if( FStrEq( pkvd->szKeyName, "point_axis_model_bodygroup" ) ) {
+		m_iOwnerBody[DOD_TEAM_AXIS] = atoi( pkvd->szValue ); pkvd->fHandled = TRUE;
+	} else if( FStrEq( pkvd->szKeyName, "point_reset_model_bodygroup" ) ) {
+		m_iOwnerBody[0] = atoi( pkvd->szValue ); pkvd->fHandled = TRUE;
 	} else CPointEntity::KeyValue( pkvd );
 }
 
@@ -1623,6 +1675,14 @@ void CDoDControlPoint::Spawn( void )
 		(DodTeam)m_iDefaultOwner, 10.0f, DOD_POINT_SCORE_PER_MINUTE );
 	Dod_SetObjectivePointsForCap( m_iPointIndex, m_iPointsForCap );
 	Dod_SetObjectiveTeamPoints( m_iPointIndex, m_iTeamPoints, m_iTimePoints );
+	for( int i = 0; i < 3; i++ )
+		if( m_iszOwnerModel[i] )
+			PRECACHE_MODEL( (char *)STRING( m_iszOwnerModel[i] ) );
+	ShowOwner( m_iDefaultOwner );
+	ALERT( at_console, "DoD control point %d flags allies=%s(%d) axis=%s(%d) reset=%s(%d) owner=%d\n", m_iPointIndex,
+		m_iszOwnerModel[DOD_TEAM_ALLIES] ? STRING( m_iszOwnerModel[DOD_TEAM_ALLIES] ) : "-", m_iOwnerBody[DOD_TEAM_ALLIES],
+		m_iszOwnerModel[DOD_TEAM_AXIS] ? STRING( m_iszOwnerModel[DOD_TEAM_AXIS] ) : "-", m_iOwnerBody[DOD_TEAM_AXIS],
+		m_iszOwnerModel[0] ? STRING( m_iszOwnerModel[0] ) : "-", m_iOwnerBody[0], m_iDefaultOwner );
 	SetThink( &CDoDControlPoint::Think );
 	pev->nextthink = gpGlobals->time + 0.25f;
 }
@@ -1630,6 +1690,12 @@ void CDoDControlPoint::Spawn( void )
 void CDoDControlPoint::Think( void )
 {
 	int allies = 0, axis = 0, i;
+	{
+		/* Captures (sphere or capture area) and round resets change the owner. */
+		const DodObjectiveState *objective = Dod_GetObjective( m_iPointIndex );
+		if( objective )
+			ShowOwner( objective->owner );
+	}
 	if( m_bAreaDriven ) {
 		pev->nextthink = gpGlobals->time + 0.25f;
 		return;
