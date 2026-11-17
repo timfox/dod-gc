@@ -141,19 +141,29 @@ fi
 # come from valve. They load only when an effect first plays.
 fx_staged=0
 fx_bytes=0
+# The second group is what the game DLL also precaches for tracers, beams,
+# sparks, smoke and the MG42 flash; without the files those effects draw
+# nothing. Names are the precache spelling (the retail file may differ in
+# case, e.g. xspark1.spr), so the lookup ignores case.
+fx_wanted=0
 for s in muzzleflash1.spr muzzleflash2.spr muzzleflash3.spr richo1.spr \
-	zerogxplode.spr WXplo1.spr steam1.spr bubble.spr bloodspray.spr blood.spr
+	zerogxplode.spr WXplo1.spr steam1.spr bubble.spr bloodspray.spr blood.spr \
+	hotglow.spr smoke.spr laserdot.spr streak.spr xbeam1.spr XSpark1.spr \
+	muz1.spr laserbeam.spr explode1.spr mg42.spr lgtning.spr
 do
+	fx_wanted=$((fx_wanted + 1))
 	for dir in "$SRC/sprites" "$VALVE/sprites"; do
-		if [[ -f "$dir/$s" ]]; then
-			cp -f "$dir/$s" "$LEAN/sprites/"
+		[[ -d "$dir" ]] || continue
+		found="$(find "$dir" -maxdepth 1 -type f -iname "$s" | head -n 1)"
+		if [[ -n "$found" ]]; then
+			cp -f "$found" "$LEAN/sprites/$s"
 			fx_staged=$((fx_staged + 1))
-			fx_bytes=$((fx_bytes + $(stat -c %s "$dir/$s")))
+			fx_bytes=$((fx_bytes + $(stat -c %s "$found")))
 			break
 		fi
 	done
 done
-echo "staged combat effect sprites: $fx_staged of 10 ($fx_bytes bytes)"
+echo "staged combat effect sprites: $fx_staged of $fx_wanted ($fx_bytes bytes)"
 
 # Retail DoD HUD: sprites/hud.txt plus every sheet it names (hud_layout,
 # clip_*, weapons1-5, dodcross, scopes, ...). The client's HUD_VidInit reads
