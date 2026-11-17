@@ -387,6 +387,33 @@ static void test_nav(void)
 	assert(Dod_NavPath(&nav, 0, 4, path, 3) == 0);	/* longer than max_path */
 	assert(Dod_NavPath(&nav, 0, 7, path, DOD_NAV_MAX_PATH) == 0);
 
+	/* edges crossing a box are found, and a blocked edge is not used: blocking the jump 2 -> 4 sends 0 -> 4 up the ladder, blocking the
+	 * ladder as well leaves no way, clearing gives it back */
+	{
+		const float box_min[1][3] = { { 140.0f, -10.0f, -10.0f } }, box_max[1][3] = { { 160.0f, 10.0f, 10.0f } };
+		int edges[16], from, to, n, e;
+		n = Dod_NavEdgesCrossing(&nav, box_min, box_max, 1, edges, 16);
+		assert(n == 2);	/* 1 -> 2 and 2 -> 1 */
+		Dod_NavEdgeNodes(&nav, edges[0], &from, &to);
+		assert((from == 1 && to == 2) || (from == 2 && to == 1));
+		for (e = 0; e < nav.edge_count; ++e) {
+			Dod_NavEdgeNodes(&nav, e, &from, &to);
+			if (from == 2 && to == 4)
+				Dod_NavSetEdgeBlocked(&nav, e, 1);
+		}
+		count = Dod_NavPath(&nav, 0, 4, path, DOD_NAV_MAX_PATH);
+		assert(count == 4 && path[2] == 3 && path[3] == 4);
+		for (e = 0; e < nav.edge_count; ++e) {
+			Dod_NavEdgeNodes(&nav, e, &from, &to);
+			if (from == 3 && to == 4)
+				Dod_NavSetEdgeBlocked(&nav, e, 1);
+		}
+		assert(Dod_NavPath(&nav, 0, 4, path, DOD_NAV_MAX_PATH) == 0 && nav.edge_blocked_count == 2);
+		assert(Dod_NavClearEdgeBlocks(&nav) == 2 && !Dod_NavEdgeBlocked(&nav, 0));
+		count = Dod_NavPath(&nav, 0, 4, path, DOD_NAV_MAX_PATH);
+		assert(count == 4 && path[2] == 2);
+	}
+
 	/* a penalized edge is avoided while the penalty lasts: 0 -> 4 has to take the ladder when the jump is stuck */
 	Dod_NavSetTime(&nav, 10.0f);
 	Dod_NavPenalize(&nav, 2, 4, 40.0f);
