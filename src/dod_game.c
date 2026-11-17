@@ -838,6 +838,8 @@ const char *Dod_KillWeaponLabel(const char *classname, DodTeam team, int british
 		return "Grenade";
 	if (strstr(classname, "rocket"))
 		return "Rocket";
+	if (strstr(classname, "func_tank"))
+		return "Mounted gun";
 	def = Dod_FindWeaponDef(classname);
 	if (def && def->title[0])
 		return def->title;
