@@ -134,6 +134,27 @@ if [[ -f "$SRC/sprites/icon_obj.spr" ]]; then
 	echo "staged DoD HUD flag sheet: sprites/icon_obj.spr"
 fi
 
+# Combat effect sprites. The game precaches these for its temp entities
+# (explosions, steam, bubbles, blood) and the engine uses muzzleflash1-3 and
+# richo1 for gun flashes and ricochet sparks. Without them every temp entity
+# has no model and nothing is drawn. DoD's own copy wins; WXplo1 and richo1
+# come from valve. They load only when an effect first plays.
+fx_staged=0
+fx_bytes=0
+for s in muzzleflash1.spr muzzleflash2.spr muzzleflash3.spr richo1.spr \
+	zerogxplode.spr WXplo1.spr steam1.spr bubble.spr bloodspray.spr blood.spr
+do
+	for dir in "$SRC/sprites" "$VALVE/sprites"; do
+		if [[ -f "$dir/$s" ]]; then
+			cp -f "$dir/$s" "$LEAN/sprites/"
+			fx_staged=$((fx_staged + 1))
+			fx_bytes=$((fx_bytes + $(stat -c %s "$dir/$s")))
+			break
+		fi
+	done
+done
+echo "staged combat effect sprites: $fx_staged of 10 ($fx_bytes bytes)"
+
 # Retail DoD HUD: sprites/hud.txt plus every sheet it names (hud_layout,
 # clip_*, weapons1-5, dodcross, scopes, ...). The client's HUD_VidInit reads
 # hud.txt at 640 and loads these. DODGC_STAGE_RETAIL_HUD=0 leaves them out.
