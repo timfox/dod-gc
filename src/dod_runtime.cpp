@@ -1413,8 +1413,32 @@ static void DodGC_UpdateMovement( void )
 	}
 }
 
+#if defined( __GAMECUBE__ )
+extern "C" size_t GC_MemHeapFreeBytes( void );
+
+/* Free engine heap, sampled twice a second; the minimum is logged every 10 s (the margin on charlie is only ~32 KB). */
+static void DodGC_HeapMonitor( void )
+{
+	static float next_sample, next_log;
+	static size_t lowest = (size_t)-1;
+	if( gpGlobals->time < next_sample )
+		return;
+	next_sample = gpGlobals->time + 0.5f;
+	const size_t now_free = GC_MemHeapFreeBytes();
+	if( now_free < lowest )
+		lowest = now_free;
+	if( gpGlobals->time >= next_log ) {
+		next_log = gpGlobals->time + 10.0f;
+		ALERT( at_console, "DoD heap: free %u KB, lowest since start %u KB\n", (unsigned)( now_free / 1024 ), (unsigned)( lowest / 1024 ) );
+	}
+}
+#else
+static void DodGC_HeapMonitor( void ) {}
+#endif
+
 void CHalfLifeDoD::Think( void )
 {
+	DodGC_HeapMonitor();
 	CHalfLifeTeamplay::Think();
 	Dod_Think( gpGlobals->frametime );
 	DodBots_Think();
