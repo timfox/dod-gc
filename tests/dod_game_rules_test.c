@@ -148,6 +148,25 @@ static void test_world_models(void)
 	assert(Dod_WeaponWorldModel(0, model, sizeof(model)) == 0);
 }
 
+static void test_death_sequences(void)
+{
+	/* the retail order of us-inf/axis-inf/brit-inf: die_simple 19 ... die_prone1 29 */
+	assert(Dod_DeathSequence(1, 0, 0, 0, 0, 1) == DOD_SEQ_DIE_HEADSHOT && DOD_SEQ_DIE_HEADSHOT == 22);
+	assert(Dod_DeathSequence(3, 0, 0, 0, 0, 1) == DOD_SEQ_DIE_GUTSHOT && DOD_SEQ_DIE_GUTSHOT == 23);
+	assert(Dod_DeathSequence(2, 0, 0, 0, 0, 1) == DOD_SEQ_DIE_BACKWARDS && DOD_SEQ_DIE_BACKWARDS == 20);	/* shot from the front: falls back */
+	assert(Dod_DeathSequence(2, 0, 0, 0, 0, 0) == DOD_SEQ_DIE_FORWARDS && DOD_SEQ_DIE_FORWARDS == 21);	/* shot in the back: falls forward */
+	assert(Dod_DeathSequence(2, 0, 0, 0, 0, -1) == DOD_SEQ_DIE_SIMPLE && DOD_SEQ_DIE_SIMPLE == 19);
+	assert(Dod_DeathSequence(7, 0, 0, 0, 0, -1) == DOD_SEQ_DIE_SIMPLE);
+	assert(Dod_DeathSequence(2, 1, 0, 0, 0, 1) == DOD_SEQ_DIE_BACKWARD_EXPLODE && DOD_SEQ_DIE_BACKWARD_EXPLODE == 24);
+	assert(Dod_DeathSequence(2, 1, 0, 0, 0, 0) == DOD_SEQ_DIE_FORWARD_EXPLODE && DOD_SEQ_DIE_FORWARD_EXPLODE == 25);
+	assert(Dod_DeathSequence(2, 0, 1, 0, 0, 1) == DOD_SEQ_DIE_BUTTSTOCK && DOD_SEQ_DIE_BUTTSTOCK == 26);
+	assert(Dod_DeathSequence(1, 0, 0, 1, 0, 1) == DOD_SEQ_DIE_CROUCH_HEAD && DOD_SEQ_DIE_CROUCH_HEAD == 27);
+	assert(Dod_DeathSequence(2, 0, 0, 1, 0, 1) == DOD_SEQ_DIE_CROUCH_BACKWARDS && DOD_SEQ_DIE_CROUCH_BACKWARDS == 28);
+	assert(Dod_DeathSequence(1, 0, 0, 1, 1, 1) == DOD_SEQ_DIE_PRONE && DOD_SEQ_DIE_PRONE == 29);	/* prone beats everything */
+	assert(Dod_DeathSequence(1, 1, 1, 1, 1, 1) == DOD_SEQ_DIE_PRONE);
+	assert(Dod_DeathSequence(1, 1, 0, 0, 0, 1) == DOD_SEQ_DIE_BACKWARD_EXPLODE);	/* a blast beats a hit group */
+}
+
 static void test_respawn_waves(void)
 {
 	int i;
@@ -1112,6 +1131,7 @@ int main(void)
 	test_status_line();
 	test_player_line();
 	test_world_models();
+	test_death_sequences();
 	test_respawn_waves();
 	test_retail_class_masks();
 	test_puffs();

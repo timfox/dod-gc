@@ -280,6 +280,23 @@ const char *Dod_KillWeaponLabel(const char *classname, DodTeam team, int british
 int Dod_PuffScale(float size);
 int Dod_PuffAllowed(float now, float *window_start, int *in_window, int per_second);
 
+/* Death animations. The retail DoD player models (us-inf, axis-inf, brit-inf and the para ones) share one sequence order; the death
+ * sequences are 19-29. The server's player entity is a hull-only stub, so the game picks the index and the client draws the body model's
+ * sequence (the engine plays a dead player's pev->sequence and holds its last frame, and the stock body queue copies it for the corpse). */
+#define DOD_SEQ_DIE_SIMPLE 19
+#define DOD_SEQ_DIE_BACKWARDS 20
+#define DOD_SEQ_DIE_FORWARDS 21
+#define DOD_SEQ_DIE_HEADSHOT 22
+#define DOD_SEQ_DIE_GUTSHOT 23
+#define DOD_SEQ_DIE_BACKWARD_EXPLODE 24
+#define DOD_SEQ_DIE_FORWARD_EXPLODE 25
+#define DOD_SEQ_DIE_BUTTSTOCK 26
+#define DOD_SEQ_DIE_CROUCH_HEAD 27
+#define DOD_SEQ_DIE_CROUCH_BACKWARDS 28
+#define DOD_SEQ_DIE_PRONE 29
+/* hitgroup: HL's HITGROUP_* (1 head, 2 chest, 3 stomach, 4-7 limbs). from_front: 1 the killer was in front of the victim, 0 behind, -1 unknown. */
+int Dod_DeathSequence(int hitgroup, int explosion, int melee, int crouching, int prone, int from_front);
+
 /* Respawn waves. A dead player comes back at the next wave of their side: waves fall every (base * the side's factor) seconds of
  * round time, and nobody comes back sooner than DOD_RESPAWN_MIN_SECONDS after dying. The factor is the map's
  * info_doddetect detect_allies_respawnfactor / detect_axis_respawnfactor (charlie: Allies 0.5, Axis 1.5); the base is the port's own

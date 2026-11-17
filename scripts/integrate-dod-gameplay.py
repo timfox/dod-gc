@@ -241,6 +241,34 @@ def integrate_doddetect(dlls: Path) -> None:
 		'/* info_doddetect is linked by the DoD game code (dod_runtime.cpp) */\n')
 
 
+def integrate_death_anims(dlls: Path) -> None:
+	"""CBasePlayer::SetAnimation(PLAYER_DIE) picks the death sequence of the stub player.mdl; the DoD body models have their own (die_simple 19 ...
+	die_prone1 29), picked by the game when the player is killed (DodGC_DeathSequence). -1 keeps the stock choice."""
+	replace_once(dlls / "player.cpp",
+		'\t\tanimDesired = LookupActivity( m_Activity );\n\n\t\t// Already using the desired animation?\n',
+		'\t\tanimDesired = LookupActivity( m_Activity );\n'
+		'\t\tif( playerAnim == PLAYER_DIE )\n'
+		'\t\t{\n\t\t\textern int DodGC_DeathSequence( CBasePlayer *pPlayer );\n'
+		'\t\t\tconst int dod_seq = DodGC_DeathSequence( this );\n\t\t\tif( dod_seq >= 0 )\n\t\t\t\tanimDesired = dod_seq;\n\t\t}\n\n'
+		'\t\t// Already using the desired animation?\n')
+
+
+def integrate_body_queue(dlls: Path) -> None:
+	"""The lean route leaves g_pBodyQueueHead NULL, so CopyToBodyQue() returned at once and a dead player vanished
+	with no corpse. DoD keeps the four body-queue edicts (the stock InitBodyQue) so corpses stay until four newer deaths."""
+	replace_once(dlls / "world.cpp",
+		'\tif( !GC_FullActors() )\n\t{\n\t\tg_pBodyQueueHead = NULL;\n\t\treturn;\n\t}\n',
+		'\t/* DoD keeps the four corpse edicts (dod-gc integrate_body_queue). */\n')
+	# The lean server has no world collision for MOVETYPE_TOSS, so a corpse fell through the floor (and drew black inside it).
+	# It stays where the player died, a unit above that origin.
+	replace_once(dlls / "world.cpp",
+		'\tpevHead->movetype\t= MOVETYPE_TOSS;\n\tpevHead->velocity\t= pev->velocity;\n',
+		'\tpevHead->movetype\t= MOVETYPE_NONE;\n\tpevHead->velocity\t= g_vecZero;\n')
+	replace_once(dlls / "world.cpp",
+		'\tUTIL_SetOrigin( pevHead, pev->origin );\n',
+		'\tUTIL_SetOrigin( pevHead, pev->origin + Vector( 0, 0, 1.0f ) );\n')
+
+
 def integrate_grenades(dlls: Path) -> None:
 	"""DoD hand grenades: models, fuse, damage and a budgeted explosion."""
 	hand = dlls / "handgrenade.cpp"
@@ -534,6 +562,8 @@ def main() -> int:
 	integrate_voice_menu(dlls)
 	integrate_usercmd(dlls)
 	integrate_doddetect(dlls)
+	integrate_death_anims(dlls)
+	integrate_body_queue(dlls)
 	integrate_weapons(dlls)
 	integrate_dod_hud(client)
 	integrate_spectator_camera(client)

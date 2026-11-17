@@ -1485,6 +1485,69 @@ static void StageStep( void )
 	DodBotState *sa, *sx;
 	int i;
 	static float armed_at;
+	static int g_track_victim;
+	static float g_track_until, g_track_next;
+	if( stage == 4 && g_stage_phase >= 9 )
+	{
+		/* test scenario 4: the human has joined; every 14 s a bot is stood 160 units in front of the human and killed with the next hit of a
+		 * cycle (head, stomach, chest from the front, chest from behind, explosion, crouching), to look at the death animation and the corpse */
+		static float next_kill;
+		static int round;
+		CBasePlayer *human = NULL, *victim = NULL;
+		if( !next_kill )
+			next_kill = now + 10.0f;
+		for( int k = 1; k <= gpGlobals->maxClients; k++ )
+		{
+			CBasePlayer *p = PlayerAt( k );
+			if( !p )
+				continue;
+			if( !DodBots_IsBot( p ) )
+				human = p;
+			else if( p->IsAlive() && TeamOf( p ) == DOD_TEAM_AXIS && !victim )
+				victim = p;
+		}
+		if( human && victim && human->IsAlive() && now >= next_kill )
+		{
+			static const int hitgroups[6] = { 1, 3, 2, 2, 2, 2 };
+			static const char *const names[6] = { "headshot", "gutshot", "chest from the front", "chest from behind", "explosion", "crouching" };
+			const int r = round++ % 6;
+			UTIL_MakeVectors( human->pev->v_angle );
+			Vector org = human->pev->origin + gpGlobals->v_forward * 200.0f - gpGlobals->v_right * 70.0f;
+			UTIL_SetOrigin( victim->pev, org );
+			victim->pev->velocity = g_vecZero;
+			victim->pev->angles.y = human->pev->v_angle.y + ( r == 3 ? 0.0f : 180.0f );	/* facing the human, or turned away for the one from behind */
+			victim->pev->v_angle.y = victim->pev->angles.y;
+			if( r == 5 )
+				victim->pev->flags |= FL_DUCKING;
+			victim->m_LastHitGroup = hitgroups[r];
+			ALERT( at_console, "DoD STAGE execute: %s, %s\n", STRING( victim->pev->netname ), names[r] );
+			victim->TakeDamage( human->pev, human->pev, 100.0f + victim->pev->health * 0.0f + 10.0f, r == 4 ? DMG_BLAST : DMG_BULLET );
+			next_kill = now + 14.0f;
+			g_track_victim = victim->entindex();
+			g_track_until = now + 9.0f;
+			g_track_next = now;
+		}
+		if( g_track_victim && now >= g_track_next )
+		{
+			CBasePlayer *tv = PlayerAt( g_track_victim );
+			CBaseEntity *bq = NULL;
+			int shown = 0;
+			g_track_next = now + 0.5f;
+			if( tv )
+				ALERT( at_console, "DoD STAGE track: dead %d health %.0f model %d fx %d move %d seq %d fin %d\n", tv->pev->deadflag, tv->pev->health,
+					tv->pev->modelindex, tv->pev->effects, tv->pev->movetype, tv->pev->sequence, (int)tv->m_fSequenceFinished );
+			while( ( bq = UTIL_FindEntityByClassname( bq, "bodyque" ) ) != NULL )
+				if( bq->pev->modelindex )
+				{
+					ALERT( at_console, "DoD STAGE track: bodyque %d model %d owner-slot %.0f at %.0f %.0f %.0f\n", bq->entindex(), bq->pev->modelindex, bq->pev->renderamt,
+						bq->pev->origin.x, bq->pev->origin.y, bq->pev->origin.z );
+					shown++;
+				}
+			if( now >= g_track_until )
+				g_track_victim = 0;
+		}
+		return;
+	}
 	if( stage == 3 && g_stage_phase >= 9 )
 	{
 		/* diagnostic: what state is the human in after the join */
@@ -1505,7 +1568,7 @@ static void StageStep( void )
 	}
 	if( !stage || g_stage_phase >= 9 )
 		return;
-	if( stage == 3 )
+	if( stage == 3 || stage == 4 )
 	{
 		/* put the human on the Allies as a rifleman so the pad can fire, reload and cycle weapons (view model checks) */
 		static float arm;
