@@ -238,6 +238,7 @@ static void test_kill_labels(void)
 	assert(!strcmp(Dod_KillWeaponLabel("grenade", DOD_TEAM_ALLIES, 0), "Grenade"));
 	assert(!strcmp(Dod_KillWeaponLabel("weapon_handgrenade", DOD_TEAM_AXIS, 0), "Grenade"));
 	assert(!strcmp(Dod_KillWeaponLabel("dod_rocket", DOD_TEAM_AXIS, 0), "Rocket"));
+	assert(!strcmp(Dod_KillWeaponLabel("func_tank", DOD_TEAM_ALLIES, 0), "Mounted gun") && !strcmp(Dod_KillWeaponLabel("func_tankmortar", DOD_TEAM_AXIS, 0), "Mounted gun"));
 	assert(!strcmp(Dod_KillWeaponLabel("trigger_hurt", DOD_TEAM_AXIS, 0), "World") && !strcmp(Dod_KillWeaponLabel(0, DOD_TEAM_AXIS, 0), "World"));
 	assert(!strcmp(Dod_KillWeaponLabel("weapon_nothing", DOD_TEAM_AXIS, 0), "Weapon"));
 	/* the British and paratrooper variants keep their class names, so the title follows the kit */
