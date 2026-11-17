@@ -233,6 +233,14 @@ def integrate_usercmd(dlls: Path) -> None:
 		'\tpl->random_seed = random_seed;\n\t{\n\t\textern void DodGC_UserCmd( CBasePlayer *pPlayer, const struct usercmd_s *cmd );\n\t\tDodGC_UserCmd( pl, cmd );\n\t}\n}\n')
 
 
+def integrate_doddetect(dlls: Path) -> None:
+	"""info_doddetect is linked to a plain point entity in the SDK; the game's CDoDDetect (dod_runtime.cpp) takes the class name to read the
+	respawn factors, so the SDK's link line goes."""
+	replace_once(dlls / "subs.cpp",
+		'LINK_ENTITY_TO_CLASS( info_doddetect, CPointEntity )\n',
+		'/* info_doddetect is linked by the DoD game code (dod_runtime.cpp) */\n')
+
+
 def integrate_grenades(dlls: Path) -> None:
 	"""DoD hand grenades: models, fuse, damage and a budgeted explosion."""
 	hand = dlls / "handgrenade.cpp"
@@ -525,6 +533,7 @@ def main() -> int:
 	integrate_default_items(dlls)
 	integrate_voice_menu(dlls)
 	integrate_usercmd(dlls)
+	integrate_doddetect(dlls)
 	integrate_weapons(dlls)
 	integrate_dod_hud(client)
 	integrate_spectator_camera(client)

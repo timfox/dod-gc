@@ -274,6 +274,28 @@ class UserCmdIntegrationTest(unittest.TestCase):
 				INTEGRATOR.integrate_usercmd(dlls)
 
 
+class DoddetectIntegrationTest(unittest.TestCase):
+	SUBS = 'LINK_ENTITY_TO_CLASS( info_player_observer, CPointEntity )\nLINK_ENTITY_TO_CLASS( info_doddetect, CPointEntity )\n'
+
+	def test_the_sdk_link_is_dropped_once(self):
+		with tempfile.TemporaryDirectory() as directory:
+			dlls = Path(directory)
+			(dlls / "subs.cpp").write_text(self.SUBS)
+			INTEGRATOR.integrate_doddetect(dlls)
+			first = (dlls / "subs.cpp").read_text()
+			INTEGRATOR.integrate_doddetect(dlls)
+			self.assertEqual((dlls / "subs.cpp").read_text(), first, "must be idempotent")
+			self.assertNotIn("LINK_ENTITY_TO_CLASS( info_doddetect", first)
+			self.assertIn("info_player_observer", first)
+
+	def test_missing_anchor_fails_loudly(self):
+		with tempfile.TemporaryDirectory() as directory:
+			dlls = Path(directory)
+			(dlls / "subs.cpp").write_text("int unrelated;\n")
+			with self.assertRaises(SystemExit):
+				INTEGRATOR.integrate_doddetect(dlls)
+
+
 class DefaultItemsIntegrationTest(unittest.TestCase):
 	RULES = ('void CHalfLifeMultiplay::PlayerSpawn( CBasePlayer *pPlayer )\n{\n\tBOOL addDefault = TRUE;\n\n'
 		'\tif( addDefault )\n\t{\n\t\tpPlayer->GiveNamedItem( "weapon_crowbar" );\n'

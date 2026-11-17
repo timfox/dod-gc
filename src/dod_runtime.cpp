@@ -49,6 +49,8 @@ static cvar_t g_limit_cvar_storage[DOD_LIMIT_CVARS];
 static cvar_t mp_alliesclasses = { "mp_alliesclasses", "-1", FCVAR_SERVER };
 static cvar_t mp_axisclasses = { "mp_axisclasses", "-1", FCVAR_SERVER };
 /* mp_spawnbazookas (every retail map cfg sets it): whether the map spawns bazooka pickups at the start; read by nothing yet, registered so the cfg line is not an unknown command */
+/* The base of the respawn waves in seconds, times the side's map factor (retail's base is not recorded; this is the port's own). */
+static cvar_t dod_respawn_delay = { "dod_respawn_delay", "10", FCVAR_SERVER };
 static cvar_t mp_spawnbazookas = { "mp_spawnbazookas", "1", FCVAR_SERVER };
 
 static cvar_t dod_allies_body = { "dod_allies_body", "us-inf", FCVAR_SERVER };
@@ -432,6 +434,7 @@ CHalfLifeDoD::CHalfLifeDoD()
 		CVAR_REGISTER( &mp_alliesclasses );
 		CVAR_REGISTER( &mp_axisclasses );
 		CVAR_REGISTER( &mp_spawnbazookas );
+		CVAR_REGISTER( &dod_respawn_delay );
 		CVAR_REGISTER( &dod_allies_body );
 		CVAR_REGISTER( &dod_axis_body );
 		g_dod_cvars_registered = TRUE;
@@ -880,6 +883,7 @@ void CHalfLifeDoD::PlayerSpawn( CBasePlayer *pPlayer )
 	pPlayer->RemoveAllItems( FALSE );
 	CHalfLifeTeamplay::PlayerSpawn( pPlayer );
 	DodGC_EnsurePlayer( pPlayer );
+	Dod_NoteRespawn( DodGC_PlayerIndex( pPlayer ) );
 	if( pPlayer->IsObserver() )
 		return;
 	/* The GameCube SDK's CBasePlayer::Spawn takes the base spawn spot (not this rules class's) on the -gcnewgame route, so a
@@ -943,6 +947,7 @@ void CHalfLifeDoD::PlayerKilled( CBasePlayer *pVictim, entvars_t *pKiller, entva
 {
 	const int attacker = pKiller ? ENTINDEX( ENT( pKiller ) ) : 0;
 	Dod_RecordKill( attacker, DodGC_PlayerIndex( pVictim ) );
+	Dod_NoteDeath( DodGC_PlayerIndex( pVictim ) );
 	DodGC_SendKillFeed( pVictim, pKiller, pInflictor );
 	CHalfLifeTeamplay::PlayerKilled( pVictim, pKiller, pInflictor );
 }
@@ -1071,6 +1076,7 @@ static void DodGC_SendHud( void )
 				| ( Dod_TeamIsParatroopers( DOD_TEAM_ALLIES ) ? DOD_HUD_KIT_ALLIES_PARA : 0 )
 				| ( Dod_TeamIsParatroopers( DOD_TEAM_AXIS ) ? DOD_HUD_KIT_AXIS_PARA : 0 ) );
 			WRITE_BYTE( Dod_PlayerStamina( i ) );
+			WRITE_BYTE( player->pev->deadflag != DEAD_NO && !player->IsObserver() ? (int)( Dod_RespawnSeconds( i ) + 0.99f ) : 0 );
 		MESSAGE_END();
 	}
 }
@@ -1196,6 +1202,13 @@ int CHalfLifeDoD::DeadPlayerWeapons( CBasePlayer *pPlayer )
 	return GR_PLR_DROP_GUN_NO;
 }
 
+/* Waves: a dead player comes back when the next wave of their side falls (Dod_RespawnSeconds). */
+BOOL CHalfLifeDoD::FPlayerCanRespawn( CBasePlayer *pPlayer )
+{
+	Dod_SetRespawnBase( CVAR_GET_FLOAT( "dod_respawn_delay" ) );
+	return Dod_RespawnSeconds( DodGC_PlayerIndex( pPlayer ) ) <= 0.0f ? TRUE : FALSE;
+}
+
 int CHalfLifeDoD::DeadPlayerAmmo( CBasePlayer *pPlayer )
 {
 	return GR_PLR_DROP_AMMO_NO;
@@ -1258,6 +1271,13 @@ static void DodGC_UpdateMovement( void )
 		buttons = player->pev->button;
 		jumped = ( buttons & IN_JUMP ) && !( last_buttons[i] & IN_JUMP ) && ( player->pev->flags & FL_ONGROUND );
 		last_buttons[i] = buttons;
+		if( !player->IsObserver() && player->pev->deadflag >= DEAD_DEAD ) {
+			const DodTeam side = DodGC_TeamForPlayer( player );
+			/* the wave brings everybody of the side back at once, the human who is not pressing fire as well */
+			if( ( side == DOD_TEAM_ALLIES || side == DOD_TEAM_AXIS ) && Dod_GetState()->phase == DOD_ROUND_ACTIVE &&
+				g_dod_joined[i] && Dod_RespawnSeconds( i ) <= 0.0f )
+				respawn( player->pev, FALSE );
+		}
 		if( player->IsObserver() || player->pev->deadflag != DEAD_NO )
 			continue;
 		const Vector flat( player->pev->velocity.x, player->pev->velocity.y, 0.0f );
@@ -1769,6 +1789,42 @@ void CDoDParticleShooter::PuffThink( void )
 		m_bOn = FALSE;
 		pev->nextthink = 0.0f;
 	}
+}
+
+/* info_doddetect: the map's game rules entity. The SDK links the name to a plain point entity (which keeps no keys); the integrator drops
+ * that line so this class takes it. Read here: the sides' respawn factors (detect_allies_respawnfactor / detect_axis_respawnfactor, the
+ * delay of the respawn waves relative to the base: charlie Allies 0.5, Axis 1.5). The country and paratrooper keys are still taken from the
+ * map name (dod_weapons.c). */
+class CDoDDetect : public CPointEntity
+{
+public:
+	void Spawn( void );
+	void KeyValue( KeyValueData *pkvd );
+private:
+	float m_flAlliesFactor, m_flAxisFactor;
+};
+
+LINK_ENTITY_TO_CLASS( info_doddetect, CDoDDetect )
+
+void CDoDDetect::KeyValue( KeyValueData *pkvd )
+{
+	if( FStrEq( pkvd->szKeyName, "detect_allies_respawnfactor" ) ) {
+		m_flAlliesFactor = (float)atof( pkvd->szValue ); pkvd->fHandled = TRUE;
+	} else if( FStrEq( pkvd->szKeyName, "detect_axis_respawnfactor" ) ) {
+		m_flAxisFactor = (float)atof( pkvd->szValue ); pkvd->fHandled = TRUE;
+	} else CPointEntity::KeyValue( pkvd );
+}
+
+void CDoDDetect::Spawn( void )
+{
+	pev->solid = SOLID_NOT;
+	pev->movetype = MOVETYPE_NONE;
+	if( m_flAlliesFactor > 0.0f )
+		Dod_SetRespawnFactor( DOD_TEAM_ALLIES, m_flAlliesFactor );
+	if( m_flAxisFactor > 0.0f )
+		Dod_SetRespawnFactor( DOD_TEAM_AXIS, m_flAxisFactor );
+	ALERT( at_console, "DoD rules entity: respawn factors Allies %.2f, Axis %.2f\n", m_flAlliesFactor > 0.0f ? m_flAlliesFactor : 1.0f,
+		m_flAxisFactor > 0.0f ? m_flAxisFactor : 1.0f );
 }
 
 /* dod_point_relay: forwards a use to its target (retail relays capture events to map logic). */

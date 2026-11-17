@@ -123,6 +123,44 @@ static void test_player_body(void)
 	assert(Dod_PlayerBodyValue("us-inf", DOD_CLASS_NONE, 4) == 0);
 }
 
+static void test_respawn_waves(void)
+{
+	int i;
+	/* the wave function: waves at multiples of the interval, never sooner than the minimum delay after the death */
+	assert(Dod_RespawnWaveTime(0.0f, 10.0f, 2.0f) == 10.0f);
+	assert(Dod_RespawnWaveTime(7.5f, 10.0f, 2.0f) == 10.0f);
+	assert(Dod_RespawnWaveTime(8.5f, 10.0f, 2.0f) == 20.0f);	/* died too close to the wave: the next one */
+	assert(Dod_RespawnWaveTime(10.0f, 10.0f, 2.0f) == 20.0f);
+	assert(Dod_RespawnWaveTime(3.0f, 5.0f, 2.0f) == 5.0f && Dod_RespawnWaveTime(3.1f, 5.0f, 2.0f) == 10.0f);
+	assert(Dod_RespawnWaveTime(3.0f, 0.0f, 2.0f) == 5.0f);	/* no interval: after the minimum */
+	Dod_GameInit();
+	assert(Dod_PlayerConnect(1) && Dod_PlayerConnect(2));
+	assert(Dod_AssignPlayerTeam(1, DOD_TEAM_ALLIES) && Dod_AssignPlayerTeam(2, DOD_TEAM_AXIS));
+	Dod_StartRound(600.0f);
+	assert(Dod_RespawnSeconds(1) == 0.0f);	/* alive */
+	/* charlie: Allies 0.5, Axis 1.5 of the 10 s base -> waves every 5 s and every 15 s */
+	Dod_SetRespawnFactor(DOD_TEAM_ALLIES, 0.5f);
+	Dod_SetRespawnFactor(DOD_TEAM_AXIS, 1.5f);
+	for (i = 0; i < 30; ++i) Dod_Think(0.1f);	/* 3 s into the round */
+	Dod_NoteDeath(1);
+	Dod_NoteDeath(2);
+	assert(Dod_RespawnSeconds(1) > 1.9f && Dod_RespawnSeconds(1) < 2.1f);	/* wave at 5 s */
+	assert(Dod_RespawnSeconds(2) > 11.9f && Dod_RespawnSeconds(2) < 12.1f);	/* wave at 15 s */
+	for (i = 0; i < 25; ++i) Dod_Think(0.1f);	/* 5.5 s */
+	assert(Dod_RespawnSeconds(1) == 0.0f && Dod_RespawnSeconds(2) > 9.0f);
+	Dod_NoteRespawn(1);
+	assert(Dod_RespawnSeconds(1) == 0.0f);
+	/* the base is the map-independent knob */
+	Dod_SetRespawnBase(20.0f);
+	Dod_NoteDeath(1);
+	assert(Dod_RespawnSeconds(1) > 4.0f);
+	/* between rounds everybody may come back */
+	Dod_EndRound(DOD_TEAM_ALLIES);
+	assert(Dod_RespawnSeconds(2) == 0.0f);
+	assert(Dod_RespawnSeconds(99) == 0.0f);
+	Dod_GameShutdown();
+}
+
 static void test_retail_class_masks(void)
 {
 	const int rocket = 1 << DOD_CLASS_ROCKET;
@@ -1047,6 +1085,7 @@ int main(void)
 	test_retail_class_names();
 	test_status_line();
 	test_player_line();
+	test_respawn_waves();
 	test_retail_class_masks();
 	test_puffs();
 	test_kill_labels();
