@@ -1196,6 +1196,23 @@ static BOOL NavTarget( CBasePlayer *pBot, DodBotState *state, Vector *target )
 				state->path_idx > 0 ? Dod_NavEdgeKind( &g_nav, state->path[state->path_idx - 1], state->path[state->path_idx] ) : -1,
 				origin.x, origin.y, origin.z, nx, ny, nz, dist, line.flFraction, hull.flFraction, pBot->pev->velocity.Length(), pBot->pev->movetype );
 			{
+				/* where exactly is the way blocked: the player hull from the bot's own origin towards the node on the flat, then the same
+				 * straight along the move direction; hit entity, plane and whether the start is already solid */
+				static int diag_logs;
+				if( diag_logs < 24 )
+				{
+					TraceResult th, tf;
+					Vector to( nx, ny, origin.z );
+					UTIL_TraceHull( origin, to, dont_ignore_monsters, human_hull, pBot->edict(), &th );
+					UTIL_TraceHull( origin, origin + gpGlobals->v_forward * 0.0f + ( to - origin ), ignore_monsters, head_hull, pBot->edict(), &tf );
+					diag_logs++;
+					ALERT( at_console, "DoD stuck trace %s: hull frac %.2f startsolid %d allsolid %d hit %s (ent %d) normal %.2f %.2f %.2f; crouch hull frac %.2f startsolid %d; origin %.0f %.0f %.0f to %.0f %.0f %.0f\n",
+						STRING( pBot->pev->netname ), th.flFraction, (int)th.fStartSolid, (int)th.fAllSolid,
+						th.pHit ? STRING( th.pHit->v.classname ) : "none", th.pHit ? ENTINDEX( th.pHit ) : -1, th.vecPlaneNormal.x, th.vecPlaneNormal.y, th.vecPlaneNormal.z,
+						tf.flFraction, (int)tf.fStartSolid, origin.x, origin.y, origin.z, to.x, to.y, to.z );
+				}
+			}
+			{
 				/* an edge that traps bots again and again stays avoided longer each time (30 s, 60 s, ... up to 15 minutes), for every bot */
 				const int from = state->path_idx > 0 ? state->path[state->path_idx - 1] : -1;
 				const int to = state->path[state->path_idx > 0 ? state->path_idx : 0];
@@ -1936,6 +1953,16 @@ static void RunBot( int index, CBasePlayer *pBot )
 		pBot->pev->angles.y = viewangles[1];
 		( *g_engfuncs.pfnRunPlayerMove )( pBot->edict(), viewangles, 0, 0, 0, 0, 0, msec );
 		pBot->pev->angles.x = Dod_BotBodyPitch( viewangles[0] );	/* after the move: the player move rewrites the angles */
+		{
+			static float next_stage_log[DOD_MAX_PLAYERS + 1];
+			const int bi = pBot->entindex();
+			if( bi >= 1 && bi <= DOD_MAX_PLAYERS && gpGlobals->time >= next_stage_log[bi] )
+			{
+				next_stage_log[bi] = gpGlobals->time + 1.0f;
+				ALERT( at_console, "DoD bot aim %s: staged, pitch %.0f, v_angle %.0f %.0f, body pitch %.0f, gaitsequence %d, sequence %d\n", STRING( pBot->pev->netname ),
+					viewangles[0], pBot->pev->v_angle.x, pBot->pev->v_angle.y, pBot->pev->angles.x, pBot->pev->gaitsequence, pBot->pev->sequence );
+			}
+		}
 		return;
 	}
 	EnsureNav();
@@ -2296,9 +2323,10 @@ static void RunBot( int index, CBasePlayer *pBot )
 		const int bi = pBot->entindex();
 		if( bi >= 1 && bi <= DOD_MAX_PLAYERS && gpGlobals->time >= next_aim_log[bi] )
 		{
-			next_aim_log[bi] = gpGlobals->time + 5.0f;
-			ALERT( at_console, "DoD bot aim %s: %s, want yaw %.0f pitch %.0f, v_angle %.0f %.0f, body pitch %.0f\n", STRING( pBot->pev->netname ),
-				fight ? "target" : "no target", state->want_yaw, state->want_pitch, pBot->pev->v_angle.x, pBot->pev->v_angle.y, pBot->pev->angles.x );
+			next_aim_log[bi] = gpGlobals->time + 2.0f;
+			ALERT( at_console, "DoD bot aim %s: %s, want yaw %.0f pitch %.0f, v_angle %.0f %.0f, body pitch %.0f; move fwd %.2f side %.2f zone_stop %d vel %.0f\n", STRING( pBot->pev->netname ),
+				fight ? "target" : "no target", state->want_yaw, state->want_pitch, pBot->pev->v_angle.x, pBot->pev->v_angle.y, pBot->pev->angles.x,
+				move.forward, move.side, (int)zone_stop, pBot->pev->velocity.Length2D() );
 		}
 	}
 	pBot->pev->angles.y = viewangles[1];

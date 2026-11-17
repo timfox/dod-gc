@@ -83,6 +83,23 @@ class HullTest(unittest.TestCase):
         self.assertAlmostEqual(tr.endpos[0], 300.0, delta=0.5)
         self.assertLess(tr.fraction, 1.0)
 
+    def test_a_solid_brush_entity_blocks_like_the_world(self):
+        # a thin slab: solid for 190 <= x < 200 up to the hull-expanded floor height, in an otherwise empty hull
+        planes = [(1.0, 0.0, 0.0, 190.0), (1.0, 0.0, 0.0, 200.0)]
+        # node 0: x >= 190 -> node 1 (x >= 200 empty, else solid) ; x < 190 empty
+        clipnodes = [(0, 1, G.CONTENTS_EMPTY), (1, G.CONTENTS_EMPTY, G.CONTENTS_SOLID)]
+        wall = G.Hull(planes, clipnodes, 0)
+        world = self.hull
+        both = G.CompositeHull(world, [(wall, (0.0, 0.0, 0.0))])
+        self.assertEqual(both.contents((195.0, 0.0, 40.0)), G.CONTENTS_SOLID)
+        self.assertNotEqual(world.contents((195.0, 0.0, 40.0)), G.CONTENTS_SOLID)
+        tr = both.trace((150.0, 0.0, 40.0), (250.0, 0.0, 40.0))
+        self.assertLess(tr.fraction, 0.6)
+        self.assertGreater(tr.fraction, 0.3)
+        # an entity origin shifts it
+        shifted = G.CompositeHull(world, [(wall, (50.0, 0.0, 0.0))])
+        self.assertEqual(shifted.contents((245.0, 0.0, 40.0)), G.CONTENTS_SOLID)
+
     def test_start_in_solid(self):
         self.assertTrue(self.hull.trace((0, 0, 10), (0, 0, 40)).startsolid)
 

@@ -181,6 +181,64 @@ class Hull:
         return False
 
 
+# Brush entities that stop a walking player at runtime (the engine collides with them like with the world; the baked graph used to
+# route straight through them). func_wall_toggle with spawnflag 1 starts invisible and non-solid; func_illusionary never blocks.
+SOLID_BRUSH_CLASSES = ("func_wall", "func_wall_toggle", "func_breakable")
+# func_wall_toggle is switched by map logic (charlie: shingle1, shingle2 start solid and cut spawns off from the control points), so it only
+# blocks when --toggle-walls asks for it.
+DEFAULT_SOLID = ("func_wall", "func_breakable")
+
+
+def solid_brush_hulls(bsp, classes=DEFAULT_SOLID):
+    """[(Hull, (ox, oy, oz))] for every solid brush entity's hull-1 clip tree."""
+    out = []
+    for ent in bsp.entities:
+        cls = ent.get("classname")
+        model = ent.get("model", "")
+        if cls not in classes or not model.startswith("*"):
+            continue
+        if cls == "func_wall_toggle" and int(ent.get("spawnflags", "0") or 0) & 1:
+            continue
+        idx = int(model[1:])
+        if idx <= 0 or idx >= len(bsp.models):
+            continue
+        root = bsp.models[idx]["headnode"][1]
+        if root < 0:
+            continue
+        out.append((Hull(bsp.planes, bsp.clipnodes, root), origin_of(ent) or (0.0, 0.0, 0.0)))
+    return out
+
+
+class CompositeHull:
+    """The world hull plus solid brush entities: a point is solid if any of them is, a trace stops at the nearest hit."""
+
+    def __init__(self, world, extras):
+        self.world = world
+        self.extras = list(extras)
+        self.root = world.root
+
+    def contents(self, p):
+        if self.world.contents(p) == CONTENTS_SOLID:
+            return CONTENTS_SOLID
+        for hull, o in self.extras:
+            if hull.contents((p[0] - o[0], p[1] - o[1], p[2] - o[2])) == CONTENTS_SOLID:
+                return CONTENTS_SOLID
+        return self.world.contents(p)
+
+    def trace(self, p1, p2):
+        best = self.world.trace(p1, p2)
+        for hull, o in self.extras:
+            tr = hull.trace((p1[0] - o[0], p1[1] - o[1], p1[2] - o[2]), (p2[0] - o[0], p2[1] - o[1], p2[2] - o[2]))
+            if tr.startsolid:
+                best.startsolid = True
+            if tr.fraction < best.fraction:
+                best.fraction = tr.fraction
+                best.endpos = (tr.endpos[0] + o[0], tr.endpos[1] + o[1], tr.endpos[2] + o[2])
+                best.normal_z = tr.normal_z
+                best.allsolid = tr.allsolid
+        return best
+
+
 # --- walking ---------------------------------------------------------------------------------------------
 def find_ground(hull, x, y, z_from, z_to):
     """Z of the floor under (x, y) between z_from and z_to (hull origin height), or None."""
@@ -572,6 +630,7 @@ def main(argv=None):
     ap.add_argument("bsp")
     ap.add_argument("-o", "--output", required=True)
     ap.add_argument("--cell", type=int, default=32, help="grid spacing of the dense floor sample (units)")
+    ap.add_argument("--toggle-walls", action="store_true", help="treat func_wall_toggle brushes as solid too")
     ap.add_argument("--radius", type=int, default=384, help="every walkable cell is within this path cost of a waypoint")
     args = ap.parse_args(argv)
 
@@ -579,6 +638,10 @@ def main(argv=None):
         data = fh.read()
     bsp = Bsp(data)
     hull = Hull(bsp.planes, bsp.clipnodes, bsp.hull1_root)
+    extras = solid_brush_hulls(bsp, SOLID_BRUSH_CLASSES if args.toggle_walls else DEFAULT_SOLID)
+    if extras:
+        print(f"solid brush entities: {len(extras)} block the walk", file=sys.stderr)
+        hull = CompositeHull(hull, extras)
 
     seeds = []
     for ent in bsp.entities:
