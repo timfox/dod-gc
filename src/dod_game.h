@@ -310,6 +310,8 @@ void Dod_NoteRespawn(int player_index);
 /* Seconds until the player may respawn (0: now). Pure function of the clock, for tests and the HUD. */
 float Dod_RespawnSeconds(int player_index);
 float Dod_RespawnWaveTime(float death_clock, float interval, float min_delay);
+/* The retail round-end fanfare of the winning side (the files ship in dod/sound/ambience; retail has no separate loss tune, everybody hears the winner's), or NULL for a tie. */
+const char *Dod_RoundEndSound(DodTeam winner, int british);
 float Dod_RoundClock(void);
 
 /* Class limits (retail mp_limit<side><gun> cvars and mp_alliesclasses / mp_axisclasses): a limit of -1 is unlimited, 0 turns the

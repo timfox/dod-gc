@@ -900,6 +900,15 @@ int Dod_DeathSequence(int hitgroup, int explosion, int melee, int crouching, int
 	return from_front ? DOD_SEQ_DIE_BACKWARDS : DOD_SEQ_DIE_FORWARDS;
 }
 
+const char *Dod_RoundEndSound(DodTeam winner, int british)
+{
+	if (winner == DOD_TEAM_ALLIES)
+		return british ? "ambience/britwin.wav" : "ambience/uswin.wav";
+	if (winner == DOD_TEAM_AXIS)
+		return "ambience/germanwin.wav";
+	return 0;	/* a tied round has no fanfare */
+}
+
 float Dod_RoundClock(void)
 {
 	return g_round_clock;

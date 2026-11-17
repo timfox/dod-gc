@@ -455,6 +455,29 @@ def stage_grenade_sfx(
     return {"files": len(staged), "bytes": total, "missing": missing, "list": staged}
 
 
+# The retail round-end fanfares (the winning side's tune, played to everybody). 21-26 s at 22.05 kHz mono s16 (about 1 MB each): staged whole,
+# unlike the short clips: the engine streams them from ARAM.
+ROUND_END_SFX = ["ambience/uswin.wav", "ambience/britwin.wav", "ambience/germanwin.wav"]
+
+
+def stage_round_end_sfx(dod_sound: Path, lean_sound: Path) -> dict:
+    roots = [dod_sound]
+    index = build_index(roots)
+    staged: list[str] = []
+    missing: list[str] = []
+    total = 0
+    for rel in ROUND_END_SFX:
+        src, _how = resolve_source(rel, index, roots, allow_substitute=False)
+        if src is None:
+            missing.append(rel)
+            continue
+        dest = lean_dest(lean_sound, rel)
+        total += copy_file(src, dest)
+        if dest.is_file():
+            staged.append(rel)
+    return {"files": len(staged), "bytes": total, "missing": missing, "list": staged}
+
+
 def write_manifest(path: Path, payload: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     import json
@@ -560,6 +583,13 @@ def main() -> int:
         print(
             f"grenade + gun SFX: files={grenades['files']} ({grenades['bytes'] / 1024:.0f} KiB)"
             + (f" missing={grenades['missing']}" if grenades["missing"] else "")
+        )
+
+        fanfares = stage_round_end_sfx(dod / "sound", lean / "sound")
+        payload["round_end_sfx"] = fanfares
+        print(
+            f"round-end fanfares: files={fanfares['files']} ({fanfares['bytes'] / 1024:.0f} KiB)"
+            + (f" missing={fanfares['missing']}" if fanfares["missing"] else "")
         )
 
         voices = stage_voice_sfx(dod / "sound", lean / "sound", Path(__file__).resolve().parent.parent / "src" / "dod_game.c")

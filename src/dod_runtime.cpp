@@ -87,6 +87,29 @@ static int g_dod_menu_state[DOD_MAX_PLAYERS + 1];
 static int g_dod_joined[DOD_MAX_PLAYERS + 1];
 static int g_dod_pending_team[DOD_MAX_PLAYERS + 1];
 static int g_dod_winner_announced;
+
+/* The winning side's fanfare, to every human at the start of the intermission (2D, not attenuated). It streams from ARAM at full length. */
+static void DodGC_PlayRoundEndMusic( DodTeam winner )
+{
+	const char *path = Dod_RoundEndSound( winner, Dod_GetAlliesCountry() == DOD_COUNTRY_BRITISH );
+	if( !path )
+		return;
+	/* the map's own win relay plays this file through an ambient_generic when the engine keeps that entity: then this is only the fallback */
+	for( CBaseEntity *amb = NULL; ( amb = UTIL_FindEntityByClassname( amb, "ambient_generic" ) ) != NULL; )
+		if( amb->pev->message && FStrEq( STRING( amb->pev->message ), path ) )
+		{
+			ALERT( at_console, "DoD round-end fanfare: the map's ambient_generic plays %s\n", path );
+			return;
+		}
+	PRECACHE_SOUND( (char *)path );
+	for( int i = 1; i <= gpGlobals->maxClients; i++ )
+	{
+		CBasePlayer *player = (CBasePlayer *)UTIL_PlayerByIndex( i );
+		if( player && player->IsPlayer() && !( player->pev->flags & FL_FAKECLIENT ) )
+			EMIT_SOUND_DYN( ENT( player->pev ), CHAN_STATIC, path, 1.0f, ATTN_NONE, 0, 100 );
+	}
+	ALERT( at_console, "DoD round-end fanfare: %s\n", path );
+}
 static float g_dod_next_status;
 static int g_dod_death_seq[DOD_MAX_PLAYERS + 1];	/* the retail death sequence picked when the player was killed */
 static char g_spawn_map[64];	/* the map whose spawn points are cached (DodGC_LoadSpawns) */
@@ -1457,6 +1480,7 @@ void CHalfLifeDoD::Think( void )
 		UTIL_ClientPrintAll( HUD_PRINTCENTER, UTIL_VarArgs( "%s\nNext round in %d seconds", winner,
 			(int)( state->intermission_remaining + 0.5f ) ) );
 		g_dod_winner_announced = 1;
+		DodGC_PlayRoundEndMusic( state->winner );
 	}
 	if( state && state->restart_serial != g_dod_seen_restart ) {
 		/* The intermission ran out: everybody starts the new round at their
