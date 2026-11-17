@@ -167,6 +167,20 @@ mp_teamplay 1
 mp_teamlist "Allies;Axis"
 mp_defaultteam 0
 EOF
+# Create Server fills its Map field from maps.lst and cannot write one on a
+# disc. Without it the list is empty: the Map field does nothing and Start
+# is greyed. List every map on the disc unless the content brings its own.
+if [[ ! -s "$BUILD_DATA/maps.lst" ]]; then
+	: > "$BUILD_DATA/maps.lst"
+	while IFS= read -r bsp; do
+		stem="$(basename "$bsp")"
+		stem="${stem%.*}"
+		printf '%s "%s"\n' "$stem" "$stem" >> "$BUILD_DATA/maps.lst"
+	done < <(find "$BUILD_DATA/maps" -maxdepth 1 -iname '*.bsp' 2>/dev/null | sort -f)
+	echo "==> [dod-gc] staged maps.lst: $(wc -l < "$BUILD_DATA/maps.lst" | tr -d ' ') maps"
+fi
+# Every disc carries its own stamp (the lean route already does).
+bash "$SCRIPT_DIR/build-info.sh" --short > "$BUILD_DATA/build-info.txt"
 if [[ -d "$DODGC_CONTENT_VALVE" ]]; then
 	mkdir -p "$BUILD_VALVE"
 	rsync -a --delete \
