@@ -109,7 +109,7 @@ static cvar_t dod_bot_stage = { "dod_bot_stage", "0", FCVAR_SERVER };
 #define DOD_BOT_HARD_CAP 7
 
 /* Free edicts that must remain before another bot is added (see PlanBots). */
-#define DOD_BOT_EDICT_RESERVE 26
+#define DOD_BOT_EDICT_RESERVE 22
 
 #if defined( __GAMECUBE__ )
 #define DOD_BOT_MAX_SLOTS 10	/* bot state slots; the engine's slot count (XASH_GC_DEFAULT_SLOTS, 3 by default) is the real limit */
