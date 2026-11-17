@@ -87,6 +87,7 @@ static int g_dod_joined[DOD_MAX_PLAYERS + 1];
 static int g_dod_pending_team[DOD_MAX_PLAYERS + 1];
 static int g_dod_winner_announced;
 static float g_dod_next_status;
+static int g_dod_death_seq[DOD_MAX_PLAYERS + 1];	/* the retail death sequence picked when the player was killed */
 static char g_spawn_map[64];	/* the map whose spawn points are cached (DodGC_LoadSpawns) */
 /* Voice lines: nobody speaks more than once every 2 s, automatic lines (bots spotting, grenades) once every 8 s. */
 #define DOD_VOICE_COOLDOWN 2.0f
@@ -884,6 +885,8 @@ void CHalfLifeDoD::PlayerSpawn( CBasePlayer *pPlayer )
 	CHalfLifeTeamplay::PlayerSpawn( pPlayer );
 	DodGC_EnsurePlayer( pPlayer );
 	Dod_NoteRespawn( DodGC_PlayerIndex( pPlayer ) );
+	if( DodGC_PlayerIndex( pPlayer ) >= 1 && DodGC_PlayerIndex( pPlayer ) <= DOD_MAX_PLAYERS )
+		g_dod_death_seq[DodGC_PlayerIndex( pPlayer )] = 0;
 	if( pPlayer->IsObserver() )
 		return;
 	/* The GameCube SDK's CBasePlayer::Spawn takes the base spawn spot (not this rules class's) on the -gcnewgame route, so a
@@ -912,6 +915,44 @@ void CHalfLifeDoD::PlayerSpawn( CBasePlayer *pPlayer )
 
 /* The kill feed: the lean client drops the stock DeathNotice, so one DodKill message goes to everyone with the sides, the names
  * and what killed. */
+/* The retail death sequence of the hit, picked when the player is killed and handed to CBasePlayer::SetAnimation(PLAYER_DIE) by the integrator's
+ * patch (DodGC_DeathSequence). */
+static void DodGC_PickDeathSequence( CBasePlayer *pVictim, entvars_t *pKiller, entvars_t *pInflictor )
+{
+	const int index = DodGC_PlayerIndex( pVictim );
+	int from_front = -1, melee = 0, explosion = 0;
+	if( index < 1 || index > DOD_MAX_PLAYERS )
+		return;
+	if( pKiller && pKiller != pVictim->pev && !FNullEnt( ENT( pKiller ) ) && FBitSet( pKiller->flags, FL_CLIENT | FL_FAKECLIENT ) ) {
+		const float yaw = pVictim->pev->angles.y * (float)M_PI / 180.0f;
+		const Vector to = pKiller->origin - pVictim->pev->origin;
+		from_front = ( to.x * cos( yaw ) + to.y * sin( yaw ) ) > 0.0f ? 1 : 0;
+	} else if( pInflictor && pInflictor != pVictim->pev ) {
+		const float yaw = pVictim->pev->angles.y * (float)M_PI / 180.0f;
+		const Vector to = pInflictor->origin - pVictim->pev->origin;
+		from_front = ( to.x * cos( yaw ) + to.y * sin( yaw ) ) > 0.0f ? 1 : 0;
+	}
+	explosion = ( pVictim->m_bitsDamageType & ( DMG_BLAST | DMG_BURN ) ) != 0 ? 1 : 0;
+	if( pInflictor && FClassnameIs( pInflictor, "weapon_crowbar" ) )
+		melee = 1;
+	if( pKiller && pKiller != pVictim->pev && pKiller->weaponmodel ) {
+		const char *wm = STRING( pKiller->weaponmodel );
+		if( strstr( wm, "knife" ) || strstr( wm, "amerk" ) || strstr( wm, "spade" ) || strstr( wm, "fairbairn" ) || strstr( wm, "paraknife" ) )
+			melee = 1;
+	}
+	g_dod_death_seq[index] = Dod_DeathSequence( pVictim->m_LastHitGroup, explosion, melee, ( pVictim->pev->flags & FL_DUCKING ) != 0,
+		0 /* prone: the game has no prone yet */, from_front );
+}
+
+/* Called from CBasePlayer::SetAnimation(PLAYER_DIE) (patched in by the integrator): the death sequence of the body model, -1 outside a DoD game. */
+int DodGC_DeathSequence( CBasePlayer *pPlayer )
+{
+	const int index = DodGC_PlayerIndex( pPlayer );
+	if( !Dod_GameIsActive() || index < 1 || index > DOD_MAX_PLAYERS || g_dod_death_seq[index] <= 0 )
+		return -1;
+	return g_dod_death_seq[index];
+}
+
 static void DodGC_SendKillFeed( CBasePlayer *pVictim, entvars_t *pKiller, entvars_t *pInflictor )
 {
 	CBaseEntity *killer = pKiller ? CBaseEntity::Instance( pKiller ) : NULL;
@@ -948,6 +989,7 @@ void CHalfLifeDoD::PlayerKilled( CBasePlayer *pVictim, entvars_t *pKiller, entva
 	const int attacker = pKiller ? ENTINDEX( ENT( pKiller ) ) : 0;
 	Dod_RecordKill( attacker, DodGC_PlayerIndex( pVictim ) );
 	Dod_NoteDeath( DodGC_PlayerIndex( pVictim ) );
+	DodGC_PickDeathSequence( pVictim, pKiller, pInflictor );
 	DodGC_SendKillFeed( pVictim, pKiller, pInflictor );
 	CHalfLifeTeamplay::PlayerKilled( pVictim, pKiller, pInflictor );
 }

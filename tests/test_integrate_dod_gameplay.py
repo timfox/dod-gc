@@ -274,6 +274,55 @@ class UserCmdIntegrationTest(unittest.TestCase):
 				INTEGRATOR.integrate_usercmd(dlls)
 
 
+class DeathAnimsIntegrationTest(unittest.TestCase):
+	PLAYER = ('void CBasePlayer::SetAnimation( PLAYER_ANIM playerAnim )\n{\n\tswitch( m_IdealActivity )\n\t{\n\tdefault:\n'
+		'\t\tm_Activity = m_IdealActivity;\n\n\t\tanimDesired = LookupActivity( m_Activity );\n\n\t\t// Already using the desired animation?\n'
+		'\t\tif( pev->sequence == animDesired )\n\t\t\treturn;\n\t}\n}\n')
+
+	def test_death_sequence_is_offered_to_the_game_once(self):
+		with tempfile.TemporaryDirectory() as directory:
+			dlls = Path(directory)
+			(dlls / "player.cpp").write_text(self.PLAYER)
+			INTEGRATOR.integrate_death_anims(dlls)
+			first = (dlls / "player.cpp").read_text()
+			INTEGRATOR.integrate_death_anims(dlls)
+			self.assertEqual((dlls / "player.cpp").read_text(), first, "must be idempotent")
+			self.assertEqual(first.count("DodGC_DeathSequence( this )"), 1)
+			self.assertLess(first.index("LookupActivity( m_Activity )"), first.index("DodGC_DeathSequence( this )"))
+			self.assertLess(first.index("DodGC_DeathSequence( this )"), first.index("Already using the desired animation"))
+
+	def test_missing_anchor_fails_loudly(self):
+		with tempfile.TemporaryDirectory() as directory:
+			dlls = Path(directory)
+			(dlls / "player.cpp").write_text("int unrelated;\n")
+			with self.assertRaises(SystemExit):
+				INTEGRATOR.integrate_death_anims(dlls)
+
+
+class BodyQueueIntegrationTest(unittest.TestCase):
+	WORLD = 'static void InitBodyQue( void )\n{\n#if XASH_GAMECUBE\n\t/* Lean. */\n\tif( !GC_FullActors() )\n\t{\n\t\tg_pBodyQueueHead = NULL;\n\t\treturn;\n\t}\n#endif\n}\n'
+	WORLD += 'void CopyToBodyQue( entvars_t *pev )\n{\n\tpevHead->movetype\t= MOVETYPE_TOSS;\n\tpevHead->velocity\t= pev->velocity;\n\tUTIL_SetOrigin( pevHead, pev->origin );\n}\n'
+
+	def test_corpse_edicts_are_kept_once(self):
+		with tempfile.TemporaryDirectory() as directory:
+			dlls = Path(directory)
+			(dlls / "world.cpp").write_text(self.WORLD)
+			INTEGRATOR.integrate_body_queue(dlls)
+			first = (dlls / "world.cpp").read_text()
+			INTEGRATOR.integrate_body_queue(dlls)
+			self.assertEqual((dlls / "world.cpp").read_text(), first, "must be idempotent")
+			self.assertNotIn("g_pBodyQueueHead = NULL", first)
+			self.assertNotIn("MOVETYPE_TOSS", first)
+			self.assertIn("pev->origin + Vector( 0, 0, 1.0f )", first)
+
+	def test_missing_anchor_fails_loudly(self):
+		with tempfile.TemporaryDirectory() as directory:
+			dlls = Path(directory)
+			(dlls / "world.cpp").write_text("int unrelated;\n")
+			with self.assertRaises(SystemExit):
+				INTEGRATOR.integrate_body_queue(dlls)
+
+
 class DoddetectIntegrationTest(unittest.TestCase):
 	SUBS = 'LINK_ENTITY_TO_CLASS( info_player_observer, CPointEntity )\nLINK_ENTITY_TO_CLASS( info_doddetect, CPointEntity )\n'
 

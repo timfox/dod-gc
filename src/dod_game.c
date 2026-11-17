@@ -881,6 +881,25 @@ int Dod_RetailClassMask(DodTeam team, int retail_mask)
 	return mask;
 }
 
+int Dod_DeathSequence(int hitgroup, int explosion, int melee, int crouching, int prone, int from_front)
+{
+	if (prone)
+		return DOD_SEQ_DIE_PRONE;
+	if (explosion)
+		return from_front == 0 ? DOD_SEQ_DIE_FORWARD_EXPLODE : DOD_SEQ_DIE_BACKWARD_EXPLODE;
+	if (melee)
+		return DOD_SEQ_DIE_BUTTSTOCK;
+	if (crouching)
+		return hitgroup == 1 ? DOD_SEQ_DIE_CROUCH_HEAD : DOD_SEQ_DIE_CROUCH_BACKWARDS;
+	if (hitgroup == 1)
+		return DOD_SEQ_DIE_HEADSHOT;
+	if (hitgroup == 3)
+		return DOD_SEQ_DIE_GUTSHOT;
+	if (from_front < 0)
+		return DOD_SEQ_DIE_SIMPLE;
+	return from_front ? DOD_SEQ_DIE_BACKWARDS : DOD_SEQ_DIE_FORWARDS;
+}
+
 float Dod_RoundClock(void)
 {
 	return g_round_clock;
