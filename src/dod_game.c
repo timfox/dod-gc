@@ -856,6 +856,21 @@ int Dod_PuffAllowed(float now, float *window_start, int *in_window, int per_seco
 	return 1;
 }
 
+int Dod_RetailClassMask(DodTeam team, int retail_mask)
+{
+	/* the retail gun bits of each class */
+	static const int allies_bits[DOD_CLASS_COUNT] = { 0, (1 << 0) | (1 << 1), (1 << 2) | (1 << 3), 1 << 5, 1 << 4, 1 << 6, 1 << 7 };
+	static const int axis_bits[DOD_CLASS_COUNT] = { 0, (1 << 0) | (1 << 1) | (1 << 5), 1 << 3, 1 << 4, (1 << 2) | (1 << 6), (1 << 7) | (1 << 8), 1 << 9 };
+	const int *bits = team == DOD_TEAM_AXIS ? axis_bits : allies_bits;
+	int c, mask = 0;
+	if (retail_mask == -1 || (team != DOD_TEAM_ALLIES && team != DOD_TEAM_AXIS))
+		return -1;
+	for (c = DOD_CLASS_RIFLEMAN; c < DOD_CLASS_COUNT; ++c)
+		if (retail_mask & bits[c])
+			mask |= 1 << c;
+	return mask;
+}
+
 static int g_class_limit[4][DOD_CLASS_COUNT];
 static int g_class_mask[4] = { -1, -1, -1, -1 };
 static int g_class_limits_set;
