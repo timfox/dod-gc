@@ -300,7 +300,7 @@ class DeathAnimsIntegrationTest(unittest.TestCase):
 
 
 class BodyQueueIntegrationTest(unittest.TestCase):
-	WORLD = 'static void InitBodyQue( void )\n{\n#if XASH_GAMECUBE\n\t/* Lean. */\n\tif( !GC_FullActors() )\n\t{\n\t\tg_pBodyQueueHead = NULL;\n\t\treturn;\n\t}\n#endif\n}\n'
+	WORLD = 'static void InitBodyQue( void )\n{\n#if XASH_GAMECUBE\n\t/* Lean. */\n\tif( !GC_FullActors() )\n\t{\n\t\tg_pBodyQueueHead = NULL;\n\t\treturn;\n\t}\n#endif\n\t// Reserve 3 more slots for dead bodies\n\tfor( int i = 0; i < 3; i++ )\n}\n'
 	WORLD += 'void CopyToBodyQue( entvars_t *pev )\n{\n\tpevHead->colormap\t= pev->colormap;\n\tpevHead->movetype\t= MOVETYPE_TOSS;\n\tpevHead->velocity\t= pev->velocity;\n\tUTIL_SetOrigin( pevHead, pev->origin );\n}\n'
 
 	def test_corpse_edicts_are_kept_once(self):
@@ -313,6 +313,7 @@ class BodyQueueIntegrationTest(unittest.TestCase):
 			self.assertEqual((dlls / "world.cpp").read_text(), first, "must be idempotent")
 			self.assertNotIn("g_pBodyQueueHead = NULL", first)
 			self.assertNotIn("MOVETYPE_TOSS", first)
+			self.assertIn("i < 1", first)
 			self.assertEqual(first.count("pevHead->body\t\t= pev->body;"), 1)
 			self.assertEqual(first.count("pevHead->skin\t\t= pev->skin;"), 1)
 			self.assertIn("pev->origin + Vector( 0, 0, 1.0f )", first)

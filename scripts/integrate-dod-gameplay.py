@@ -259,6 +259,10 @@ def integrate_body_queue(dlls: Path) -> None:
 	replace_once(dlls / "world.cpp",
 		'\tif( !GC_FullActors() )\n\t{\n\t\tg_pBodyQueueHead = NULL;\n\t\treturn;\n\t}\n',
 		'\t/* DoD keeps the four corpse edicts (dod-gc integrate_body_queue). */\n')
+	# Charlie leaves ~23 free edicts with three bots: the stock four corpse edicts cost the fourth bot. Two corpses are kept.
+	replace_once(dlls / "world.cpp",
+		'\t// Reserve 3 more slots for dead bodies\n\tfor( int i = 0; i < 3; i++ )\n',
+		'\t// DoD keeps 2 corpses (edict budget): 1 more slot for dead bodies\n\tfor( int i = 0; i < 1; i++ )\n')
 	# The lean server has no world collision for MOVETYPE_TOSS, so a corpse fell through the floor (and drew black inside it).
 	# It stays where the player died, a unit above that origin.
 	replace_once(dlls / "world.cpp",
