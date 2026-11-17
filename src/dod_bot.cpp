@@ -1487,6 +1487,50 @@ static void StageStep( void )
 	static float armed_at;
 	static int g_track_victim;
 	static float g_track_until, g_track_next;
+	if( stage == 5 && g_stage_phase >= 9 )
+	{
+		/* test scenario 5: an Axis bot stands 130 units in front of the human, blind and still, and tilts its view 30 degrees down, 30 up and
+		 * level in turn (6 s each), to look at how the body follows the pitch */
+		static float t0;
+		static int placed;
+		CBasePlayer *human = NULL, *victim = NULL;
+		for( int k = 1; k <= gpGlobals->maxClients; k++ )
+		{
+			CBasePlayer *p = PlayerAt( k );
+			if( !p )
+				continue;
+			if( !DodBots_IsBot( p ) )
+				human = p;
+			else if( p->IsAlive() && TeamOf( p ) == DOD_TEAM_AXIS && !victim )
+				victim = p;
+		}
+		if( human && victim && human->IsAlive() )
+		{
+			static const float pitches[3] = { 30.0f, -30.0f, 0.0f };
+			DodBotState *vs = BotState( victim->entindex() );
+			if( !placed )
+			{
+				placed = 1;
+				t0 = now;
+			}
+			UTIL_MakeVectors( Vector( 0.0f, human->pev->v_angle.y, 0.0f ) );
+			UTIL_SetOrigin( victim->pev, human->pev->origin + gpGlobals->v_forward * 130.0f );
+			victim->pev->velocity = g_vecZero;
+			if( vs )
+			{
+				const int phase = (int)( ( now - t0 ) / 6.0f ) % 3;
+				vs->stage_role = 2;
+				vs->yaw = vs->want_yaw = human->pev->v_angle.y + 180.0f;
+				vs->pitch = vs->want_pitch = pitches[phase];
+				if( (int)( now - t0 ) != g_track_victim )
+				{
+					g_track_victim = (int)( now - t0 );
+					ALERT( at_console, "DoD STAGE aim: victim pitch %.0f at %d s\n", vs->pitch, g_track_victim );
+				}
+			}
+		}
+		return;
+	}
 	if( stage == 4 && g_stage_phase >= 9 )
 	{
 		/* test scenario 4: the human has joined; every 14 s a bot is stood 160 units in front of the human and killed with the next hit of a
@@ -1575,7 +1619,7 @@ static void StageStep( void )
 	}
 	if( !stage || g_stage_phase >= 9 )
 		return;
-	if( stage == 3 || stage == 4 )
+	if( stage == 3 || stage == 4 || stage == 5 )
 	{
 		/* put the human on the Allies as a rifleman so the pad can fire, reload and cycle weapons (view model checks) */
 		static float arm;
@@ -1851,7 +1895,10 @@ static void RunBot( int index, CBasePlayer *pBot )
 		viewangles[2] = 0.0f;
 		pBot->pev->v_angle.x = viewangles[0];
 		pBot->pev->v_angle.y = viewangles[1];
+		pBot->pev->angles.x = Dod_BotBodyPitch( viewangles[0] );
+		pBot->pev->angles.y = viewangles[1];
 		( *g_engfuncs.pfnRunPlayerMove )( pBot->edict(), viewangles, 0, 0, 0, 0, 0, msec );
+		pBot->pev->angles.x = Dod_BotBodyPitch( viewangles[0] );	/* after the move: the player move rewrites the angles */
 		return;
 	}
 	EnsureNav();
@@ -2205,7 +2252,18 @@ static void RunBot( int index, CBasePlayer *pBot )
 	pBot->pev->v_angle.x = viewangles[0];
 	pBot->pev->v_angle.y = viewangles[1];
 	pBot->pev->v_angle.z = 0.0f;
-	pBot->pev->angles.x = viewangles[0] * ( 1.0f / 3.0f );
+	pBot->pev->angles.x = Dod_BotBodyPitch( viewangles[0] );
+	{
+		/* every 5 s per bot: where it wants to look, where it looks, what the body is given */
+		static float next_aim_log[DOD_MAX_PLAYERS + 1];
+		const int bi = pBot->entindex();
+		if( bi >= 1 && bi <= DOD_MAX_PLAYERS && gpGlobals->time >= next_aim_log[bi] )
+		{
+			next_aim_log[bi] = gpGlobals->time + 5.0f;
+			ALERT( at_console, "DoD bot aim %s: %s, want yaw %.0f pitch %.0f, v_angle %.0f %.0f, body pitch %.0f\n", STRING( pBot->pev->netname ),
+				fight ? "target" : "no target", state->want_yaw, state->want_pitch, pBot->pev->v_angle.x, pBot->pev->v_angle.y, pBot->pev->angles.x );
+		}
+	}
 	pBot->pev->angles.y = viewangles[1];
 	if( state->have_prev_angles && dt > 0.0f )
 	{
@@ -2227,6 +2285,7 @@ static void RunBot( int index, CBasePlayer *pBot )
 	{
 		PhaseTimer timer( DOD_PH_MOVE );
 		( *g_engfuncs.pfnRunPlayerMove )( pBot->edict(), viewangles, move.forward * speed, move.side * speed, 0, buttons, 0, msec );
+		pBot->pev->angles.x = Dod_BotBodyPitch( viewangles[0] );	/* after the move: the player move rewrites the angles */
 	}
 }
 

@@ -48,6 +48,8 @@ float Dod_BotEase(float *angle, float *vel, float target, float max_speed, float
 float Dod_BotTurn(float current, float target, float max_step);
 /* Shortest signed angle from a to b in degrees, in [-180, 180). */
 float Dod_BotAngleDelta(float a, float b);
+/* pev->angles pitch of the body for a view pitch (v_angle, positive = looking down): the engine uses -(v_angle / 3) and the renderer blends with angles.pitch * 3 */
+float Dod_BotBodyPitch(float view_pitch);
 
 /* Aim error in degrees: grows with distance, shrinks with skill (0-3). */
 float Dod_BotAimError(float distance, int skill);

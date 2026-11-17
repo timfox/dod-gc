@@ -109,6 +109,11 @@ float Dod_BotEase(float *angle, float *vel, float target, float max_speed, float
 	return *angle;
 }
 
+float Dod_BotBodyPitch(float view_pitch)
+{
+	return -view_pitch / 3.0f;
+}
+
 float Dod_BotAngleDelta(float a, float b)
 {
 	float d = fmodf(b - a, 360.0f);

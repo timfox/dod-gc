@@ -90,6 +90,10 @@ static void test_class_pick(void)
 static void test_angles(void)
 {
 	assert(fabsf(Dod_BotAngleDelta(10.0f, 30.0f) - 20.0f) < 0.001f);
+	/* the body pitch has the opposite sign of the view pitch (engine: -(v_angle / 3)): a bot looking down 30 degrees tilts its body by -10 */
+	assert(fabsf(Dod_BotBodyPitch(30.0f) + 10.0f) < 0.001f);
+	assert(fabsf(Dod_BotBodyPitch(-30.0f) - 10.0f) < 0.001f);
+	assert(Dod_BotBodyPitch(0.0f) == 0.0f);
 	assert(fabsf(Dod_BotAngleDelta(350.0f, 10.0f) - 20.0f) < 0.001f);	/* across zero */
 	assert(fabsf(Dod_BotAngleDelta(10.0f, 350.0f) + 20.0f) < 0.001f);
 	assert(fabsf(Dod_BotAngleDelta(0.0f, 180.0f) + 180.0f) < 0.001f);	/* [-180, 180) */
