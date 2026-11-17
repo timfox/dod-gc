@@ -8,9 +8,10 @@ pieces it cannot.
 
 1. **No new collision hull.** BSPs carry four clip hulls; `host.player_mins/maxs` (pm_trace.c:58) only describe those. Prone has to
    use the existing duck hull (36 units high). No engine change; the game sets `FL_DUCKING` and lowers the view.
-2. **A state the lean emit can read.** The client emit reads `ed->v.*` of the server entity (it is a listen server). The game will set
-   `pev->iuser3 = 1` (prone) and `pev->iuser4 = 1` (deployed). Please keep those two fields intact in the lean emit path and, if the
-   client reads networked `entity_state_t` anywhere for players, make sure `iuser3/iuser4` are in `delta.lst` for players.
+2. **A state the lean emit can read.** The client emit reads `ed->v.*` of the server entity (it is a listen server). Retail's
+   `dod/delta.lst` (staged as is) already carries `iuser3` (5 bits, "Prone") and `iuser4` (8 bits, "Weapons2") for players, so networked clients
+   see them with no delta change. The game sets `pev->iuser3`: bit 0 (value 1) prone, bit 1 (value 2) bipod deployed; `iuser4` is left to the
+   weapon bits retail uses. Please read `ed->v.iuser3 & 1` for prone in the lean emit.
 3. **Prone and crouch sequences in the lean emit** (cl_frame.c gait selection, about lines 2081-2100). Today: aim sequence is
    `stand_<token>_aim` / `crouch_<token>_aim`, the legs are `dod_walk/jog/sprint` by speed, and crouching only changes the aim token, so
    a crouch-walking player shows standing legs. Needed:
@@ -18,10 +19,10 @@ pieces it cannot.
    - `iuser3 == 1` (prone): aim sequence `prone_<token>_aim` (falls back to `prone_idle` if the weapon has none), gait `prone_forward`
      (16) when speed > 10, none when still.
    - Sprint already uses `dod_sprint` above 200 u/s (the game's sprint speed is 300), so no change there.
-4. **Studio allowlist** (`GC_STUDIO_MODELS` in build-gamecube-disc.py): the deployed third-person weapon models the game will switch to
-   through `pev->weaponmodel`: `p_fg42bd`, `p_fg42bu`, `p_barbd`, `p_barbu` (BAR bipod down/up), `p_scopedfg42bu`, `p_30calbd/bu`,
-   `p_mg42prbd`-style names as the retail models spell them. I will list the exact names once the game picks them; the set follows the
-   retail `p_*bd/bu` models in `dod/models`.
+4. **Studio allowlist** (`GC_STUDIO_MODELS` in build-gamecube-disc.py): the deployed third-person weapon models the game switches to
+   through `pev->weaponmodel`, exactly as they are named in `dod/models`: `p_barbd`, `p_barbu` (BAR bipod down/up), `p_brenbd`, `p_brenbu`
+   (Bren), `p_fg42bd`, `p_fg42bu`, `p_scopedfg42bu` (FG42; there is no scoped bipod-down file), `p_mg34bd`, `p_mg34bu`, `p_mg42bd`,
+   `p_mg42bu`. (`p_30cal` has no bipod variants.)
 
 ## Deploy (bipod, sandbag) for MG, BAR, FG42
 
