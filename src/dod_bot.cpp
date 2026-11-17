@@ -109,7 +109,7 @@ static cvar_t dod_bot_stage = { "dod_bot_stage", "0", FCVAR_SERVER };
 #define DOD_BOT_HARD_CAP 7
 
 /* Free edicts that must remain before another bot is added (see PlanBots). */
-#define DOD_BOT_EDICT_RESERVE 26
+#define DOD_BOT_EDICT_RESERVE 22
 
 #if defined( __GAMECUBE__ )
 #define DOD_BOT_MAX_SLOTS 10	/* bot state slots; the engine's slot count (XASH_GC_DEFAULT_SLOTS, 3 by default) is the real limit */
@@ -183,6 +183,7 @@ typedef struct DodBotState {
 	float want_yaw, want_pitch, yaw_vel, pitch_vel;
 	float prev_yaw, prev_pitch;	/* last written view angles, for the turn log */
 	int have_prev_angles;
+	float prev_health, hurt_at;	/* health at the last frame and when it last dropped (low health only counts for a while after a hit) */
 	int was_alive;			/* for the death log */
 	int stage_role;			/* test scenario: 1 watcher (holds still, perceives), 2 idle and blind */
 	float stage_yaw;
@@ -220,6 +221,30 @@ static void FreeNav( void )
 		FREE_FILE( g_nav_file );
 	g_nav_file = NULL;
 	g_nav_map[0] = '\0';
+}
+
+/* How long an edge that bots got stuck on stays penalised: doubles with every report (a table of the worst ones). */
+#define DOD_BOT_TRAP_TABLE 64
+static struct { int from, to, hits; } g_traps[DOD_BOT_TRAP_TABLE];
+static int g_trap_count;
+static float EdgeTrapSeconds( int from, int to )
+{
+	int i, hits;
+	for( i = 0; i < g_trap_count; i++ )
+		if( g_traps[i].from == from && g_traps[i].to == to )
+			break;
+	if( i == g_trap_count )
+	{
+		if( g_trap_count == DOD_BOT_TRAP_TABLE )
+			i = g_trap_count - 1;	/* full: reuse the last */
+		else
+			g_trap_count++;
+		g_traps[i].from = from;
+		g_traps[i].to = to;
+		g_traps[i].hits = 0;
+	}
+	hits = ++g_traps[i].hits;
+	return hits > 5 ? 900.0f : 30.0f * (float)( 1 << ( hits - 1 ) );
 }
 
 /* The map's damage zones for route planning: every trigger_hurt that is live from the start and hurts someone
@@ -260,6 +285,7 @@ static void EnsureNav( void )
 	if( g_nav_map[0] && !strcmp( g_nav_map, map ) )
 		return;
 	FreeNav();
+	g_trap_count = 0;
 	strncpy( g_nav_map, map, sizeof( g_nav_map ) - 1 );
 	g_nav_map[sizeof( g_nav_map ) - 1] = '\0';
 	snprintf( path, sizeof( path ), "maps/%s.wpt", map );
@@ -1156,10 +1182,12 @@ static BOOL NavTarget( CBasePlayer *pBot, DodBotState *state, Vector *target )
 				STRING( pBot->pev->netname ), state->path[state->path_idx], state->path_idx, state->path_len,
 				state->path_idx > 0 ? Dod_NavEdgeKind( &g_nav, state->path[state->path_idx - 1], state->path[state->path_idx] ) : -1,
 				origin.x, origin.y, origin.z, nx, ny, nz, dist, line.flFraction, hull.flFraction, pBot->pev->velocity.Length(), pBot->pev->movetype );
-			if( state->path_idx > 0 )
-				Dod_NavPenalize( &g_nav, state->path[state->path_idx - 1], state->path[state->path_idx], now + 30.0f );
-			else
-				Dod_NavPenalize( &g_nav, -1, state->path[0], now + 30.0f );
+			{
+				/* an edge that traps bots again and again stays avoided longer each time (30 s, 60 s, ... up to 15 minutes), for every bot */
+				const int from = state->path_idx > 0 ? state->path[state->path_idx - 1] : -1;
+				const int to = state->path[state->path_idx > 0 ? state->path_idx : 0];
+				Dod_NavPenalize( &g_nav, from, to, now + EdgeTrapSeconds( from, to ) );
+			}
 			state->path_len = 0;
 			state->path_replan = now;
 			state->nav_fails++;
@@ -1182,6 +1210,8 @@ static BOOL NavTarget( CBasePlayer *pBot, DodBotState *state, Vector *target )
 #define DOD_BOT_MAX_FIRE_RANGE 2000.0f
 #define DOD_BOT_THINK_PERIOD 0.5f
 #define DOD_BOT_LOW_HEALTH 35.0f
+#define DOD_BOT_HURT_MEMORY 12.0f	/* seconds after a hit that low health keeps a bot in cover; nobody heals in DoD, so it must not last for ever */
+#define DOD_BOT_STAND_RANGE 400.0f	/* beyond this a bot keeps advancing along its route while it fires; inside it stands and fights */
 #define DOD_BOT_NEAR_TEAM 450.0f
 
 static const char *const g_goal_names[DOD_GOAL_COUNT] = { "capture", "defend", "hunt", "cover", "reload", "regroup" };
@@ -1246,9 +1276,9 @@ static void BotThink( CBasePlayer *pBot, DodBotState *state, CBasePlayer *enemy 
 	}
 	if( ( enemy != NULL ) != ( ( state->ws & DOD_WS_ENEMY_VISIBLE ) != 0 ) )
 		state->next_think = 0.0f;	/* an enemy appeared or went out of sight */
-	if( pBot->pev->health < state->last_health - 0.5f )
+	if( pBot->pev->health < state->prev_health - 0.5f )
 		state->next_think = 0.0f;	/* hurt */
-	state->last_health = pBot->pev->health;
+	state->prev_health = pBot->pev->health;
 	if( now < state->next_think )
 		return;
 	state->next_think = now + DOD_BOT_THINK_PERIOD + RANDOM_FLOAT( 0.0f, 0.1f );
@@ -1267,7 +1297,10 @@ static void BotThink( CBasePlayer *pBot, DodBotState *state, CBasePlayer *enemy 
 		ws |= DOD_WS_ENEMY_VISIBLE | DOD_WS_ENEMY_KNOWN;
 	else if( now < state->known_until && !Dod_NavInHazard( &g_nav, team, state->known_pos.x, state->known_pos.y, state->known_pos.z ) )
 		ws |= DOD_WS_ENEMY_KNOWN;	/* (an enemy last seen or heard inside a zone that would kill us is not worth the trip) */
-	if( pBot->pev->health < DOD_BOT_LOW_HEALTH )
+	if( pBot->pev->health < state->prev_health - 0.5f )
+		state->hurt_at = now;
+	state->prev_health = pBot->pev->health;
+	if( pBot->pev->health < DOD_BOT_LOW_HEALTH && now - state->hurt_at < DOD_BOT_HURT_MEMORY )
 		ws |= DOD_WS_LOW_HEALTH;
 	for( i = 1; i <= gpGlobals->maxClients; i++ )
 	{
@@ -1320,6 +1353,8 @@ static void BotThink( CBasePlayer *pBot, DodBotState *state, CBasePlayer *enemy 
 	default:
 		if( state->has_goal && state->goal_id >= 0 )
 			SetDest( state, state->goal, state->goal_id );
+		else if( state->behavior == DOD_ACT_ATTACK && now < state->known_until )
+			SetDest( state, state->known_pos, 1003 );	/* a hunt with an enemy in sight: close in on it along the route while firing */
 		else
 			state->nav_has = 0;
 		break;
@@ -1450,6 +1485,76 @@ static void StageStep( void )
 	DodBotState *sa, *sx;
 	int i;
 	static float armed_at;
+	static int g_track_victim;
+	static float g_track_until, g_track_next;
+	if( stage == 4 && g_stage_phase >= 9 )
+	{
+		/* test scenario 4: the human has joined; every 14 s a bot is stood 160 units in front of the human and killed with the next hit of a
+		 * cycle (head, stomach, chest from the front, chest from behind, explosion, crouching), to look at the death animation and the corpse */
+		static float next_kill;
+		static int round, round_started;
+		CBasePlayer *human = NULL, *victim = NULL;
+		if( !next_kill )
+			next_kill = now + 10.0f;
+		for( int k = 1; k <= gpGlobals->maxClients; k++ )
+		{
+			CBasePlayer *p = PlayerAt( k );
+			if( !p )
+				continue;
+			if( !DodBots_IsBot( p ) )
+				human = p;
+			else if( p->IsAlive() && TeamOf( p ) == DOD_TEAM_AXIS && !victim )
+				victim = p;
+		}
+		if( human && victim && human->IsAlive() && now >= next_kill )
+		{
+			static const int hitgroups[6] = { 1, 3, 2, 2, 2, 2 };
+			static const char *const names[6] = { "headshot", "gutshot", "chest from the front", "chest from behind", "explosion", "crouching" };
+			const int r = round++ % 6;
+			if( !round_started )
+			{
+				/* the join spot sits where the lighting pack has no data (corpses and players draw black there); stand where live bots are lit */
+				round_started = 1;
+				UTIL_SetOrigin( human->pev, Vector( -417.0f, 2080.0f, 60.0f ) );
+				human->pev->velocity = g_vecZero;
+			}
+			UTIL_MakeVectors( human->pev->v_angle );
+			Vector org = human->pev->origin + gpGlobals->v_forward * 200.0f - gpGlobals->v_right * 70.0f;
+			UTIL_SetOrigin( victim->pev, org );
+			victim->pev->velocity = g_vecZero;
+			victim->pev->angles.y = human->pev->v_angle.y + ( r == 3 ? 0.0f : 180.0f );	/* facing the human, or turned away for the one from behind */
+			victim->pev->v_angle.y = victim->pev->angles.y;
+			if( r == 5 )
+				victim->pev->flags |= FL_DUCKING;
+			victim->m_LastHitGroup = hitgroups[r];
+			ALERT( at_console, "DoD STAGE execute: %s, %s\n", STRING( victim->pev->netname ), names[r] );
+			victim->TakeDamage( human->pev, human->pev, 100.0f + victim->pev->health * 0.0f + 10.0f, r == 4 ? DMG_BLAST : DMG_BULLET );
+			next_kill = now + 14.0f;
+			g_track_victim = victim->entindex();
+			g_track_until = now + 9.0f;
+			g_track_next = now;
+		}
+		if( g_track_victim && now >= g_track_next )
+		{
+			CBasePlayer *tv = PlayerAt( g_track_victim );
+			CBaseEntity *bq = NULL;
+			int shown = 0;
+			g_track_next = now + 0.5f;
+			if( tv )
+				ALERT( at_console, "DoD STAGE track: dead %d health %.0f model %d fx %d move %d seq %d fin %d\n", tv->pev->deadflag, tv->pev->health,
+					tv->pev->modelindex, tv->pev->effects, tv->pev->movetype, tv->pev->sequence, (int)tv->m_fSequenceFinished );
+			while( ( bq = UTIL_FindEntityByClassname( bq, "bodyque" ) ) != NULL )
+				if( bq->pev->modelindex )
+				{
+					ALERT( at_console, "DoD STAGE track: bodyque %d model %d owner-slot %.0f at %.0f %.0f %.0f\n", bq->entindex(), bq->pev->modelindex, bq->pev->renderamt,
+						bq->pev->origin.x, bq->pev->origin.y, bq->pev->origin.z );
+					shown++;
+				}
+			if( now >= g_track_until )
+				g_track_victim = 0;
+		}
+		return;
+	}
 	if( stage == 3 && g_stage_phase >= 9 )
 	{
 		/* diagnostic: what state is the human in after the join */
@@ -1470,7 +1575,7 @@ static void StageStep( void )
 	}
 	if( !stage || g_stage_phase >= 9 )
 		return;
-	if( stage == 3 )
+	if( stage == 3 || stage == 4 )
 	{
 		/* put the human on the Allies as a rifleman so the pad can fire, reload and cycle weapons (view model checks) */
 		static float arm;
@@ -1835,6 +1940,7 @@ static void RunBot( int index, CBasePlayer *pBot )
 	}
 
 	BOOL path_follow = FALSE;
+	BOOL advance = FALSE;	/* a fight at range: keep going along the route, view on the enemy */
 	if( fight )
 	{
 		const DodBotSkill sk = BotSkill();
@@ -1872,6 +1978,14 @@ static void RunBot( int index, CBasePlayer *pBot )
 			aim_error = dy > dp ? dy : dp;
 		}
 		in.aim_error = aim_error;
+		advance = state->nav_has && !state->nav_arrived && !state->ladder_dir && enemy_distance > DOD_BOT_STAND_RANGE;
+		if( advance && gpGlobals->time >= state->hold_heading_until )
+		{
+			Vector node = state->nav_pos;
+			const BOOL on_path = NavTarget( pBot, state, &node );
+			state->heading = YawTo( pBot->pev->origin, on_path ? node : state->nav_pos );
+			path_follow = on_path;
+		}
 	}
 	else
 	{
@@ -1918,7 +2032,12 @@ static void RunBot( int index, CBasePlayer *pBot )
 	}
 
 	move = Dod_BotDecide( &in );
-	if( !fight && state->nav_has && !state->ladder_dir && ( move.forward != 0.0f || move.side != 0.0f ) )
+	if( advance )
+	{
+		move.forward = 1.0f;	/* the route, not the enemy, sets the way; the view stays on the enemy */
+		move.side = 0.0f;
+	}
+	if( ( !fight || advance ) && state->nav_has && !state->ladder_dir && ( move.forward != 0.0f || move.side != 0.0f ) )
 	{
 		/* The movement command is relative to the view, which eases round to the heading over a few frames: rotate
 		 * the command by the difference so the legs go the way the bot means to at once, as a person running while
