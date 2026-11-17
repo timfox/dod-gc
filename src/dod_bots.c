@@ -699,7 +699,8 @@ int Dod_NavLoad(DodNav *nav, const unsigned char *data, int len)
 	nav->state = (unsigned char *)malloc((size_t)nav->node_count);
 	nav->heap = (unsigned short *)malloc(sizeof(unsigned short) * (size_t)nav->node_count);
 	nav->hpos = (short *)malloc(sizeof(short) * (size_t)nav->node_count);
-	if (!nav->first || !nav->g || !nav->f || !nav->parent || !nav->state || !nav->heap || !nav->hpos) {
+	nav->edge_blocked = (unsigned char *)calloc((size_t)(nav->edge_count > 0 ? nav->edge_count : 1), 1);
+	if (!nav->edge_blocked || !nav->first || !nav->g || !nav->f || !nav->parent || !nav->state || !nav->heap || !nav->hpos) {
 		Dod_NavFree(nav);
 		return 0;
 	}
@@ -732,7 +733,97 @@ void Dod_NavFree(DodNav *nav)
 	free(nav->state);
 	free(nav->heap);
 	free(nav->hpos);
+	free(nav->edge_blocked);
 	memset(nav, 0, sizeof(*nav));
+}
+
+void Dod_NavEdgeNodes(const DodNav *nav, int edge, int *from, int *to)
+{
+	int lo = 0, hi, mid;
+	if (!nav || edge < 0 || edge >= nav->edge_count) {
+		if (from) *from = -1;
+		if (to) *to = -1;
+		return;
+	}
+	hi = nav->node_count - 1;
+	while (lo < hi) {	/* the last node whose first edge is <= edge (nodes without edges share their first index) */
+		mid = (lo + hi + 1) / 2;
+		if (nav->first[mid] <= edge)
+			lo = mid;
+		else
+			hi = mid - 1;
+	}
+	if (from) *from = lo;
+	if (to) *to = (int)(nav_be16(nav->edges + 2 * edge) & 0x3fff);
+}
+
+/* does the segment between two nodes cross a box grown by the hull's reach (slab test)? */
+static int nav_segment_in_box(const float p[3], const float q[3], const float bmin[3], const float bmax[3])
+{
+	float t0 = 0.0f, t1 = 1.0f;
+	int k;
+	for (k = 0; k < 3; ++k) {
+		const float d = q[k] - p[k], lo = bmin[k] - (k < 2 ? 24.0f : 36.0f), hi = bmax[k] + (k < 2 ? 24.0f : 36.0f);
+		if (d > -0.0001f && d < 0.0001f) {
+			if (p[k] < lo || p[k] > hi)
+				return 0;
+		} else {
+			float ta = (lo - p[k]) / d, tb = (hi - p[k]) / d, tmp;
+			if (ta > tb) {
+				tmp = ta; ta = tb; tb = tmp;
+			}
+			if (ta > t0) t0 = ta;
+			if (tb < t1) t1 = tb;
+			if (t0 > t1)
+				return 0;
+		}
+	}
+	return 1;
+}
+
+int Dod_NavEdgesCrossing(const DodNav *nav, const float (*mins)[3], const float (*maxs)[3], int box_count, int *out, int max)
+{
+	int e, b, n = 0;
+	if (!nav || !out || max < 1)
+		return 0;
+	for (e = 0; e < nav->edge_count && n < max; ++e) {
+		int a, c;
+		float p[3], q[3];
+		Dod_NavEdgeNodes(nav, e, &a, &c);
+		Dod_NavNodePos(nav, a, &p[0], &p[1], &p[2]);
+		Dod_NavNodePos(nav, c, &q[0], &q[1], &q[2]);
+		for (b = 0; b < box_count; ++b)
+			if (nav_segment_in_box(p, q, mins[b], maxs[b])) {
+				out[n++] = e;
+				break;
+			}
+	}
+	return n;
+}
+
+void Dod_NavSetEdgeBlocked(DodNav *nav, int edge, int blocked)
+{
+	if (!nav || !nav->edge_blocked || edge < 0 || edge >= nav->edge_count)
+		return;
+	if (nav->edge_blocked[edge] != (blocked != 0)) {
+		nav->edge_blocked[edge] = (unsigned char)(blocked != 0);
+		nav->edge_blocked_count += blocked ? 1 : -1;
+	}
+}
+
+int Dod_NavClearEdgeBlocks(DodNav *nav)
+{
+	const int was = nav ? nav->edge_blocked_count : 0;
+	if (nav && nav->edge_blocked && nav->edge_count > 0)
+		memset(nav->edge_blocked, 0, (size_t)nav->edge_count);
+	if (nav)
+		nav->edge_blocked_count = 0;
+	return was;
+}
+
+int Dod_NavEdgeBlocked(const DodNav *nav, int edge)
+{
+	return nav && nav->edge_blocked && edge >= 0 && edge < nav->edge_count && nav->edge_blocked[edge];
 }
 
 void Dod_NavNodePos(const DodNav *nav, int node, float *x, float *y, float *z)
@@ -991,6 +1082,8 @@ int Dod_NavPath(DodNav *nav, int from, int to, int *path, int max_path)
 			const int next = (int)(v & 0x3fff), kind = (int)(v >> 14);
 			float cost, g;
 			if (nav->state[next] == 2)
+				continue;
+			if (nav->edge_blocked_count > 0 && nav->edge_blocked[e])
 				continue;
 			cost = nav_dist(nav, cur, next) + 1.0f;
 			if (kind == DOD_NAV_JUMP)

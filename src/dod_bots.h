@@ -305,6 +305,8 @@ typedef struct DodNav {
 	float zone_min[DOD_NAV_MAX_ZONES][3], zone_max[DOD_NAV_MAX_ZONES][3];
 	unsigned char zone_teams[DOD_NAV_MAX_ZONES];	/* bit (1 << team) for each team the zone hurts */
 	int avoid_team;				/* the team whose routes are being planned, or 0 */
+	unsigned char *edge_blocked;		/* per edge: a solid toggle wall (func_wall_toggle) stops the walk along it right now; A* skips it */
+	int edge_blocked_count;
 } DodNav;
 
 /* Parse a .wpt image into a zeroed or freed DodNav. The data must stay alive while the DodNav is used.
@@ -312,6 +314,14 @@ typedef struct DodNav {
 int Dod_NavLoad(DodNav *nav, const unsigned char *data, int len);
 void Dod_NavFree(DodNav *nav);
 void Dod_NavNodePos(const DodNav *nav, int node, float *x, float *y, float *z);
+/* Edges whose segment crosses one of the boxes (each grown by 24 on x and y, 36 on z): the ones worth a hull trace when a wall that can
+ * toggle is solid. out receives edge indexes (0..edge_count-1); returns how many (up to max). */
+int Dod_NavEdgesCrossing(const DodNav *nav, const float (*mins)[3], const float (*maxs)[3], int box_count, int *out, int max);
+void Dod_NavEdgeNodes(const DodNav *nav, int edge, int *from, int *to);
+/* Blocked edges are skipped by A*. Clear returns how many were blocked. */
+void Dod_NavSetEdgeBlocked(DodNav *nav, int edge, int blocked);
+int Dod_NavClearEdgeBlocks(DodNav *nav);
+int Dod_NavEdgeBlocked(const DodNav *nav, int edge);
 /* The kind of the edge from one node to another, or -1 when there is none. */
 int Dod_NavEdgeKind(const DodNav *nav, int from, int to);
 /* Up to max node indexes nearest to (x, y, z), nearest first; returns how many. */

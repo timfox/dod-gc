@@ -2355,11 +2355,63 @@ static void RunBot( int index, CBasePlayer *pBot )
 }
 
 
+/* func_wall_toggle brushes that are solid right now (charlie: shingle1, shingle2, cp4_boom3 start solid and the map opens them) stop the
+ * walk along the waypoint edges they really hit: the edges crossing a wall's box are traced with the player hull and the ones that hit a
+ * toggle wall are blocked for A*. Checked once a second; a wall that opens gives its shortcut back, one that closes takes it away. */
+#define DOD_BOT_MAX_TOGGLE_WALLS 16
+static void RefreshToggleWalls( void )
+{
+	static float next_check;
+	static int last_sig = -1;
+	static int candidates[1536];
+	float mins[DOD_BOT_MAX_TOGGLE_WALLS][3], maxs[DOD_BOT_MAX_TOGGLE_WALLS][3];
+	int n = 0, sig = 0;
+	CBaseEntity *wall = NULL;
+	if( gpGlobals->time < next_check || g_nav.node_count < 1 )
+		return;
+	next_check = gpGlobals->time + 1.0f;
+	while( n < DOD_BOT_MAX_TOGGLE_WALLS && ( wall = UTIL_FindEntityByClassname( wall, "func_wall_toggle" ) ) != NULL )
+	{
+		if( wall->pev->solid == SOLID_NOT || ( wall->pev->effects & EF_NODRAW ) )
+			continue;
+		mins[n][0] = wall->pev->absmin.x; mins[n][1] = wall->pev->absmin.y; mins[n][2] = wall->pev->absmin.z;
+		maxs[n][0] = wall->pev->absmax.x; maxs[n][1] = wall->pev->absmax.y; maxs[n][2] = wall->pev->absmax.z;
+		sig = sig * 31 + wall->entindex();
+		n++;
+	}
+	if( sig == last_sig )
+		return;
+	last_sig = sig;
+	Dod_NavClearEdgeBlocks( &g_nav );
+	int crossing = 0;
+	if( n > 0 )
+	{
+		crossing = Dod_NavEdgesCrossing( &g_nav, mins, maxs, n, candidates, (int)( sizeof( candidates ) / sizeof( candidates[0] ) ) );
+		for( int i = 0; i < crossing; i++ )
+		{
+			int from, to;
+			float ax, ay, az, bx, by, bz;
+			TraceResult tr;
+			Dod_NavEdgeNodes( &g_nav, candidates[i], &from, &to );
+			Dod_NavNodePos( &g_nav, from, &ax, &ay, &az );
+			Dod_NavNodePos( &g_nav, to, &bx, &by, &bz );
+			UTIL_TraceHull( Vector( ax, ay, az ), Vector( bx, by, bz ), ignore_monsters, human_hull, NULL, &tr );
+			if( tr.flFraction < 1.0f && tr.pHit && FClassnameIs( tr.pHit, "func_wall_toggle" ) )
+				Dod_NavSetEdgeBlocked( &g_nav, candidates[i], 1 );
+		}
+	}
+	ALERT( at_console, "DoD nav: %d solid toggle walls, %d edges cross them, %d blocked (of %d edges)\n", n, crossing, g_nav.edge_blocked_count, g_nav.edge_count );
+}
+
 void DodBots_Think( void )
 {
 	int i;
 	if( !g_registered )
 		return;
+	/* the waypoint graph is read as early as the map runs, while the engine heap still has room: by the time the first bot joins
+	 * (a few seconds later) the heap is fragmented and a 22 KB read failed in about 4 runs of 10 */
+	EnsureNav();
+	RefreshToggleWalls();
 	if( gpGlobals->time >= g_next_plan )
 	{
 		g_next_plan = gpGlobals->time + 1.0f;
