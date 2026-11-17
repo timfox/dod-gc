@@ -282,17 +282,30 @@ static void EnsureNav( void )
 	const char *map = STRING( gpGlobals->mapname );
 	char path[64];
 	int len = 0;
+	/* a failed load (the engine heap can be nearly full when the first bot joins: ~20 KB free on charlie) is retried every 5 s for a
+	 * minute, otherwise the bots steer by look-ahead for the whole round and cannot get across the map */
+	static float next_retry;
+	static int tries;
 	if( g_nav_map[0] && !strcmp( g_nav_map, map ) )
-		return;
-	FreeNav();
-	g_trap_count = 0;
-	strncpy( g_nav_map, map, sizeof( g_nav_map ) - 1 );
-	g_nav_map[sizeof( g_nav_map ) - 1] = '\0';
+	{
+		if( g_nav_file || tries == 0 || tries >= 12 || gpGlobals->time < next_retry )
+			return;
+	}
+	else
+	{
+		FreeNav();
+		g_trap_count = 0;
+		tries = 0;
+		strncpy( g_nav_map, map, sizeof( g_nav_map ) - 1 );
+		g_nav_map[sizeof( g_nav_map ) - 1] = '\0';
+	}
 	snprintf( path, sizeof( path ), "maps/%s.wpt", map );
 	g_nav_file = LOAD_FILE_FOR_ME( path, &len );
 	if( !g_nav_file )
 	{
-		ALERT( at_console, "DoD nav: no %s on this disc, bots steer without a graph\n", path );
+		tries++;
+		next_retry = gpGlobals->time + 5.0f;
+		ALERT( at_console, "DoD nav: could not load %s (try %d of 12), bots steer without a graph until it loads\n", path, tries );
 		return;
 	}
 	if( !Dod_NavLoad( &g_nav, g_nav_file, len ) )
@@ -1487,6 +1500,30 @@ static void StageStep( void )
 	static float armed_at;
 	static int g_track_victim;
 	static float g_track_until, g_track_next;
+	if( stage == 6 && g_stage_phase >= 9 )
+	{
+		/* test scenario 6 (dod_caen): the human stands 140 units from the particle_shooter at 1280 2928 159, looking at it, for smoke close-ups */
+		static int placed6;
+		CBasePlayer *human = NULL;
+		for( int k = 1; k <= gpGlobals->maxClients; k++ )
+		{
+			CBasePlayer *p = PlayerAt( k );
+			if( p && !DodBots_IsBot( p ) )
+				human = p;
+		}
+		if( human && human->IsAlive() && !placed6 )
+		{
+			placed6 = 1;
+			UTIL_SetOrigin( human->pev, Vector( 1140.0f, 2928.0f, 140.0f ) );
+			human->pev->velocity = g_vecZero;
+			human->pev->v_angle.x = 0.0f;
+			human->pev->v_angle.y = 0.0f;
+			human->pev->angles = human->pev->v_angle;
+			human->pev->fixangle = 1;
+			ALERT( at_console, "DoD STAGE particles: human placed 140 units from the shooter at 1280 2928 159\n" );
+		}
+		return;
+	}
 	if( stage == 5 && g_stage_phase >= 9 )
 	{
 		/* test scenario 5: an Axis bot stands 130 units in front of the human, blind and still, and tilts its view 30 degrees down, 30 up and
@@ -1619,7 +1656,7 @@ static void StageStep( void )
 	}
 	if( !stage || g_stage_phase >= 9 )
 		return;
-	if( stage == 3 || stage == 4 || stage == 5 )
+	if( stage == 3 || stage == 4 || stage == 5 || stage == 6 )
 	{
 		/* put the human on the Allies as a rifleman so the pad can fire, reload and cycle weapons (view model checks) */
 		static float arm;
