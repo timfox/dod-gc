@@ -264,6 +264,10 @@ def integrate_body_queue(dlls: Path) -> None:
 	replace_once(dlls / "world.cpp",
 		'\tpevHead->movetype\t= MOVETYPE_TOSS;\n\tpevHead->velocity\t= pev->velocity;\n',
 		'\tpevHead->movetype\t= MOVETYPE_NONE;\n\tpevHead->velocity\t= g_vecZero;\n')
+	# Stock CopyToBodyQue copies neither body nor skin; the DoD body index is class x helmet x head x gear, so body 0 drew black.
+	replace_once(dlls / "world.cpp",
+		'\tpevHead->colormap\t= pev->colormap;\n',
+		'\tpevHead->colormap\t= pev->colormap;\n\tpevHead->body\t\t= pev->body;\n\tpevHead->skin\t\t= pev->skin;\n')
 	replace_once(dlls / "world.cpp",
 		'\tUTIL_SetOrigin( pevHead, pev->origin );\n',
 		'\tUTIL_SetOrigin( pevHead, pev->origin + Vector( 0, 0, 1.0f ) );\n')
