@@ -1492,7 +1492,7 @@ static void StageStep( void )
 		/* test scenario 4: the human has joined; every 14 s a bot is stood 160 units in front of the human and killed with the next hit of a
 		 * cycle (head, stomach, chest from the front, chest from behind, explosion, crouching), to look at the death animation and the corpse */
 		static float next_kill;
-		static int round;
+		static int round, round_started;
 		CBasePlayer *human = NULL, *victim = NULL;
 		if( !next_kill )
 			next_kill = now + 10.0f;
@@ -1511,6 +1511,13 @@ static void StageStep( void )
 			static const int hitgroups[6] = { 1, 3, 2, 2, 2, 2 };
 			static const char *const names[6] = { "headshot", "gutshot", "chest from the front", "chest from behind", "explosion", "crouching" };
 			const int r = round++ % 6;
+			if( !round_started )
+			{
+				/* the join spot sits where the lighting pack has no data (corpses and players draw black there); stand where live bots are lit */
+				round_started = 1;
+				UTIL_SetOrigin( human->pev, Vector( -417.0f, 2080.0f, 60.0f ) );
+				human->pev->velocity = g_vecZero;
+			}
 			UTIL_MakeVectors( human->pev->v_angle );
 			Vector org = human->pev->origin + gpGlobals->v_forward * 200.0f - gpGlobals->v_right * 70.0f;
 			UTIL_SetOrigin( victim->pev, org );
