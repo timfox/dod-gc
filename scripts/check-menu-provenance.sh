@@ -21,6 +21,14 @@ while (( $# )); do
 					echo "  fix: git -C $E submodule update --init 3rdparty/mainui" >&2
 					fail=1
 				fi
+				# not an error: the pin is what the engine says, but UI merged into mainui after it is not on the disc
+				tip=$(git -C "$E/3rdparty/mainui" rev-parse --verify -q origin/gamecube-port 2>/dev/null || true)
+				if [[ -n "$want" && -n "$tip" && "$want" != "$tip" ]] \
+					&& git -C "$E/3rdparty/mainui" merge-base --is-ancestor "$want" "$tip" 2>/dev/null; then
+					n=$(git -C "$E/3rdparty/mainui" rev-list --count "$want..$tip" 2>/dev/null || echo "?")
+					echo "WARNING: mainui gamecube-port (as last fetched) is $n commits ahead of the engine's pin ${want:0:10}." >&2
+					echo "  UI changes merged there are NOT on this disc until the engine bumps its mainui pin." >&2
+				fi
 				if grep -rIl --include='*.cpp' --include='*.h' --include='*.res' --include='*.txt' -F -- "$BAD" "$E/3rdparty/mainui" 2>/dev/null | head -3 | grep -q .; then
 					echo "error: mainui sources under $E contain \"$BAD\" (stale mainui branch)." >&2
 					fail=1
