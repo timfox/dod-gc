@@ -11,14 +11,20 @@ DOLPHIN="${DOLPHIN:-$HOME/xash3d-gc-hl1/3rdparty/dolphin/build/Binaries/xash-gc-
 STAMP="${MDT_STAMP:-$(date +%Y%m%d-%H%M%S)}"
 [[ $# -ge 2 ]] || { sed -n 2,6p "$0"; exit 2; }
 [[ -S "$TAP_PATH" ]] || { echo "start scripts/multi-dolphin-net.sh start first" >&2; exit 1; }
+QUEUE=/tmp/dolphin-ceres.queue; LOCK=/tmp/dolphin-ceres.lock; ME="multi-dolphin online test"
 if [[ "${MDT_LOCK:-1}" == 1 ]]; then
-	until mkdir /tmp/dolphin-ceres.lock 2>/dev/null; do echo "waiting for /tmp/dolphin-ceres.lock"; sleep 15; done
-	echo "multi-dolphin online test (pid $$)" > /tmp/dolphin-ceres.lock/owner; echo $$ > /tmp/dolphin-ceres.lock/pid
+	# ceres rule: queue first, only the head of the queue may take the lock, hold < 4 min, wait 2 min before re-queueing.
+	grep -qxF "$ME" "$QUEUE" 2>/dev/null || echo "$ME" >> "$QUEUE"
+	until [[ "$(head -1 "$QUEUE" 2>/dev/null)" == "$ME" ]] && mkdir "$LOCK" 2>/dev/null; do echo "waiting in $QUEUE / $LOCK"; sleep 15; done
+	sed -i "\|^$ME\$|d" "$QUEUE"
+	echo "$ME (pid $$)" > "$LOCK/owner"; echo $$ > "$LOCK/pid"; date +%s > "$LOCK/start"
 fi
+# Hold the lock for one run under 4 minutes (override with MDT_MAX_SECS for unlocked runs).
+( sleep "${MDT_MAX_SECS:-230}"; kill $$ 2>/dev/null ) &
 PIDS=()
 cleanup() {
 	for p in "${PIDS[@]}"; do kill "$p" 2>/dev/null || true; done
-	[[ "${MDT_LOCK:-1}" == 1 ]] && { rm -f /tmp/dolphin-ceres.lock/owner /tmp/dolphin-ceres.lock/pid; rmdir /tmp/dolphin-ceres.lock 2>/dev/null || true; }
+	[[ "${MDT_LOCK:-1}" == 1 ]] && { rm -f $LOCK/owner $LOCK/pid $LOCK/start; rmdir $LOCK 2>/dev/null || true; }
 }
 trap cleanup EXIT INT TERM
 export EGL_PLATFORM=x11 QT_QPA_PLATFORM=xcb DISPLAY="${DISPLAY:-:0}"; unset WAYLAND_DISPLAY
