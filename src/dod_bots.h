@@ -394,6 +394,47 @@ int Dod_SpecCycle(const DodSpecCandidate *list, int count, int current, int reve
  * entity index, current when nothing better, 0 when nobody is alive. */
 int Dod_SpecDirectorPick(const DodSpecCandidate *list, int count, int current, float dwell);
 
+/* ---------------------------------------------------------------- team intel, patrol and search
+ * Natural team deathmatch play: nobody knows where the enemy is, so bots share what they actually saw, heard or lost a
+ * mate to (a short per-team list of contacts that fade), roam towards where fights happen when nothing else is asked
+ * of them, and sweep the area around a lost target instead of standing where it last was. Each bot also has a fixed
+ * aggression (0..1) that decides how readily it answers a mate's callout, so a team does not move as one blob.
+ * All allocation free and engine independent (host tested). */
+#define DOD_INTEL_SLOTS 6
+#define DOD_INTEL_MERGE_RADIUS 250.0f
+typedef enum { DOD_INTEL_HEARD = 1, DOD_INTEL_DEATH = 2, DOD_INTEL_SEEN = 3 } DodIntelKind;
+
+typedef struct DodIntelEntry {
+	float pos[3];
+	float placed, until;	/* when it was reported, and when it stops being worth chasing */
+	int kind;		/* DodIntelKind, 0 = empty slot */
+} DodIntelEntry;
+
+typedef struct DodTeamIntel {
+	DodIntelEntry team[2][DOD_INTEL_SLOTS];	/* [0] Allies, [1] Axis: where that team believes enemies are */
+} DodTeamIntel;
+
+void Dod_IntelReset(DodTeamIntel *intel);
+/* A contact for `team` (the reporter's side): merged into one within DOD_INTEL_MERGE_RADIUS (the newer position wins
+ * and the stronger kind stays), else it takes an empty or the oldest slot. */
+void Dod_IntelReport(DodTeamIntel *intel, DodTeam team, const float pos[3], int kind, float now, float ttl);
+/* The contact worth answering: fresh and strong beat old and weak, near beats far, anything inside min_dist of `from`
+ * (the bot is already there) or beyond max_dist is skipped. Fills out_pos and out_placed; returns the kind or 0. */
+int Dod_IntelPick(const DodTeamIntel *intel, DodTeam team, const float from[3], float now, float min_dist, float max_dist, float out_pos[3], float *out_placed);
+/* A bot got there and found nothing: drop the contacts within radius of pos. */
+void Dod_IntelClearNear(DodTeamIntel *intel, DodTeam team, const float pos[3], float radius);
+/* 0..1, fixed per bot (a hash of its slot and the skill), so a team has hunters and holders. */
+float Dod_BotAggression(int bot_index, int skill);
+/* Does a bot answer a contact? p = aggression, halved for a defender, falling with distance (to nothing at 2400);
+ * a death callout counts for less than a sighting. roll in [0, 1). */
+int Dod_BotAnswersIntel(float aggression, int role, float distance, int kind, float roll);
+/* A node to walk to when there is no objective or no lead: one of the candidate nodes, scored by how close it is to
+ * `ref` (where fights are: the enemy's side), at least min_own from the bot, away from the bot's last picks and from where
+ * mates are already heading. If ref_radius > 0 only nodes within it of ref qualify (a search around a lost target).
+ * Returns the best node or -1. */
+int Dod_BotPickPatrol(const DodNav *nav, const float own[3], float min_own, const float ref[3], float ref_radius,
+	const int *recent, int recent_count, const float (*avoid)[3], int avoid_count, const int *cand, int cand_count);
+
 #ifdef __cplusplus
 }
 #endif

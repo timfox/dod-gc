@@ -807,6 +807,109 @@ static void test_ease(void)
 	assert(Dod_BotEase(NULL, &vel, 50.0f, 270.0f, 1800.0f, dt) == 0.0f && Dod_BotEase(&angle, NULL, 50.0f, 270.0f, 1800.0f, dt) == 5.0f);
 }
 
+
+static void test_intel(void)
+{
+	DodTeamIntel in;
+	float a[3] = {1000, 0, 0}, b[3] = {1100, 50, 0}, c[3] = {-2000, 0, 0}, from[3] = {0, 0, 0}, out[3], placed;
+	int i, n;
+
+	Dod_IntelReset(&in);
+	assert(Dod_IntelPick(&in, DOD_TEAM_ALLIES, from, 0.0f, 0.0f, 3000.0f, out, &placed) == 0);
+	Dod_IntelReport(&in, DOD_TEAM_ALLIES, a, DOD_INTEL_HEARD, 1.0f, 5.0f);
+	Dod_IntelReport(&in, DOD_TEAM_ALLIES, b, DOD_INTEL_SEEN, 2.0f, 5.0f);	/* merges: newer position, stronger kind */
+	assert(Dod_IntelPick(&in, DOD_TEAM_ALLIES, from, 2.5f, 0.0f, 3000.0f, out, &placed) == DOD_INTEL_SEEN);
+	assert(out[0] == 1100.0f && placed == 2.0f);
+	assert(Dod_IntelPick(&in, DOD_TEAM_AXIS, from, 2.5f, 0.0f, 3000.0f, out, &placed) == 0);	/* the other team does not see it */
+	assert(Dod_IntelPick(&in, DOD_TEAM_ALLIES, from, 8.0f, 0.0f, 3000.0f, out, &placed) == 0);	/* faded */
+	assert(Dod_IntelPick(&in, DOD_TEAM_ALLIES, from, 2.5f, 1500.0f, 3000.0f, out, &placed) == 0);	/* already there / too far */
+	/* a fresh sighting beats an old distant death; the nearer wins ties of kind */
+	Dod_IntelReport(&in, DOD_TEAM_ALLIES, c, DOD_INTEL_DEATH, 2.0f, 30.0f);
+	assert(Dod_IntelPick(&in, DOD_TEAM_ALLIES, from, 2.5f, 0.0f, 3000.0f, out, &placed) == DOD_INTEL_SEEN);
+	Dod_IntelClearNear(&in, DOD_TEAM_ALLIES, b, 300.0f);
+	assert(Dod_IntelPick(&in, DOD_TEAM_ALLIES, from, 2.5f, 0.0f, 3000.0f, out, &placed) == DOD_INTEL_DEATH);
+	/* more contacts than slots: the oldest is replaced, nothing overflows */
+	for (i = 0; i < 20; ++i) {
+		float p[3];
+		p[0] = (float)i * 1000.0f; p[1] = 5000.0f; p[2] = 0.0f;
+		Dod_IntelReport(&in, DOD_TEAM_AXIS, p, DOD_INTEL_SEEN, (float)i, 100.0f);
+	}
+	n = 0;
+	for (i = 0; i < DOD_INTEL_SLOTS; ++i)
+		n += in.team[1][i].kind != 0;
+	assert(n == DOD_INTEL_SLOTS);
+	/* bad input is ignored */
+	Dod_IntelReport(&in, DOD_TEAM_SPECTATOR, a, DOD_INTEL_SEEN, 0.0f, 5.0f);
+	Dod_IntelReport(&in, DOD_TEAM_ALLIES, a, 0, 0.0f, 5.0f);
+	Dod_IntelReport(NULL, DOD_TEAM_ALLIES, a, DOD_INTEL_SEEN, 0.0f, 5.0f);
+}
+
+static void test_aggression(void)
+{
+	int i, high = 0, low = 0, answered = 0, defender_answered = 0;
+	float sum = 0.0f;
+	for (i = 1; i <= 8; ++i) {
+		const float a = Dod_BotAggression(i, 1);
+		assert(a >= 0.0f && a <= 1.0f);
+		assert(a == Dod_BotAggression(i, 1));	/* fixed per bot */
+		sum += a;
+		high += a > 0.6f;
+		low += a < 0.4f;
+	}
+	assert(high >= 1 && low >= 1);	/* a team has both hunters and holders */
+	assert(sum > 1.0f);
+	for (i = 0; i < 1000; ++i) {
+		const float roll = (float)i / 1000.0f;
+		answered += Dod_BotAnswersIntel(1.0f, DOD_ROLE_ATTACKER, 300.0f, DOD_INTEL_SEEN, roll);
+		defender_answered += Dod_BotAnswersIntel(1.0f, DOD_ROLE_DEFENDER, 300.0f, DOD_INTEL_SEEN, roll);
+	}
+	assert(answered > defender_answered * 3 / 2);
+	assert(!Dod_BotAnswersIntel(1.0f, DOD_ROLE_ATTACKER, 2500.0f, DOD_INTEL_SEEN, 0.0f));
+	assert(Dod_BotAnswersIntel(1.0f, DOD_ROLE_ATTACKER, 100.0f, DOD_INTEL_SEEN, 0.0f));
+}
+
+static void put_node(unsigned char *n, int x, int y, int z)
+{
+	n[0] = (unsigned char)((x >> 8) & 255); n[1] = (unsigned char)(x & 255);
+	n[2] = (unsigned char)((y >> 8) & 255); n[3] = (unsigned char)(y & 255);
+	n[4] = (unsigned char)((z >> 8) & 255); n[5] = (unsigned char)(z & 255);
+	n[6] = 0;
+}
+
+static void test_patrol(void)
+{
+	/* nodes spread along x: 0 at the bot, 1..4 at 500, 1000, 1500, 2000; the fight is at x = 2000 */
+	unsigned char nodes[5 * 7];
+	DodNav nav;
+	const float own[3] = {0, 0, 0}, ref[3] = {2000, 0, 0};
+	const int cand[5] = {0, 1, 2, 3, 4};
+	int recent[1], pick, pick2;
+	float avoid[1][3];
+	int i;
+
+	for (i = 0; i < 5; ++i)
+		put_node(nodes + 7 * i, 500 * i, 0, 0);
+	memset(&nav, 0, sizeof(nav));
+	nav.nodes = nodes;
+	nav.node_count = 5;
+	pick = Dod_BotPickPatrol(&nav, own, 350.0f, ref, 0.0f, NULL, 0, NULL, 0, cand, 5);
+	assert(pick == 4);	/* towards the fight; the node the bot stands on is never picked */
+	recent[0] = 4;
+	pick2 = Dod_BotPickPatrol(&nav, own, 350.0f, ref, 0.0f, recent, 1, NULL, 0, cand, 5);
+	assert(pick2 == 3);	/* it was at 2000 lately: roam to the next best place */
+	avoid[0][0] = 1500.0f; avoid[0][1] = 0.0f; avoid[0][2] = 0.0f;
+	assert(Dod_BotPickPatrol(&nav, own, 350.0f, ref, 0.0f, recent, 1, avoid, 1, cand, 5) == 1);	/* and not near where a mate goes */
+	/* a search stays inside its radius of the lost target */
+	{
+		const float lost[3] = {1000, 0, 0};
+		assert(Dod_BotPickPatrol(&nav, own, 350.0f, lost, 600.0f, NULL, 0, NULL, 0, cand, 5) == 2);
+		assert(Dod_BotPickPatrol(&nav, own, 350.0f, lost, 100.0f, NULL, 0, NULL, 0, cand, 5) == 2);
+	}
+	assert(Dod_BotPickPatrol(&nav, own, 350.0f, ref, 1.0f, NULL, 0, NULL, 0, cand, 5) == 4);
+	assert(Dod_BotPickPatrol(&nav, own, 350.0f, ref, 0.0f, NULL, 0, NULL, 0, cand, 0) == -1);
+	assert(Dod_BotPickPatrol(&nav, own, 350.0f, ref, 0.0f, NULL, 0, NULL, 0, NULL, 5) == -1);
+}
+
 int main(void)
 {
 	test_spectator();
@@ -823,6 +926,9 @@ int main(void)
 	test_nav();
 	test_nav_real();
 	test_goap();
+	test_intel();
+	test_aggression();
+	test_patrol();
 	test_perception();
 	test_ease();
 	return 0;
