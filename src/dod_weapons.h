@@ -149,6 +149,17 @@ typedef enum {
 /* The sequence a retail view model plays for a role, or -1 when the model is unknown or has none. A missing
  * idle_empty falls back to idle and a missing fire_empty to fire. */
 int Dod_ViewAnim(const char *view_model, DodAnimRole role, int variant);
+
+/* The sounds a retail view model plays inside a sequence (animation event 5004: reload clips, bolt cycling, the draw
+ * rustle). The GameCube DoD route does not run view model events, so the weapon code plays them at these offsets
+ * (tools/gen_viewsounds.py writes the table from the retail models). Only the fire, reload and draw roles carry any. */
+#define DOD_VIEW_SOUND_MAX 8
+typedef struct DodViewSoundEvent {
+	int ms;	/* into the sequence */
+	const char *sound;
+} DodViewSoundEvent;
+/* Fills out[0..count) and returns count (0 when the model has no sound events for the role). */
+int Dod_ViewSounds(const char *view_model, DodAnimRole role, DodViewSoundEvent out[DOD_VIEW_SOUND_MAX]);
 /* The sequence to send for a weapon: `anim` is what the code asked for (the generic number for a DoD gun, the stock
  * constant for the HL1 crowbar and hand grenade that wear the knife and grenade models). Unchanged when the weapon
  * or the role is not known. */

@@ -319,7 +319,7 @@ def integrate_grenades(dlls: Path) -> None:
 DOD_DLL_SOURCES = (
 	"dod_game.c", "dod_game.h", "dod_runtime.cpp", "dod_runtime.h",
 	"dod_grenade.cpp", "dod_grenade.h", "dod_weapons.c", "dod_weapons.h",
-	"dod_weapon.cpp", "dod_weapon.h", "dod_viewanims.h", "dod_hud.h", "dod_hud_retail.h",
+	"dod_weapon.cpp", "dod_weapon.h", "dod_viewanims.h", "dod_viewsounds.h", "dod_hud.h", "dod_hud_retail.h",
 	"dod_bots.c", "dod_bots.h", "dod_bot.cpp", "dod_bot.h",
 )
 # Client HUD sources, copied into cl_dll/ (dod_hud.h is shared with the DLL).

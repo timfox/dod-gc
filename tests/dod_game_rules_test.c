@@ -1022,6 +1022,15 @@ static void test_view_animations(void)
 	assert(Dod_RemapAnim("weapon_handgrenade", 4) == 4 && Dod_RemapAnim("weapon_handgrenade", 6) == 3 && Dod_RemapAnim("weapon_handgrenade", 1) == 0);
 	/* unknown weapons and numbers are left alone */
 	assert(Dod_RemapAnim("weapon_nothing", 5) == 5 && Dod_RemapAnim(0, 5) == 5 && Dod_RemapAnim("weapon_dod_garand", 42) == 42);
+	{
+		/* retail view model sound events: the MP40 reload plays clip out, clip in, slide back; a bolt gun cycles on a shot */
+		DodViewSoundEvent ev[DOD_VIEW_SOUND_MAX];
+		assert(Dod_ViewSounds("models/v_mp40.mdl", DOD_ANIM_RELOAD, ev) == 3);
+		assert(!strcmp(ev[0].sound, "weapons/tommy_reload_clipout.wav") && ev[0].ms > 0 && ev[0].ms < ev[1].ms && ev[1].ms < ev[2].ms);
+		assert(Dod_ViewSounds("models/v_98k.mdl", DOD_ANIM_FIRE, ev) == 2 && !strcmp(ev[0].sound, "weapons/boltback.wav"));
+		assert(Dod_ViewSounds("models/v_garand.mdl", DOD_ANIM_DRAW, ev) == 1 && !strcmp(ev[0].sound, "weapons/rifleselect.wav"));
+		assert(Dod_ViewSounds("models/v_tommy.mdl", DOD_ANIM_FIRE, ev) == 0 && Dod_ViewSounds(0, DOD_ANIM_RELOAD, ev) == 0);
+	}
 	assert(Dod_ViewAnim("models/v_nothing.mdl", DOD_ANIM_IDLE, 0) == -1 && Dod_ViewAnim(0, DOD_ANIM_IDLE, 0) == -1);
 }
 

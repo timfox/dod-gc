@@ -118,6 +118,9 @@ public:
 
 private:
 	void Fire( const DodWeaponDef *def );
+	/* Retail view model sound events (reload clips, bolt cycling, draw rustle), played at their offsets. */
+	void QueueViewSounds( const DodWeaponDef *def, DodAnimRole role );
+	void PlayViewSounds( void );
 	void FireRocket( const DodWeaponDef *def );
 	void Unscope( void );
 	int AccuracyFlags( void );
@@ -127,7 +130,29 @@ private:
 	int m_fScoped;
 	int m_fDeployed;	/* bipod down */
 	int m_iFireAnim;
+	int m_nViewSounds;
+	int m_iViewSound;
+	float m_flViewSoundBase;
+	DodViewSoundEvent m_viewSounds[DOD_VIEW_SOUND_MAX];
 };
+
+void CDodWeapon::QueueViewSounds( const DodWeaponDef *def, DodAnimRole role )
+{
+	m_nViewSounds = Dod_ViewSounds( def->view_model, role, m_viewSounds );
+	m_iViewSound = 0;
+	m_flViewSoundBase = gpGlobals->time;
+}
+
+void CDodWeapon::PlayViewSounds( void )
+{
+	while( m_iViewSound < m_nViewSounds
+		&& gpGlobals->time >= m_flViewSoundBase + m_viewSounds[m_iViewSound].ms * 0.001f )
+	{
+		const char *sound = m_viewSounds[m_iViewSound++].sound;
+		PRECACHE_SOUND( (char *)sound );	/* loaded when first played, like the fire sounds */
+		EMIT_SOUND_DYN( ENT( m_pPlayer->pev ), CHAN_ITEM, sound, 1.0f, ATTN_NORM, 0, PITCH_NORM );
+	}
+}
 
 int CDodWeapon::GetItemInfo( ItemInfo *p )
 {
@@ -220,6 +245,7 @@ BOOL CDodWeapon::Deploy( void )
 		const DodPlayerState *me = m_pPlayer ? Dod_GetPlayer( m_pPlayer->entindex() ) : NULL;
 		pev->body = ( me && me->team == DOD_TEAM_AXIS ) ? 2 : 0;
 	}
+	QueueViewSounds( def, DOD_ANIM_DRAW );
 	return DefaultDeploy( def->view_model, def->player_model, DODW_ANIM_DRAW, AnimExt( def ) );
 }
 
@@ -236,6 +262,7 @@ void CDodWeapon::Holster( int skiplocal )
 {
 	Unscope();
 	m_fDeployed = FALSE;
+	m_nViewSounds = m_iViewSound = 0;	/* the rest of a reload or draw is not heard once the gun is put away */
 	CBasePlayerWeapon::Holster( skiplocal );
 }
 
@@ -265,6 +292,7 @@ void CDodWeapon::ItemPostFrame( void )
 		/* A bipod only holds while the gunner stays put. */
 		if( m_fDeployed && m_pPlayer->pev->velocity.Length2D() > 60.0f )
 			m_fDeployed = FALSE;
+		PlayViewSounds();
 	}
 	CBasePlayerWeapon::ItemPostFrame();
 }
@@ -317,6 +345,7 @@ void CDodWeapon::Fire( const DodWeaponDef *def )
 	EMIT_SOUND_DYN( ENT( m_pPlayer->pev ), CHAN_WEAPON, def->fire_sound, 1.0f, ATTN_NORM, 0,
 		94 + RANDOM_LONG( 0, 15 ) );
 	m_pPlayer->pev->punchangle.x -= def->recoil;
+	QueueViewSounds( def, DOD_ANIM_FIRE );	/* the bolt cycling of a bolt-action shot */
 
 	m_iFireAnim = ( m_iFireAnim + 1 ) % 3;
 	SendWeaponAnim( m_iClip ? DODW_ANIM_FIRE1 + m_iFireAnim : DODW_ANIM_FIRE_EMPTY );
@@ -377,7 +406,13 @@ void CDodWeapon::Reload( void )
 		return;
 	Unscope();
 	if( DefaultReload( def->clip, DODW_ANIM_RELOAD, def->reload_seconds ) )
-		EMIT_SOUND_DYN( ENT( m_pPlayer->pev ), CHAN_ITEM, def->reload_sound, 1.0f, ATTN_NORM, 0, PITCH_NORM );
+	{
+		/* Retail plays these from the reload sequence's animation events; the table's reload sound stands in only for
+		 * a model with none. */
+		QueueViewSounds( def, DOD_ANIM_RELOAD );
+		if( m_nViewSounds == 0 )
+			EMIT_SOUND_DYN( ENT( m_pPlayer->pev ), CHAN_ITEM, def->reload_sound, 1.0f, ATTN_NORM, 0, PITCH_NORM );
+	}
 }
 
 void CDodWeapon::WeaponIdle( void )

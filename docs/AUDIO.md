@@ -62,3 +62,19 @@ scripts/build-lean-iso.sh --smoke dod_avalanche --full-map --all-maps-audio
 
 Inventory JSON is written to `$LEAN/audio-manifest.json` (also mirrored under
 `playtests/notes/audio-manifest-all-maps.json` from the last full audit).
+
+## Weapon sounds (retail parity)
+
+Retail DoD plays only the gunshot from the game DLL. The reload clips, bolt cycling and the draw rustle are
+animation events (event 5004) stored in the view models, so each gun has its own sequence of sounds at fixed
+offsets (the MP40 reload is `tommy_reload_clipout` at 0.30 s, `tommy_reload_clipin` at 1.65 s,
+`tommy_draw_slideback` at 2.20 s; the Kar98k shot cycles `boltback` / `boltforward`; the bazooka reload is three
+different clips). The GameCube DoD route does not run view model events, so `CDodWeapon` plays them itself from
+`src/dod_viewsounds.h`, which `tools/gen_viewsounds.py` writes from the retail models:
+
+```bash
+tools/gen_viewsounds.py --models <retail dod>/models --write src/dod_viewsounds.h
+tools/gen_viewsounds.py --models <retail dod>/models --check src/dod_viewsounds.h
+```
+
+`scripts/stage_dod_audio.py` stages every sound named there with the other weapon clips.

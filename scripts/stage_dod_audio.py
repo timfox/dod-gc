@@ -117,6 +117,11 @@ def weapon_table_sounds(table: Path) -> dict[str, float]:
         if match:
             sounds.setdefault(match.group(1), 0.45)
             sounds.setdefault(match.group(2), 0.60)
+    # The reload, draw and bolt sounds retail plays from the view models' animation events.
+    events = table.with_name("dod_viewsounds.h")
+    if events.is_file():
+        for rel in re.findall(r'"(weapons/[^"]+\.wav)"', events.read_text()):
+            sounds.setdefault(rel, 0.60)
     return sounds
 
 

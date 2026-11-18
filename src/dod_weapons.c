@@ -22,7 +22,7 @@ static const DodWeaponDef g_weapons[DOD_WEAPON_COUNT] = {
 	[DOD_WEAPON_SPRINGFIELD] = { DOD_WEAPON_SPRINGFIELD, "weapon_dod_spring", "Springfield", A, DOD_FIRE_BOLT, DOD_HLID(DOD_WEAPON_SPRINGFIELD),
 		"models/v_spring.mdl", "models/p_spring.mdl", "dod_30-06", 200, 5, 50,
 		95.0f, 1.5f, 0.030f, 3.0f, 8192.0f, 3.0f, 20.0f, 0, 2, 3, 15,
-		"weapons/spring_shoot.wav", "weapons/garand_reload_clipin.wav" },
+		"weapons/spring_shoot.wav", "weapons/tommy_reload_clipin.wav" },
 	[DOD_WEAPON_THOMPSON] = { DOD_WEAPON_THOMPSON, "weapon_dod_thompson", "Thompson", A, DOD_FIRE_AUTO, DOD_HLID(DOD_WEAPON_THOMPSON),
 		"models/v_tommy.mdl", "models/p_tommy.mdl", "dod_45", 250, 30, 180,
 		24.0f, 0.09f, 0.045f, 0.9f, 3500.0f, 2.4f, 0.0f, 0, 2, 1, 15,
@@ -30,7 +30,7 @@ static const DodWeaponDef g_weapons[DOD_WEAPON_COUNT] = {
 	[DOD_WEAPON_BAR] = { DOD_WEAPON_BAR, "weapon_dod_bar", "BAR", A, DOD_FIRE_AUTO, DOD_HLID(DOD_WEAPON_BAR),
 		"models/v_bar.mdl", "models/p_barbu.mdl", "dod_30-06", 200, 20, 160,
 		38.0f, 0.12f, 0.030f, 1.4f, 5500.0f, 2.6f, 0.0f, 0, 2, 2, 15,
-		"weapons/bar_shoot.wav", "weapons/garand_reload_clipin.wav" },
+		"weapons/bar_shoot.wav", "weapons/tommy_reload_clipin.wav" },
 	[DOD_WEAPON_BROWNING] = { DOD_WEAPON_BROWNING, "weapon_dod_30cal", "30cal", A, DOD_FIRE_AUTO, DOD_HLID(DOD_WEAPON_BROWNING),
 		"models/v_30cal.mdl", "models/p_30cal.mdl", "dod_30cal", 250, 150, 250,
 		34.0f, 0.07f, 0.055f, 1.0f, 6000.0f, 5.0f, 0.0f, 1, 2, 4, 20,
@@ -38,7 +38,7 @@ static const DodWeaponDef g_weapons[DOD_WEAPON_COUNT] = {
 	[DOD_WEAPON_BAZOOKA] = { DOD_WEAPON_BAZOOKA, "weapon_dod_bazooka", "Bazooka", A, DOD_FIRE_ROCKET, DOD_HLID(DOD_WEAPON_BAZOOKA),
 		"models/v_bazooka.mdl", "models/p_bazooka.mdl", "dod_rocket", 20, 1, 4,
 		150.0f, 1.2f, 0.0f, 4.0f, 8192.0f, 3.5f, 0.0f, 0, 3, 0, 20,
-		"weapons/rocket1.wav", "weapons/bazookareload.wav" },
+		"weapons/rocket1.wav", "weapons/bazookareloadrocketin.wav" },
 	[DOD_WEAPON_COLT] = { DOD_WEAPON_COLT, "weapon_dod_colt", "Colt", A, DOD_FIRE_SEMI, DOD_HLID(DOD_WEAPON_COLT),
 		"models/v_colt.mdl", "models/p_colt.mdl", "dod_45", 250, 7, 21,
 		32.0f, 0.22f, 0.025f, 1.2f, 3000.0f, 2.0f, 0.0f, 0, 1, 0, 10,
@@ -46,19 +46,19 @@ static const DodWeaponDef g_weapons[DOD_WEAPON_COUNT] = {
 	[DOD_WEAPON_K98] = { DOD_WEAPON_K98, "weapon_dod_k98", "Kar98k", X, DOD_FIRE_BOLT, DOD_HLID(DOD_WEAPON_K98),
 		"models/v_98k.mdl", "models/p_k98.mdl", "dod_8mm", 200, 5, 60,
 		85.0f, 1.25f, 0.010f, 2.4f, 6000.0f, 3.0f, 0.0f, 0, 2, 0, 15,
-		"weapons/kar_shoot.wav", "weapons/gewehr_reload_clipin.wav" },
+		"weapons/kar_shoot.wav", "weapons/tommy_reload_clipin.wav" },
 	[DOD_WEAPON_K98_SCOPED] = { DOD_WEAPON_K98_SCOPED, "weapon_dod_k98s", "Scoped Kar98k", X, DOD_FIRE_BOLT, DOD_HLID(DOD_WEAPON_K98_SCOPED),
 		"models/v_scoped98k.mdl", "models/p_k98.mdl", "dod_8mm", 200, 5, 50,
 		95.0f, 1.5f, 0.030f, 3.0f, 8192.0f, 3.0f, 20.0f, 0, 2, 3, 15,
-		"weapons/kar_shoot.wav", "weapons/gewehr_reload_clipin.wav" },
+		"weapons/kar_shoot.wav", "weapons/tommy_reload_clipin.wav" },
 	[DOD_WEAPON_MP40] = { DOD_WEAPON_MP40, "weapon_dod_mp40", "MP40", X, DOD_FIRE_AUTO, DOD_HLID(DOD_WEAPON_MP40),
 		"models/v_mp40.mdl", "models/p_mp40.mdl", "dod_9mm", 250, 32, 192,
 		22.0f, 0.11f, 0.040f, 0.8f, 3500.0f, 2.2f, 0.0f, 0, 2, 1, 15,
-		"weapons/mp40_shoot.wav", "weapons/gewehr_reload_clipin.wav" },
+		"weapons/mp40_shoot.wav", "weapons/tommy_reload_clipin.wav" },
 	[DOD_WEAPON_STG44] = { DOD_WEAPON_STG44, "weapon_dod_stg44", "StG44", X, DOD_FIRE_AUTO, DOD_HLID(DOD_WEAPON_STG44),
 		"models/v_mp44.mdl", "models/p_stg44.mdl", "dod_kurz", 250, 30, 180,
 		33.0f, 0.10f, 0.028f, 1.2f, 5500.0f, 2.4f, 0.0f, 0, 2, 2, 15,
-		"weapons/mp44_shoot.wav", "weapons/gewehr_reload_clipin.wav" },
+		"weapons/mp44_shoot.wav", "weapons/tommy_reload_clipin.wav" },
 	[DOD_WEAPON_MG42] = { DOD_WEAPON_MG42, "weapon_dod_mg42", "MG42", X, DOD_FIRE_AUTO, DOD_HLID(DOD_WEAPON_MG42),
 		"models/v_mg42.mdl", "models/p_mg42pr.mdl", "dod_8mm", 250, 250, 250,
 		30.0f, 0.06f, 0.060f, 0.9f, 6000.0f, 5.5f, 0.0f, 1, 2, 4, 20,
@@ -66,11 +66,11 @@ static const DodWeaponDef g_weapons[DOD_WEAPON_COUNT] = {
 	[DOD_WEAPON_PSCHRECK] = { DOD_WEAPON_PSCHRECK, "weapon_dod_pschreck", "Panzerschreck", X, DOD_FIRE_ROCKET, DOD_HLID(DOD_WEAPON_PSCHRECK),
 		"models/v_panzerschreck.mdl", "models/p_pschreck.mdl", "dod_rocket", 20, 1, 4,
 		150.0f, 1.2f, 0.0f, 4.0f, 8192.0f, 3.5f, 0.0f, 0, 3, 0, 20,
-		"weapons/rocket1.wav", "weapons/bazookareload.wav" },
+		"weapons/rocket1.wav", "weapons/bazookareloadrocketin.wav" },
 	[DOD_WEAPON_LUGER] = { DOD_WEAPON_LUGER, "weapon_dod_luger", "Luger", X, DOD_FIRE_SEMI, DOD_HLID(DOD_WEAPON_LUGER),
 		"models/v_luger.mdl", "models/p_luger.mdl", "dod_9mm", 250, 8, 24,
 		28.0f, 0.20f, 0.025f, 1.1f, 3000.0f, 2.0f, 0.0f, 0, 1, 0, 10,
-		"weapons/luger_shoot.wav", "weapons/colt_reload_clipin.wav" },
+		"weapons/luger_shoot.wav", "weapons/tommy_reload_clipin.wav" },
 };
 
 /* Primary weapon by [team - 1][class]. */
@@ -87,11 +87,11 @@ static const DodWeaponDef g_british[DOD_WEAPON_COUNT] = {
 	[DOD_WEAPON_GARAND] = { DOD_WEAPON_GARAND, "weapon_dod_garand", "Lee-Enfield", A, DOD_FIRE_BOLT, DOD_HLID(DOD_WEAPON_GARAND),
 		"models/v_enfield.mdl", "models/p_enfield.mdl", "dod_30-06", 200, 10, 50,
 		80.0f, 1.0f, 0.012f, 2.0f, 6000.0f, 3.2f, 0.0f, 0, 2, 0, 15,
-		"weapons/enfield_shoot.wav", "weapons/garand_reload_clipin.wav" },
+		"weapons/enfield_shoot.wav", "weapons/tommy_reload_clipin.wav" },
 	[DOD_WEAPON_SPRINGFIELD] = { DOD_WEAPON_SPRINGFIELD, "weapon_dod_spring", "Scoped Lee-Enfield", A, DOD_FIRE_BOLT, DOD_HLID(DOD_WEAPON_SPRINGFIELD),
 		"models/v_enfield_scoped.mdl", "models/p_enfields.mdl", "dod_30-06", 200, 10, 50,
 		95.0f, 1.4f, 0.030f, 3.0f, 8192.0f, 3.2f, 20.0f, 0, 2, 3, 15,
-		"weapons/enfieldsniper_shoot.wav", "weapons/garand_reload_clipin.wav" },
+		"weapons/enfieldsniper_shoot.wav", "weapons/tommy_reload_clipin.wav" },
 	[DOD_WEAPON_THOMPSON] = { DOD_WEAPON_THOMPSON, "weapon_dod_thompson", "Sten", A, DOD_FIRE_AUTO, DOD_HLID(DOD_WEAPON_THOMPSON),
 		"models/v_sten.mdl", "models/p_sten.mdl", "dod_45", 250, 32, 192,
 		21.0f, 0.10f, 0.045f, 0.9f, 3000.0f, 2.3f, 0.0f, 0, 2, 1, 15,
@@ -99,11 +99,11 @@ static const DodWeaponDef g_british[DOD_WEAPON_COUNT] = {
 	[DOD_WEAPON_BAR] = { DOD_WEAPON_BAR, "weapon_dod_bar", "Bren", A, DOD_FIRE_AUTO, DOD_HLID(DOD_WEAPON_BAR),
 		"models/v_bren.mdl", "models/p_bren.mdl", "dod_30-06", 200, 30, 150,
 		36.0f, 0.125f, 0.030f, 1.3f, 5500.0f, 3.0f, 0.0f, 0, 2, 2, 15,
-		"weapons/bren_shoot.wav", "weapons/garand_reload_clipin.wav" },
+		"weapons/bren_shoot.wav", "weapons/tommy_reload_clipin.wav" },
 	[DOD_WEAPON_BAZOOKA] = { DOD_WEAPON_BAZOOKA, "weapon_dod_bazooka", "PIAT", A, DOD_FIRE_ROCKET, DOD_HLID(DOD_WEAPON_BAZOOKA),
 		"models/v_piat.mdl", "models/p_piat.mdl", "dod_rocket", 20, 1, 4,
 		140.0f, 1.5f, 0.0f, 4.0f, 8192.0f, 4.0f, 0.0f, 0, 3, 0, 20,
-		"weapons/piat_shoot.wav", "weapons/bazookareload.wav" },
+		"weapons/piat_shoot.wav", "weapons/bazookareloadrocketin.wav" },
 	[DOD_WEAPON_COLT] = { DOD_WEAPON_COLT, "weapon_dod_colt", "Webley", A, DOD_FIRE_SEMI, DOD_HLID(DOD_WEAPON_COLT),
 		"models/v_webley.mdl", "models/p_webley.mdl", "dod_45", 250, 6, 18,
 		33.0f, 0.30f, 0.030f, 1.3f, 3000.0f, 3.0f, 0.0f, 0, 1, 0, 10,
@@ -116,7 +116,7 @@ static const DodWeaponDef g_para_allies[DOD_WEAPON_COUNT] = {
 	[DOD_WEAPON_GARAND] = { DOD_WEAPON_GARAND, "weapon_dod_garand", "M1 Carbine", A, DOD_FIRE_SEMI, DOD_HLID(DOD_WEAPON_GARAND),
 		"models/v_m1carbine.mdl", "models/p_m1carb.mdl", "dod_30-06", 200, 15, 90,
 		38.0f, 0.18f, 0.015f, 1.2f, 5000.0f, 2.4f, 0.0f, 0, 2, 0, 15,
-		"weapons/carbine_shoot.wav", "weapons/garand_reload_clipin.wav" },
+		"weapons/carbine_shoot.wav", "weapons/tommy_reload_clipin.wav" },
 	[DOD_WEAPON_THOMPSON] = { DOD_WEAPON_THOMPSON, "weapon_dod_thompson", "Grease Gun", A, DOD_FIRE_AUTO, DOD_HLID(DOD_WEAPON_THOMPSON),
 		"models/v_greasegun.mdl", "models/p_grease.mdl", "dod_45", 250, 32, 192,
 		22.0f, 0.10f, 0.045f, 0.9f, 3200.0f, 2.3f, 0.0f, 0, 2, 1, 15,
@@ -126,7 +126,7 @@ static const DodWeaponDef g_para_axis[DOD_WEAPON_COUNT] = {
 	[DOD_WEAPON_K98] = { DOD_WEAPON_K98, "weapon_dod_k98", "FG42", X, DOD_FIRE_AUTO, DOD_HLID(DOD_WEAPON_K98),
 		"models/v_fg42.mdl", "models/p_fg42.mdl", "dod_8mm", 200, 20, 100,
 		32.0f, 0.075f, 0.030f, 1.6f, 6000.0f, 3.0f, 0.0f, 0, 2, 0, 15,
-		"weapons/fg42_shoot.wav", "weapons/gewehr_reload_clipin.wav" },
+		"weapons/fg42_shoot.wav", "weapons/tommy_reload_clipin.wav" },
 };
 static int g_paras[2];	/* [0] Allies, [1] Axis */
 
@@ -293,6 +293,33 @@ typedef struct DodViewAnims {
 static const DodViewAnims g_view_anims[] = {
 #include "dod_viewanims.h"
 };
+
+typedef struct DodViewSounds {
+	const char *model;
+	int role, count;
+	DodViewSoundEvent ev[DOD_VIEW_SOUND_MAX];
+} DodViewSounds;
+
+static const DodViewSounds g_view_sounds[] = {
+#include "dod_viewsounds.h"
+};
+
+int Dod_ViewSounds(const char *view_model, DodAnimRole role, DodViewSoundEvent out[DOD_VIEW_SOUND_MAX])
+{
+	size_t i;
+	int n;
+	if (!view_model)
+		return 0;
+	for (i = 0; i < sizeof(g_view_sounds) / sizeof(g_view_sounds[0]); ++i) {
+		const DodViewSounds *v = &g_view_sounds[i];
+		if (v->role == (int)role && !strcmp(v->model, view_model)) {
+			for (n = 0; n < v->count; ++n)
+				out[n] = v->ev[n];
+			return v->count;
+		}
+	}
+	return 0;
+}
 
 static const DodViewAnims *view_anims(const char *view_model)
 {
