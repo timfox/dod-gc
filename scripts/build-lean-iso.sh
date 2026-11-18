@@ -266,6 +266,8 @@ pack() {
 		{
 			echo "video prog"
 			write_net_config
+			# Extra gamecube.cfg lines before the connect, e.g. "dodgc_master http://10.0.0.1:8080\ninternetservers".
+			[[ -n "${DODGC_EXTRA_CFG:-}" ]] && printf '%b\n' "$DODGC_EXTRA_CFG"
 			echo "connect $CONNECT"
 			# Peer BSP tip path needs -gcmap (high-slot surfaces); without it
 			# Mod_LoadWorld OOMs on planes/surfaces (dual IPC 20261107-005100).

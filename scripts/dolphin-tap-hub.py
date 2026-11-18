@@ -19,6 +19,7 @@ def main() -> int:
 	ap = argparse.ArgumentParser()
 	ap.add_argument("--path", default="/tmp/dolphin-tap")
 	ap.add_argument("--verbose", action="store_true")
+	ap.add_argument("--tap", help="also bridge this Linux tap device (create it first, e.g. in `unshare -Urn`)")
 	args = ap.parse_args()
 
 	path = args.path
@@ -33,6 +34,37 @@ def main() -> int:
 	srv.setblocking(False)
 	print(f"tap-hub listening on {path}", flush=True)
 
+	tapfd = -1
+	if args.tap:
+		import fcntl
+		tapfd = os.open("/dev/net/tun", os.O_RDWR)
+		# TUNSETIFF, IFF_TAP | IFF_NO_PI
+		fcntl.ioctl(tapfd, 0x400454CA, struct.pack("16sH", args.tap.encode(), 0x0002 | 0x1000))
+		os.set_blocking(tapfd, False)
+		print(f"bridging tap {args.tap}", flush=True)
+
+	def fan_out(frame: bytes, origin) -> None:
+		dead = []
+		for peer in clients:
+			if peer is origin:
+				continue
+			try:
+				peer.sendall(struct.pack("<H", len(frame)) + frame)
+			except OSError:
+				dead.append(peer)
+		for peer in dead:
+			clients.remove(peer)
+			bufs.pop(peer, None)
+			try:
+				peer.close()
+			except OSError:
+				pass
+		if tapfd >= 0 and origin is not None:
+			try:
+				os.write(tapfd, frame)
+			except OSError:
+				pass
+
 	clients: List[socket.socket] = []
 	bufs: Dict[socket.socket, bytearray] = {}
 	frames = 0
@@ -43,7 +75,7 @@ def main() -> int:
 		import time
 
 		while True:
-			rlist = [srv] + clients
+			rlist = [srv] + clients + ([tapfd] if tapfd >= 0 else [])
 			readable, _, _ = select.select(rlist, [], [], 1.0)
 			now = time.time()
 			if now - last_report >= 5.0:
@@ -53,6 +85,15 @@ def main() -> int:
 				)
 				last_report = now
 			for sock in readable:
+				if sock == tapfd and tapfd >= 0:
+					try:
+						frame = os.read(tapfd, 65536)
+					except OSError:
+						continue
+					if len(frame) >= 14:
+						frames += 1
+						fan_out(frame, None)
+					continue
 				if sock is srv:
 					conn, _ = srv.accept()
 					conn.setblocking(False)
@@ -96,22 +137,7 @@ def main() -> int:
 					if args.verbose:
 						ethertype = (frame[12] << 8) | frame[13] if size >= 14 else 0
 						print(f"frame {size}B ethertype=0x{ethertype:04x}", flush=True)
-					dead = []
-					for peer in clients:
-						if peer is sock:
-							continue
-						try:
-							peer.sendall(struct.pack("<H", size) + frame)
-						except OSError:
-							dead.append(peer)
-					for peer in dead:
-						if peer in clients:
-							clients.remove(peer)
-						bufs.pop(peer, None)
-						try:
-							peer.close()
-						except OSError:
-							pass
+					fan_out(frame, sock)
 	finally:
 		for c in clients:
 			try:
