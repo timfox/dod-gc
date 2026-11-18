@@ -1202,3 +1202,164 @@ int Dod_SpecDirectorPick(const DodSpecCandidate *list, int count, int current, f
 		return best;
 	return current;
 }
+
+/* ---------------------------------------------------------------- team intel, patrol and search */
+
+static int intel_side(DodTeam team)
+{
+	return team == DOD_TEAM_ALLIES ? 0 : (team == DOD_TEAM_AXIS ? 1 : -1);
+}
+
+static float dist3(const float a[3], const float b[3])
+{
+	const float dx = a[0] - b[0], dy = a[1] - b[1], dz = a[2] - b[2];
+	return sqrtf(dx * dx + dy * dy + dz * dz);
+}
+
+void Dod_IntelReset(DodTeamIntel *intel)
+{
+	if (intel)
+		memset(intel, 0, sizeof(*intel));
+}
+
+void Dod_IntelReport(DodTeamIntel *intel, DodTeam team, const float pos[3], int kind, float now, float ttl)
+{
+	const int side = intel_side(team);
+	DodIntelEntry *e, *slot = NULL;
+	int i;
+	if (!intel || !pos || side < 0 || kind < DOD_INTEL_HEARD || kind > DOD_INTEL_SEEN || ttl <= 0.0f)
+		return;
+	e = intel->team[side];
+	for (i = 0; i < DOD_INTEL_SLOTS; ++i) {
+		if (e[i].kind && now < e[i].until && dist3(e[i].pos, pos) < DOD_INTEL_MERGE_RADIUS) {
+			memcpy(e[i].pos, pos, sizeof(e[i].pos));
+			e[i].placed = now;
+			if (now + ttl > e[i].until)
+				e[i].until = now + ttl;
+			if (kind > e[i].kind)
+				e[i].kind = kind;
+			return;
+		}
+	}
+	for (i = 0; i < DOD_INTEL_SLOTS; ++i) {
+		if (!e[i].kind || now >= e[i].until) {
+			slot = &e[i];
+			break;
+		}
+		if (!slot || e[i].placed < slot->placed)
+			slot = &e[i];
+	}
+	memcpy(slot->pos, pos, sizeof(slot->pos));
+	slot->placed = now;
+	slot->until = now + ttl;
+	slot->kind = kind;
+}
+
+int Dod_IntelPick(const DodTeamIntel *intel, DodTeam team, const float from[3], float now, float min_dist, float max_dist, float out_pos[3], float *out_placed)
+{
+	const int side = intel_side(team);
+	const DodIntelEntry *e, *best = NULL;
+	float best_score = 0.0f;
+	int i;
+	if (!intel || !from || side < 0)
+		return 0;
+	e = intel->team[side];
+	for (i = 0; i < DOD_INTEL_SLOTS; ++i) {
+		float d, age, score;
+		if (!e[i].kind || now >= e[i].until)
+			continue;
+		d = dist3(e[i].pos, from);
+		if (d < min_dist || d > max_dist)
+			continue;
+		age = now - e[i].placed;
+		score = (float)e[i].kind / (1.0f + age * 0.25f) / (1.0f + d / 800.0f);
+		if (!best || score > best_score) {
+			best = &e[i];
+			best_score = score;
+		}
+	}
+	if (!best)
+		return 0;
+	if (out_pos)
+		memcpy(out_pos, best->pos, sizeof(best->pos));
+	if (out_placed)
+		*out_placed = best->placed;
+	return best->kind;
+}
+
+void Dod_IntelClearNear(DodTeamIntel *intel, DodTeam team, const float pos[3], float radius)
+{
+	const int side = intel_side(team);
+	int i;
+	if (!intel || !pos || side < 0)
+		return;
+	for (i = 0; i < DOD_INTEL_SLOTS; ++i)
+		if (intel->team[side][i].kind && dist3(intel->team[side][i].pos, pos) <= radius)
+			intel->team[side][i].kind = 0;
+}
+
+float Dod_BotAggression(int bot_index, int skill)
+{
+	unsigned h = (unsigned)bot_index * 2654435761u + (unsigned)skill * 40503u + 12345u;
+	h ^= h >> 15;
+	h *= 2246822519u;
+	h ^= h >> 13;
+	return (float)(h & 1023u) / 1023.0f;
+}
+
+int Dod_BotAnswersIntel(float aggression, int role, float distance, int kind, float roll)
+{
+	float p;
+	if (aggression < 0.0f)
+		aggression = 0.0f;
+	if (aggression > 1.0f)
+		aggression = 1.0f;
+	p = 0.25f + 0.75f * aggression;
+	if (role == DOD_ROLE_DEFENDER)
+		p *= 0.5f;
+	if (kind == DOD_INTEL_DEATH)
+		p *= 0.6f;
+	if (distance >= 2400.0f)
+		return 0;
+	p *= 1.0f - distance / 2400.0f;
+	return roll < p;
+}
+
+int Dod_BotPickPatrol(const DodNav *nav, const float own[3], float min_own, const float ref[3], float ref_radius,
+	const int *recent, int recent_count, const float (*avoid)[3], int avoid_count, const int *cand, int cand_count)
+{
+	int best = -1, i, j;
+	float best_score = 0.0f;
+	if (!nav || !own || !ref || !cand || nav->node_count <= 0)
+		return -1;
+	for (i = 0; i < cand_count; ++i) {
+		float p[3], score, d_own, d_ref;
+		const int n = cand[i];
+		if (n < 0 || n >= nav->node_count)
+			continue;
+		Dod_NavNodePos(nav, n, &p[0], &p[1], &p[2]);
+		d_own = dist3(p, own);
+		d_ref = dist3(p, ref);
+		if (d_own < min_own || (ref_radius > 0.0f && d_ref > ref_radius))
+			continue;
+		score = 3000.0f - d_ref;	/* towards where the fight is */
+		if (d_own > 2500.0f)
+			score -= (d_own - 2500.0f) * 0.5f;	/* a very long walk is a poor roam */
+		for (j = 0; recent && j < recent_count; ++j) {
+			float q[3];
+			if (recent[j] < 0 || recent[j] >= nav->node_count)
+				continue;
+			Dod_NavNodePos(nav, recent[j], &q[0], &q[1], &q[2]);
+			if (dist3(p, q) < 400.0f)
+				score -= 1500.0f;	/* been there lately */
+		}
+		for (j = 0; avoid && j < avoid_count; ++j)
+			if (dist3(p, avoid[j]) < 600.0f)
+				score -= 1200.0f;	/* a mate is already going that way */
+		if (best < 0 || score > best_score) {
+			best = n;
+			best_score = score;
+		}
+	}
+	return best;
+}

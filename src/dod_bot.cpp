@@ -189,6 +189,14 @@ typedef struct DodBotState {
 	float stage_yaw;
 	int stage_sightings, stage_fire_frames;
 	int fire_frames, hit_frames;	/* this burst: frames the trigger was held, and how many were on target */
+	/* team play (see Dod_IntelReport): what the bot reported and answered, its roam and its search around a lost target */
+	float aggr;			/* 0..1, fixed per bot */
+	float next_report, intel_checked;
+	float patrol_until;
+	int aggr_set, search_left, patrol_has;
+	short patrol_recent[3];
+	int patrol_recent_n;
+	Vector patrol_pos;
 } DodBotState;
 
 /* Per-bot state is heap allocated only while bots exist (the BSS it used to
@@ -211,6 +219,7 @@ static DodBotState *BotState( int index )
 /* The map's waypoint graph (data/waypoints/<map>.wpt, next to the BSP on the disc): loaded when the first bot
  * runs on a map, freed with the bot state or when the map changes. Without it bots steer with the look-ahead. */
 static DodNav g_nav;
+static DodTeamIntel g_intel;	/* what each team knows about where the enemy is (shared by its bots) */
 static byte *g_nav_file;
 static char g_nav_map[32];
 
@@ -322,6 +331,7 @@ static void EnsureNav( void )
 static void FreeBotState( void )
 {
 	FreeNav();
+	Dod_IntelReset( &g_intel );
 	if( g_bot )
 		free( g_bot );
 	g_bot = NULL;
@@ -348,6 +358,7 @@ static BOOL EnsureBotState( void )
 	g_bot = (DodBotState *)calloc( slots, sizeof( DodBotState ) );
 	if( !g_bot )
 		return FALSE;
+	Dod_IntelReset( &g_intel );
 	g_bot_slots = slots;
 	ALERT( at_console, "DoD bots: state %d bytes (%d slots, budget %d)\n", DodBots_MemoryBytes(), slots, DOD_BOT_MEM_BUDGET );
 	return TRUE;
@@ -722,6 +733,13 @@ static CBasePlayer *Perceive( CBasePlayer *pBot, DodBotState *state, float *dist
 						sqrtf( dx * dx + dy * dy ) );
 				}
 				state->known_until = now + fminf( sk.memory, 4.0f );
+				if( now >= state->next_report )
+				{
+					const float hp[3] = { heard->pev->origin.x, heard->pev->origin.y, heard->pev->origin.z };
+					state->next_report = now + 1.5f;
+					state->intel_checked = now;
+					Dod_IntelReport( &g_intel, my_team, hp, DOD_INTEL_HEARD, now, 5.0f );
+				}
 			}
 		}
 	}
@@ -1288,6 +1306,123 @@ static Vector PickCover( CBasePlayer *pBot, DodBotState *state )
 	}
 }
 
+/* Where fights are: the freshest contact the team knows, else the nearest objective this team does not hold, else the
+ * middle of the waypoint graph. */
+static void FightRef( CBasePlayer *pBot, DodTeam team, float ref[3] )
+{
+	const float from[3] = { pBot->pev->origin.x, pBot->pev->origin.y, pBot->pev->origin.z };
+	DodGCObjectiveView views[DOD_BOT_MAX_OBJECTIVES];
+	float placed, best = 1e9f;
+	int count, i, found = 0;
+	if( Dod_IntelPick( &g_intel, team, from, gpGlobals->time, 0.0f, 1e9f, ref, &placed ) )
+		return;
+	count = DodGC_ListObjectives( views, DOD_BOT_MAX_OBJECTIVES );
+	for( i = 0; i < count; i++ )
+	{
+		const float d = ( views[i].center - pBot->pev->origin ).Length();
+		if( views[i].owner != team && d < best )
+		{
+			best = d;
+			ref[0] = views[i].center.x;
+			ref[1] = views[i].center.y;
+			ref[2] = views[i].center.z;
+			found = 1;
+		}
+	}
+	if( !found )
+	{
+		static float centre[3];
+		static int centre_nodes;
+		if( centre_nodes != g_nav.node_count )
+		{
+			float sx = 0, sy = 0, sz = 0;
+			for( i = 0; i < g_nav.node_count; i++ )
+			{
+				float x, y, z;
+				Dod_NavNodePos( &g_nav, i, &x, &y, &z );
+				sx += x;
+				sy += y;
+				sz += z;
+			}
+			centre[0] = sx / g_nav.node_count;
+			centre[1] = sy / g_nav.node_count;
+			centre[2] = sz / g_nav.node_count;
+			centre_nodes = g_nav.node_count;
+		}
+		ref[0] = centre[0];
+		ref[1] = centre[1];
+		ref[2] = centre[2];
+	}
+}
+
+/* Roam: with no objective and no lead, walk to a waypoint towards the fight that this bot has not been to lately and
+ * no mate is heading for, so a team spreads over the map looking for the enemy. Returns whether it has a destination. */
+static BOOL PatrolDest( CBasePlayer *pBot, DodBotState *state, DodTeam team )
+{
+	const float now = gpGlobals->time;
+	if( g_nav.node_count < 8 )
+		return FALSE;
+	if( !state->patrol_has || now >= state->patrol_until || ( state->patrol_pos - pBot->pev->origin ).Length2D() < 100.0f )
+	{
+		const float own[3] = { pBot->pev->origin.x, pBot->pev->origin.y, pBot->pev->origin.z };
+		float ref[3], avoid[DOD_BOT_MAX_SLOTS][3];
+		int cand[8], recent[3], i, n, avoid_count = 0, pick;
+		FightRef( pBot, team, ref );
+		for( i = 0; i < 8; i++ )
+			cand[i] = RANDOM_LONG( 0, g_nav.node_count - 1 );
+		for( i = 0; i < state->patrol_recent_n; i++ )
+			recent[i] = state->patrol_recent[i];
+		for( i = 1; i <= gpGlobals->maxClients && i <= DOD_BOT_MAX_SLOTS; i++ )
+		{
+			CBasePlayer *pOther = PlayerAt( i );
+			DodBotState *os = BotState( i );
+			if( !pOther || pOther == pBot || !os || !os->active || !pOther->IsAlive() || TeamOf( pOther ) != team || !os->patrol_has )
+				continue;
+			avoid[avoid_count][0] = os->patrol_pos.x;
+			avoid[avoid_count][1] = os->patrol_pos.y;
+			avoid[avoid_count][2] = os->patrol_pos.z;
+			avoid_count++;
+		}
+		pick = Dod_BotPickPatrol( &g_nav, own, 350.0f, ref, 0.0f, recent, state->patrol_recent_n, avoid, avoid_count, cand, 8 );
+		if( pick < 0 )
+			return FALSE;
+		{
+			float x, y, z;
+			Dod_NavNodePos( &g_nav, pick, &x, &y, &z );
+			state->patrol_pos = Vector( x, y, z );
+		}
+		n = state->patrol_recent_n < 3 ? state->patrol_recent_n++ : 2;
+		for( i = n; i > 0; i-- )
+			state->patrol_recent[i] = state->patrol_recent[i - 1];
+		state->patrol_recent[0] = (short)pick;
+		state->patrol_has = 1;
+		state->patrol_until = now + 25.0f;
+	}
+	SetDest( state, state->patrol_pos, 1004 );
+	return TRUE;
+}
+
+/* A lost target: look at a waypoint near where it was, as far as it could have got in a few seconds. */
+static BOOL SearchSweep( CBasePlayer *pBot, DodBotState *state, DodTeam team )
+{
+	int near_nodes[8], count;
+	const float own[3] = { pBot->pev->origin.x, pBot->pev->origin.y, pBot->pev->origin.z };
+	const float ref[3] = { state->known_pos.x, state->known_pos.y, state->known_pos.z };
+	int pick;
+	( void )team;
+	count = Dod_NavNearest( &g_nav, ref[0], ref[1], ref[2], near_nodes, 8 );
+	pick = Dod_BotPickPatrol( &g_nav, own, 150.0f, ref, 700.0f, NULL, 0, NULL, 0, near_nodes, count );
+	if( pick < 0 )
+		return FALSE;
+	{
+		float x, y, z;
+		Dod_NavNodePos( &g_nav, pick, &x, &y, &z );
+		state->known_pos = Vector( x, y, z );
+	}
+	state->known_until = gpGlobals->time + 5.0f;
+	return TRUE;
+}
+
 static void BotThink( CBasePlayer *pBot, DodBotState *state, CBasePlayer *enemy )
 {
 	PhaseTimer timer( DOD_PH_THINK );
@@ -1299,10 +1434,24 @@ static void BotThink( CBasePlayer *pBot, DodBotState *state, CBasePlayer *enemy 
 	Vector mate_pos;
 	float mate_dist = DOD_BOT_NEAR_TEAM;
 
+	if( !state->aggr_set )
+	{
+		state->aggr = Dod_BotAggression( pBot->entindex(), (int)CVAR_GET_FLOAT( "dod_bot_skill" ) );
+		state->aggr_set = 1;
+	}
 	if( enemy )
 	{
 		state->known_pos = enemy->pev->origin;
 		state->known_until = now + BotSkill().memory;
+		state->search_left = 2;	/* if it slips away, sweep the area round where it was before giving up */
+		if( now >= state->next_report )
+		{
+			/* a call-out to the team: where an enemy was just seen */
+			const float ep[3] = { enemy->pev->origin.x, enemy->pev->origin.y, enemy->pev->origin.z };
+			state->next_report = now + 1.0f;
+			state->intel_checked = now;
+			Dod_IntelReport( &g_intel, team, ep, DOD_INTEL_SEEN, now, 6.0f );
+		}
 	}
 	if( ( enemy != NULL ) != ( ( state->ws & DOD_WS_ENEMY_VISIBLE ) != 0 ) )
 		state->next_think = 0.0f;	/* an enemy appeared or went out of sight */
@@ -1312,6 +1461,27 @@ static void BotThink( CBasePlayer *pBot, DodBotState *state, CBasePlayer *enemy 
 	if( now < state->next_think )
 		return;
 	state->next_think = now + DOD_BOT_THINK_PERIOD + RANDOM_FLOAT( 0.0f, 0.1f );
+
+	if( !enemy && now >= state->known_until )
+	{
+		/* nothing known of its own: answer a mate's call-out (or a mate's death), if this bot is the sort to go and look */
+		const float from[3] = { pBot->pev->origin.x, pBot->pev->origin.y, pBot->pev->origin.z };
+		float pos[3], placed = 0.0f;
+		const int kind = Dod_IntelPick( &g_intel, team, from, now, 300.0f, 2400.0f, pos, &placed );
+		if( kind && placed > state->intel_checked )
+		{
+			const float d = ( Vector( pos[0], pos[1], pos[2] ) - pBot->pev->origin ).Length();
+			state->intel_checked = placed;	/* one decision per report, not one per think */
+			if( Dod_BotAnswersIntel( state->aggr, state->role, d, kind, RANDOM_FLOAT( 0.0f, 1.0f ) ) )
+			{
+				state->known_pos = Vector( pos[0], pos[1], pos[2] );
+				state->known_until = now + 5.0f;
+				state->search_left = 2;
+				ALERT( at_console, "DoD bot %s: answers a team %s call-out %.0f units away\n", STRING( pBot->pev->netname ),
+					kind == DOD_INTEL_DEATH ? "death" : "contact", d );
+			}
+		}
+	}
 
 	{
 		CBasePlayerItem *item = pBot->m_pActiveItem;
@@ -1371,6 +1541,20 @@ static void BotThink( CBasePlayer *pBot, DodBotState *state, CBasePlayer *enemy 
 	switch( state->behavior )
 	{
 	case DOD_ACT_SEEK:
+		if( !enemy && ( state->known_pos - pBot->pev->origin ).Length2D() < 110.0f )
+		{
+			/* got there, nobody here: sweep a spot nearby (where it may have gone), then give the lead up */
+			if( state->search_left > 0 && SearchSweep( pBot, state, team ) )
+				state->search_left--;
+			else
+			{
+				const float kp[3] = { state->known_pos.x, state->known_pos.y, state->known_pos.z };
+				Dod_IntelClearNear( &g_intel, team, kp, 400.0f );
+				state->known_until = 0.0f;
+				state->search_left = 0;
+				state->next_think = 0.0f;
+			}
+		}
 		SetDest( state, state->known_pos, 1000 );
 		break;
 	case DOD_ACT_TAKE_COVER:
@@ -1385,6 +1569,8 @@ static void BotThink( CBasePlayer *pBot, DodBotState *state, CBasePlayer *enemy 
 			SetDest( state, state->goal, state->goal_id );
 		else if( state->behavior == DOD_ACT_ATTACK && now < state->known_until )
 			SetDest( state, state->known_pos, 1003 );	/* a hunt with an enemy in sight: close in on it along the route while firing */
+		else if( state->behavior == DOD_ACT_NONE && PatrolDest( pBot, state, team ) )
+			break;	/* nothing asked of this bot: roam towards where the fight is */
 		else
 			state->nav_has = 0;
 		break;
@@ -1920,6 +2106,12 @@ static void RunBot( int index, CBasePlayer *pBot )
 			pBot->pev->origin.x, pBot->pev->origin.y, pBot->pev->origin.z,
 			inflictor && !FNullEnt( inflictor ) ? STRING( inflictor->v.classname ) : "nothing", pBot->m_bitsDamageType, pBot->pev->dmg_take );
 	}
+	if( !pBot->IsAlive() && state->was_alive )
+	{
+		/* a mate died here: the team now believes the enemy is near (the killer is not named, so it is a weak lead) */
+		const float dp[3] = { pBot->pev->origin.x, pBot->pev->origin.y, pBot->pev->origin.z };
+		Dod_IntelReport( &g_intel, TeamOf( pBot ), dp, DOD_INTEL_DEATH, gpGlobals->time, 20.0f );
+	}
 	state->was_alive = pBot->IsAlive();
 	if( !pBot->IsAlive() )
 	{
@@ -1947,6 +2139,8 @@ static void RunBot( int index, CBasePlayer *pBot )
 		state->has_goal = 0;
 		state->goal_id = -1;
 		state->arrived = 0;
+		state->search_left = 0;
+		state->patrol_has = 0;
 		state->nav_has = state->nav_arrived = 0;
 		state->behavior = DOD_ACT_NONE;
 		state->plan.goal = -1;
