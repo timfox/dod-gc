@@ -63,3 +63,13 @@ Blocked (not an infrastructure problem):
   (Zone alloc in console.c at pre-Con_Init), so this needs an engine-side MEM1 budget fix, not a toolchain tweak.
 - Consequently no two-instance play, master registration from a guest, client listing, or gameplay media were produced.
   The hub also never showed a connected Dolphin (`clients=0`) before the host aborted; re-check once the host stays up.
+
+### Rerun with the gpMove BSS shrink (dod-gc e6098bf + xash3d-gc 800e3053, 2026-11-18)
+
+- The TAP hub now shows all three Dolphins connected (`clients=3`); host and both clients log `net ready ip=10.0.0.{2,3,4}`.
+- The host still dies in `SV_InitGame` with `_Mem_Realloc: out of memory (cvar.c:620)`, `heap_free=104 B unclaimed=0`.
+  The heap is ~360 KB larger (heap_used 975 KB at failure vs 615 KB before) but every stage uses the extra memory:
+  `pre-Con_Init` heap_used 725 KB (was 124 KB), `post-Platform_Init` 821 KB, `searchpaths` 903 KB, `pre-SV_Init` 942 KB,
+  `server progs` 975 KB, then failure. Something sized from the available heap before `Con_Init` absorbs the gain, so the
+  extra 360 KB did not become headroom. Clients fail the same way at the same call after `net ready`.
+- Logs: `output/media/mdt-e6098bf-800e305/`.
