@@ -166,6 +166,20 @@ def integrate_gc_hud(client: Path) -> None:
 		'\t\t\telse menu_x = gHUD.DrawHudString( menu_x, y, 320, menubuf, menu_r, menu_g, menu_b );',
 		'\t\t\t\tmenu_x = gHUD.DrawHudStringReverse( menu_x, y, 0, menubuf, draw_r, draw_g, draw_b );\n'
 		'\t\t\telse menu_x = gHUD.DrawHudString( menu_x, y, 320, menubuf, draw_r, draw_g, draw_b );', 1)
+	# The team/class menu used to sit on the world: draw it on a retail-palette panel (ViewportBG 55 43 29, ClassMenuLight
+	# 175 127 1 border), below the objective flags (their row ends at y ~17 in the 320x240 HUD space).
+	menu_text = menu_text.replace(
+		'\tmenu_r\t\t= 255;\n\tmenu_g\t\t= 255;\n\tmenu_b\t\t= 255;\n',
+		'\tif( y < 40 ) y = 40;\n'
+		'\t{\n'
+		'\t\tconst int pw = 210, ph = ( nlc + 1 ) * nFontHeight + 12;\n'
+		'\t\tgEngfuncs.pfnFillRGBABlend( 8, y - 6, pw, ph, 55, 43, 29, 235 );\n'
+		'\t\tgEngfuncs.pfnFillRGBABlend( 8, y - 6, pw, 1, 175, 127, 1, 255 );\n'
+		'\t\tgEngfuncs.pfnFillRGBABlend( 8, y - 6 + ph - 1, pw, 1, 175, 127, 1, 255 );\n'
+		'\t\tgEngfuncs.pfnFillRGBABlend( 8, y - 6, 1, ph, 175, 127, 1, 255 );\n'
+		'\t\tgEngfuncs.pfnFillRGBABlend( 8 + pw - 1, y - 6, 1, ph, 175, 127, 1, 255 );\n'
+		'\t}\n'
+		'\tmenu_r\t\t= 255;\n\tmenu_g\t\t= 255;\n\tmenu_b\t\t= 255;\n', 1)
 	menu_cpp.write_text(menu_text)
 
 
