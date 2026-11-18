@@ -110,6 +110,7 @@ static void DodGC_PlayRoundEndMusic( DodTeam winner )
 	}
 	ALERT( at_console, "DoD round-end fanfare: %s\n", path );
 }
+static DodTeam DodGC_TeamForPlayer( CBasePlayer *pPlayer );
 /* Retail announcements spoken by the side's own announcer and heard by that side only: "uspointcaptured" and "usstartround"
  * (us / brit for the Allies by country, ger for the Axis). 2D, not attenuated. */
 static void DodGC_PlayTeamAnnouncement( DodTeam team, const char *dir, const char *what )
