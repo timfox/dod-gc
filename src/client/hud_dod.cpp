@@ -150,6 +150,17 @@ void CHudDod::DrawKills( void )
 	const float now = gEngfuncs.GetClientTime();
 	int i, y = 62, drawn = 0;
 
+	/* Spectators get the objective bar lower (retail CObjectiveIcons: 54 px down at 640x480, flags 2 * 54):
+	 * its flags span 54..70 at this HUD size, so start the feed below them instead of across them. */
+	if( g_iUser1 != 0 )
+	{
+		const int sh = ScreenHeight > 0 ? ScreenHeight : 240;
+		const int flags_bottom = (int)(( 2.0f * 54.0f + 32.0f ) * ( sh / 480.0f ) + 0.5f ); // layout is 640x480, drawn scaled
+
+		if( y < flags_bottom + 4 )
+			y = flags_bottom + 4;
+	}
+
 	/* the oldest expired lines drop off */
 	while( m_nKills > 0 && now - m_kills[0].time > 6.0f )
 	{
@@ -462,7 +473,11 @@ int CHudDod::DrawRetail( float flTime )
 	}
 	DrawBoard();
 	DrawVoice();
-	DrawKills();
+	/* The feed is drawn last, so it ran across the centred scoreboard and voice menu panels (both overlap its
+	 * x 6..w, y 62.. rows); it waits until they close. */
+	if( !( m_fBoardShown && gEngfuncs.GetClientTime() - m_flBoardTime <= 3.0f )
+		&& !( m_fVoiceShown && gEngfuncs.GetClientTime() - m_flVoiceTime <= 9.0f ))
+		DrawKills();
 	/* a dead player waits for the next wave of their side */
 	if( m_fHaveState && m_state.respawn > 0 && gHUD.m_Health.m_iHealth <= 0 && gEngfuncs.GetClientTime() - m_flLastUpdate < 3.0f )
 	{

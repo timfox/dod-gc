@@ -1,0 +1,13 @@
+dod-gc lean disc
+built_at=2026-11-18T00:08:58Z
+iso=/home/tim/Desktop/osk-work/dodgc-main/out-libogc/dodgc.iso
+menu_iso=/home/tim/Desktop/osk-work/dodgc-main/out-libogc/dodgc-menu.iso
+dol=/home/tim/Desktop/osk-work/dodgc-main/out-libogc/dodgc.dol
+lean=/home/tim/Desktop/osk-work/isocache4/dod-menu-min
+valve_min=/home/tim/Desktop/osk-work/isocache4/valve-menu-min
+smoke=
+listen=
+connect=
+map=dod_charlie
+engine_commit=02f99a94e6
+dodgc_commit=ed5cfbd743
