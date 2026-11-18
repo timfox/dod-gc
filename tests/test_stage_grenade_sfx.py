@@ -34,15 +34,16 @@ class StageGrenadeSfxTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             dod_sound, valve_sound, lean = root / "dod/sound", root / "valve/sound", root / "lean"
-            for rel in stager.GRENADE_SFX:
+            events = list(stager.PLAYER_EVENT_SFX) + list(stager.ANNOUNCER_SFX)
+            for rel in list(stager.GRENADE_SFX) + events:
                 if rel.startswith("weapons/debris"):
                     write_wav(valve_sound / rel, 3.0)  # debris only exists in valve
                 else:
                     write_wav(dod_sound / rel, 3.0)
             report = stager.stage_grenade_sfx(dod_sound, lean / "sound", valve_sound, lean / "media")
             self.assertEqual(report["missing"], [])
-            self.assertEqual(report["files"], len(stager.GRENADE_SFX))
-            for rel in stager.GRENADE_SFX:
+            self.assertEqual(report["files"], len(stager.GRENADE_SFX) + len(events))
+            for rel in list(stager.GRENADE_SFX) + events:
                 staged = lean / "sound" / rel
                 self.assertTrue(staged.is_file(), rel)
                 self.assertTrue((lean / "media" / f"sfx_{Path(rel).name}").is_file(), rel)
@@ -57,6 +58,7 @@ class StageGrenadeSfxTests(unittest.TestCase):
             report = stager.stage_grenade_sfx(root / "dod/sound", root / "lean/sound", None, root / "lean/media")
             self.assertEqual(report["files"], 1)
             self.assertIn("weapons/grenthrow.wav", report["missing"])
+            self.assertIn("player/damage1.wav", report["missing"], "pain grunts are staged with the grenade clips")
 
 
     def test_gun_clips_come_from_the_weapon_table(self):

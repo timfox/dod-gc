@@ -96,10 +96,25 @@ GRENADE_SFX = {
     "weapons/grenade_hit1.wav": 0.30,
     "weapons/grenade_hit2.wav": 0.30,
     "weapons/grenade_hit3.wav": 0.30,
-    "weapons/debris1.wav": 0.45,
-    "weapons/debris2.wav": 0.45,
-    "weapons/debris3.wav": 0.45,
 }
+
+
+# Retail player and item events the game plays itself (pain and death grunts, pickups, a hard landing) and the side
+# announcers (round start, point captured). Grunts are short; announcers are 1-3 s, so they are staged 8-bit like voices.
+PLAYER_EVENT_SFX = {
+    **{f"player/damage{n}.wav": 0.70 for n in range(1, 12)},
+    **{f"player/dmbullo{n}.wav": 0.70 for n in range(1, 4)},
+    "player/pl_fallpain.wav": 0.70,
+    # footsteps on the floors retail has and the stock code lacked (wood, gravel, snow), and dirt for grass, sand and leaves
+    **{f"player/pl_{kind}{n}.wav": 0.50 for kind in ("wood", "gravel", "snow", "dirt") for n in range(1, 5)},
+    "items/weaponpickup.wav": 0.45,
+    "items/ammopickup.wav": 0.45,
+    "items/weapondrop.wav": 0.45,
+}
+ANNOUNCER_SFX = (
+    [f"player/{side}startround{n}.wav" for side in ("us", "brit", "ger") for n in ("", "2")]
+    + [f"ambience/{side}pointcaptured.wav" for side in ("us", "brit", "ger")]
+)
 
 
 def weapon_table_sounds(table: Path) -> dict[str, float]:
@@ -117,6 +132,11 @@ def weapon_table_sounds(table: Path) -> dict[str, float]:
         if match:
             sounds.setdefault(match.group(1), 0.45)
             sounds.setdefault(match.group(2), 0.60)
+    # The reload, draw and bolt sounds retail plays from the view models' animation events.
+    events = table.with_name("dod_viewsounds.h")
+    if events.is_file():
+        for rel in re.findall(r'"(weapons/[^"]+\.wav)"', events.read_text()):
+            sounds.setdefault(rel, 0.60)
     return sounds
 
 
@@ -438,6 +458,8 @@ def stage_grenade_sfx(
     missing: list[str] = []
     total = 0
     clips = dict(GRENADE_SFX)
+    clips.update(PLAYER_EVENT_SFX)
+    clips.update({rel: VOICE_SECONDS for rel in ANNOUNCER_SFX})
     if weapon_table is not None and weapon_table.is_file():
         for rel, seconds in weapon_table_sounds(weapon_table).items():
             clips.setdefault(rel, seconds)
@@ -447,7 +469,7 @@ def stage_grenade_sfx(
             missing.append(rel)
             continue
         dest = lean_dest(lean_sound, rel)
-        total += lean_tipsafe_wav(src, dest, max_seconds)
+        total += lean_tipsafe_wav(src, dest, max_seconds, pcm8=rel in ANNOUNCER_SFX)
         if dest.is_file():
             media_root.mkdir(parents=True, exist_ok=True)
             shutil.copy2(dest, media_root / f"sfx_{Path(rel).name.lower()}")

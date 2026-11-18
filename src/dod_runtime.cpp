@@ -110,6 +110,23 @@ static void DodGC_PlayRoundEndMusic( DodTeam winner )
 	}
 	ALERT( at_console, "DoD round-end fanfare: %s\n", path );
 }
+/* Retail announcements spoken by the side's own announcer and heard by that side only: "uspointcaptured" and "usstartround"
+ * (us / brit for the Allies by country, ger for the Axis). 2D, not attenuated. */
+static void DodGC_PlayTeamAnnouncement( DodTeam team, const char *dir, const char *what )
+{
+	char path[64];
+	const char *side = team == DOD_TEAM_AXIS ? "ger" : ( Dod_GetAlliesCountry() == DOD_COUNTRY_BRITISH ? "brit" : "us" );
+	if( team != DOD_TEAM_ALLIES && team != DOD_TEAM_AXIS )
+		return;
+	snprintf( path, sizeof( path ), "%s/%s%s.wav", dir, side, what );
+	PRECACHE_SOUND( path );
+	for( int i = 1; i <= gpGlobals->maxClients; i++ )
+	{
+		CBasePlayer *player = (CBasePlayer *)UTIL_PlayerByIndex( i );
+		if( player && player->IsPlayer() && !( player->pev->flags & FL_FAKECLIENT ) && DodGC_TeamForPlayer( player ) == team )
+			EMIT_SOUND_DYN( ENT( player->pev ), CHAN_STATIC, path, 1.0f, ATTN_NONE, 0, 100 );
+	}
+}
 static float g_dod_next_status;
 static int g_dod_death_seq[DOD_MAX_PLAYERS + 1];	/* the retail death sequence picked when the player was killed */
 static char g_spawn_map[64];	/* the map whose spawn points are cached (DodGC_LoadSpawns) */
@@ -679,6 +696,7 @@ static void DodGC_CreditCapture( DodTeam team, int point_index, const Vector &ce
 	int i;
 	const DodObjectiveState *objective = Dod_GetObjective( point_index );
 	const int points = objective ? objective->points_for_cap : 1;
+	DodGC_PlayTeamAnnouncement( team, "ambience", "pointcaptured" );
 	for( i = 1; i <= gpGlobals->maxClients; ++i ) {
 		CBasePlayer *player = (CBasePlayer *)UTIL_PlayerByIndex( i );
 		if( !player || !player->IsPlayer() || player->pev->deadflag != DEAD_NO ) continue;
@@ -1504,6 +1522,9 @@ void CHalfLifeDoD::Think( void )
 			if( team == DOD_TEAM_ALLIES || team == DOD_TEAM_AXIS )
 				respawn( player->pev, FALSE );
 		}
+		/* each side's announcer opens the round; retail has two lines per side */
+		DodGC_PlayTeamAnnouncement( DOD_TEAM_ALLIES, "player", RANDOM_LONG( 0, 1 ) ? "startround2" : "startround" );
+		DodGC_PlayTeamAnnouncement( DOD_TEAM_AXIS, "player", RANDOM_LONG( 0, 1 ) ? "startround2" : "startround" );
 	}
 	/* Match status for the lean HUD, which has no VGUI scoreboard. With the client
 	 * sprite HUD on (cl_dodhud, a cvar the local client registers) the server sends
