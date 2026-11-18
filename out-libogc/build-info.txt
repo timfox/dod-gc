@@ -1,0 +1,39 @@
+build-info 1
+built 2026-11-18T00:08:54Z on ceres
+dod-gc ed5cfbd74372c2ef9be28f83634dbce72da6951d hud-killfeed-spectator dirty=1
+xash3d-gc 02f99a94e698e19973a82668ff4c672deca547ca osk-console-pass dirty=0 user-supplied (not checked)
+hlsdk da97665bbd273ba7f46eb5e8e3df071a48ae104a claude/dod-hlsdk-integration modified-by-integration=19 pin=OK (pinned da97665bbd273ba7f46eb5e8e3df071a48ae104a) branch-user-supplied (not checked)
+mainui bbd58f8722b745f735dde493b1d53c0b82e50991
+tools /home/tim/Desktop/osk-work/dodgc-main/tools split_studio_mdl.py sha256=b4ef5c69b76ed443
+dolphin not checked (set DODGC_DOLPHIN_SRC to the tree the emulator was built from)
+
+== xash3d-gc submodules (recorded commit; leading '-' = not initialised, e.g. engine .gitmodules update=none)
+ e369abc23c49310b0f5e58f12fef6f46563b0d21 3rdparty/MultiEmulator (heads/master)
+ 66c46b8c9436613fd81bc5d03f63a61933a4dcc3 3rdparty/bzip2/bzip2 (bzip2-1.0.6-171-g66c46b8c94)
+-35405e1f88802c5c0169c8a61a2ca2881897eecc 3rdparty/bzip2/bzip2/tests/input/bzip2-testfiles
+-0aa8acf374359c236122d55c1fc92aea0fc61106 3rdparty/dolphin
+ 9f5b017985981e5eadd1813c0cde1e4f217e12e1 3rdparty/extras/xash-extras (v0.19.2-32-g9f5b017985)
+ 410c35cd7ed4271ebc0b49ddb5351a248447c319 3rdparty/freevgui (v0.1-28-g410c35cd7e)
+-5af92b047f3ba5c8a54a3e0b88442c01feb45e1c 3rdparty/gl-wes-v2
+-1543ec5074c55692ac25e0612bf8599f3c4de088 3rdparty/gl4es/gl4es
+-37b5bd7264c2c4acfa6f11826c29a16ab6a2a699 3rdparty/glslang/glslang
+ b9e40069c0b47a722286b94eb5231f7f05c08713 3rdparty/libbacktrace/libbacktrace (b9e40069c0)
+ 7cf42ea17aef7bc1b7b21af70724840a96c2e7d0 3rdparty/libogg/libogg (v1.3.5-10-g7cf42ea17a)
+ 6a466e4ce050e579074a3a33e9b8937e89964551 3rdparty/library_suffix (remotes/origin/merge-gc-ps4)
+-e5f143ee3370bf9c897015b60bcefbdf2937187e 3rdparty/maintui
+ bbd58f8722b745f735dde493b1d53c0b82e50991 3rdparty/mainui (heads/osk-hints)
+ 048a416f4c54c501dfd728fd792bfdc9f2883f51 3rdparty/mainui/miniutl (048a416)
+ 701bb7cfdef4c8860e7fdafcec1e7ec8a05a37a9 3rdparty/mbedtls/mbedtls (701bb7cfde)
+ 20c59b07437ea6908a5b7bcb9dc43cb2833c0dcd 3rdparty/mpg123/mpg123 (v1.30.0-28-g20c59b0743)
+-cf7ccf7173a7b616d29096380c2df2b0f1a0db3c 3rdparty/nanogl
+-c46850864f4661461b0f6cb9922c058ffea4915e 3rdparty/opengnm-psbc/Vulkan-Headers
+-28697f007862427ebec54388ec972ce6e3545912 3rdparty/opengnm-psbc/opengnm-psbc
+-4b295ca54c82c83acf308d1c646a2dfa9ae57350 3rdparty/opengnm/opengnm
+ 82ac57d9f1aaf575800cf17373348e45b7ce6c0d 3rdparty/opus/opus (v1.4)
+ 3ecc22aa0a4430f61c2403d57370a089536d197a 3rdparty/opusfile/opusfile (v0.12-41-g3ecc22aa0a)
+ bb4047de4c05712bf1fd49b9584c360b8e4e0adf 3rdparty/vorbis/vorbis-src (v1.3.7-11-gbb4047de4c)
+
+== toolchain
+devkitPPC: powerpc-eabi-gcc (devkitPPC) 16.1.0
+recipe: XASH_GAMECUBE_OGC_STACK=libogc XASH_GC_DEFAULT_SLOTS=3
+iso cache: /home/tim/Desktop/osk-work/isocache4
