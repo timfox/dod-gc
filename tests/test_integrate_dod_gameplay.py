@@ -574,3 +574,51 @@ class SourceSyncTest(unittest.TestCase):
 
 if __name__ == "__main__":
 	unittest.main()
+
+
+class RetailSoundsTest(unittest.TestCase):
+	def test_stock_hl_sounds_become_retail_and_a_second_run_changes_nothing(self):
+		import tempfile
+		with tempfile.TemporaryDirectory() as tmp:
+			sdk = Path(tmp)
+			(sdk / "dlls").mkdir()
+			(sdk / "pm_shared").mkdir()
+			pain = ('\tfloat flRndSound;//sound randomizer\n\n\tflRndSound = RANDOM_FLOAT( 0.0f, 1.0f ); \n\n'
+				'\tif( flRndSound <= 0.33f )\n\t\tEMIT_SOUND( ENT( pev ), CHAN_VOICE, "player/pl_pain5.wav", 1, ATTN_NORM );\n'
+				'\telse if( flRndSound <= 0.66f )\t\n\t\tEMIT_SOUND( ENT( pev ), CHAN_VOICE, "player/pl_pain6.wav", 1, ATTN_NORM );\n'
+				'\telse\n\t\tEMIT_SOUND( ENT( pev ), CHAN_VOICE, "player/pl_pain7.wav", 1, ATTN_NORM );\n')
+			death = ('\t// temporarily using pain sounds for death sounds\n\tswitch( RANDOM_LONG( 1, 5 ) )\n\t{\n'
+				'\tcase 1: \n\t\tEMIT_SOUND( ENT( pev ), CHAN_VOICE, "player/pl_pain5.wav", 1, ATTN_NORM );\n\t\tbreak;\n'
+				'\tcase 2: \n\t\tEMIT_SOUND( ENT( pev ), CHAN_VOICE, "player/pl_pain6.wav", 1, ATTN_NORM );\n\t\tbreak;\n'
+				'\tcase 3: \n\t\tEMIT_SOUND( ENT( pev ), CHAN_VOICE, "player/pl_pain7.wav", 1, ATTN_NORM );\n\t\tbreak;\n\t}\n')
+			(sdk / "dlls/player.cpp").write_text("void Pain()\n{\n" + pain + "}\nvoid Death()\n{\n" + death + "}\n")
+			(sdk / "dlls/items.cpp").write_text('EMIT_SOUND( e, CHAN_ITEM, "items/gunpickup2.wav", 1, ATTN_NORM );\n')
+			(sdk / "dlls/weapons.cpp").write_text('"items/weapondrop1.wav" "items/9mmclip1.wav" "items/gunpickup2.wav"\n')
+			(sdk / "dlls/client.cpp").write_text('PRECACHE_SOUND( "player/pl_pain2.wav" ); PRECACHE_SOUND( "player/pl_fallpain3.wav" );\n')
+			(sdk / "pm_shared/pm_shared.c").write_text('"player/pl_fallpain3.wav"\n#define STEP_LADDER\t\t8\t\t// climbing ladder\n'
+				'\t\tcase CHAR_TEX_SLOSH:\n\t\t\treturn STEP_SLOSH;\n\tcase STEP_SLOSH:\n\t\tswitch( irand )\n')
+			INTEGRATOR.integrate_retail_sounds(sdk)
+			first = {p.name: p.read_text() for p in list((sdk / "dlls").iterdir()) + list((sdk / "pm_shared").iterdir())}
+			INTEGRATOR.integrate_retail_sounds(sdk)
+			again = {p.name: p.read_text() for p in list((sdk / "dlls").iterdir()) + list((sdk / "pm_shared").iterdir())}
+			self.assertEqual(first, again)
+			self.assertIn("player/damage%d.wav", first["player.cpp"])
+			self.assertIn("player/dmbullo%d.wav", first["player.cpp"])
+			self.assertNotIn("pl_pain", first["player.cpp"])
+			self.assertEqual(first["weapons.cpp"], '"items/weapondrop.wav" "items/ammopickup.wav" "items/weaponpickup.wav"\n')
+			self.assertIn("items/weaponpickup.wav", first["items.cpp"])
+			self.assertTrue(first["pm_shared.c"].startswith('"player/pl_fallpain.wav"\n'))
+
+	def test_footsteps_gain_the_retail_wood_gravel_and_snow_floors(self):
+		import tempfile
+		with tempfile.TemporaryDirectory() as tmp:
+			pm = Path(tmp) / "pm_shared.c"
+			pm.write_text("#define STEP_LADDER\t\t8\t\t// climbing ladder\n"
+				"\t\tcase CHAR_TEX_SLOSH:\n\t\t\treturn STEP_SLOSH;\n"
+				"\tcase STEP_SLOSH:\n\t\tswitch( irand )\n")
+			INTEGRATOR.integrate_retail_footsteps(pm)
+			once = pm.read_text()
+			INTEGRATOR.integrate_retail_footsteps(pm)
+			self.assertEqual(pm.read_text(), once)
+			for want in ("#define STEP_WOOD", "pl_gravel1.wav", "pl_snow4.wav", "pl_wood2.wav", "return STEP_GRAVEL;"):
+				self.assertIn(want, once)

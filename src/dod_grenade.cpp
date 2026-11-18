@@ -181,12 +181,8 @@ BOOL DodGrenade_Explode( CGrenade *pGrenade, TraceResult *pTrace, int bitsDamage
 	::RadiusDamage( pev->origin, pev, pevOwner, pev->dmg, pev->dmg * 2.5f, CLASS_NONE, bitsDamageType );
 
 	UTIL_DecalTrace( pTrace, RANDOM_LONG( 0, 1 ) ? DECAL_SCORCH2 : DECAL_SCORCH1 );
-	switch( RANDOM_LONG( 0, 2 ) )
-	{
-	case 0: EMIT_SOUND( ENT( pev ), CHAN_VOICE, "weapons/debris1.wav", 0.55f, ATTN_NORM ); break;
-	case 1: EMIT_SOUND( ENT( pev ), CHAN_VOICE, "weapons/debris2.wav", 0.55f, ATTN_NORM ); break;
-	default: EMIT_SOUND( ENT( pev ), CHAN_VOICE, "weapons/debris3.wav", 0.55f, ATTN_NORM ); break;
-	}
+	/* Retail adds no debris sound to the blast (the HL1 grenade's weapons/debris1-3 is not in retail DoD): the
+	 * explosion sound is the one TE_EXPLOSION plays on the client (weapons/explode3-5). */
 
 	pev->effects |= EF_NODRAW;
 	pev->velocity = g_vecZero;

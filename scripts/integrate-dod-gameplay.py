@@ -241,6 +241,80 @@ def integrate_doddetect(dlls: Path) -> None:
 		'/* info_doddetect is linked by the DoD game code (dod_runtime.cpp) */\n')
 
 
+def rename_sounds(path: Path, renames: dict[str, str]) -> None:
+	"""Point every use of a stock HL sound name in `path` at the retail DoD one (idempotent; a missing name is not an error)."""
+	text = path.read_text()
+	new = text
+	for old, retail in renames.items():
+		new = new.replace(f'"{old}"', f'"{retail}"')
+	if new != text:
+		path.write_text(new)
+
+
+def integrate_retail_sounds(hlsdk: Path) -> None:
+	"""The stock HL player, item and fall sounds become the retail DoD ones (the files exist in retail dod/sound; the
+	retail game DLL precaches exactly these names): pain is player/damage1-11, a death player/dmbullo1-3 (the three
+	slots the stock code fills with pl_pain5-7), pickups and drops items/weaponpickup, ammopickup and weapondrop, a
+	hard landing player/pl_fallpain."""
+	dlls = hlsdk / "dlls"
+	player = dlls / "player.cpp"
+	pain = (
+		'\tfloat flRndSound;//sound randomizer\n\n\tflRndSound = RANDOM_FLOAT( 0.0f, 1.0f ); \n\n'
+		'\tif( flRndSound <= 0.33f )\n\t\tEMIT_SOUND( ENT( pev ), CHAN_VOICE, "player/pl_pain5.wav", 1, ATTN_NORM );\n'
+		'\telse if( flRndSound <= 0.66f )\t\n\t\tEMIT_SOUND( ENT( pev ), CHAN_VOICE, "player/pl_pain6.wav", 1, ATTN_NORM );\n'
+		'\telse\n\t\tEMIT_SOUND( ENT( pev ), CHAN_VOICE, "player/pl_pain7.wav", 1, ATTN_NORM );\n')
+	replace_once(player, pain,
+		'\tchar sound[32];\n\t/* retail: one of the eleven player/damage grunts */\n'
+		'\tsnprintf( sound, sizeof( sound ), "player/damage%d.wav", RANDOM_LONG( 1, 11 ) );\n'
+		'\tPRECACHE_SOUND( sound );\n\tEMIT_SOUND( ENT( pev ), CHAN_VOICE, sound, 1, ATTN_NORM );\n')
+	death = (
+		'\t// temporarily using pain sounds for death sounds\n\tswitch( RANDOM_LONG( 1, 5 ) )\n\t{\n'
+		'\tcase 1: \n\t\tEMIT_SOUND( ENT( pev ), CHAN_VOICE, "player/pl_pain5.wav", 1, ATTN_NORM );\n\t\tbreak;\n'
+		'\tcase 2: \n\t\tEMIT_SOUND( ENT( pev ), CHAN_VOICE, "player/pl_pain6.wav", 1, ATTN_NORM );\n\t\tbreak;\n'
+		'\tcase 3: \n\t\tEMIT_SOUND( ENT( pev ), CHAN_VOICE, "player/pl_pain7.wav", 1, ATTN_NORM );\n\t\tbreak;\n\t}\n')
+	replace_once(player, death,
+		'\t{\n\t\tchar sound[32];\n\t\t/* retail: player/dmbullo1-3, every death speaks */\n'
+		'\t\tsnprintf( sound, sizeof( sound ), "player/dmbullo%d.wav", RANDOM_LONG( 1, 3 ) );\n'
+		'\t\tPRECACHE_SOUND( sound );\n\t\tEMIT_SOUND( ENT( pev ), CHAN_VOICE, sound, 1, ATTN_NORM );\n\t}\n')
+	pickups = {"items/gunpickup2.wav": "items/weaponpickup.wav", "items/weapondrop1.wav": "items/weapondrop.wav"}
+	for name in ("items.cpp", "weapons.cpp"):
+		rename_sounds(dlls / name, pickups)
+	rename_sounds(dlls / "weapons.cpp", {"items/9mmclip1.wav": "items/ammopickup.wav"})
+	rename_sounds(dlls / "client.cpp", {
+		"player/pl_pain2.wav": "player/damage1.wav", "player/pl_pain4.wav": "player/damage2.wav",
+		"player/pl_pain5.wav": "player/damage3.wav", "player/pl_pain6.wav": "player/damage4.wav",
+		"player/pl_pain7.wav": "player/damage5.wav", "player/pl_fallpain2.wav": "player/pl_fallpain.wav",
+		"player/pl_fallpain3.wav": "player/pl_fallpain.wav", "items/gunpickup2.wav": "items/weaponpickup.wav"})
+	rename_sounds(hlsdk / "pm_shared" / "pm_shared.c", {"player/pl_fallpain2.wav": "player/pl_fallpain.wav",
+		"player/pl_fallpain3.wav": "player/pl_fallpain.wav"})
+	integrate_retail_footsteps(hlsdk / "pm_shared" / "pm_shared.c")
+
+
+def integrate_retail_footsteps(pm: Path) -> None:
+	# Footsteps: retail has wood, gravel and snow floors (pl_wood, pl_gravel, pl_snow) and grass, sand and leaves walk as
+	# dirt; the stock code has no such steps (a wooden floor sounds like concrete).
+	replace_once(pm, "#define STEP_LADDER\t\t8\t\t// climbing ladder\n",
+		"#define STEP_LADDER\t\t8\t\t// climbing ladder\n"
+		"#define STEP_WOOD\t\t9\t\t// retail DoD: wooden floor ('W')\n"
+		"#define STEP_GRAVEL\t\t10\t\t// retail DoD: gravel ('L')\n"
+		"#define STEP_SNOW\t\t11\t\t// retail DoD: snow ('N')\n")
+	replace_once(pm, "\t\tcase CHAR_TEX_SLOSH:\n\t\t\treturn STEP_SLOSH;\n",
+		"\t\tcase CHAR_TEX_SLOSH:\n\t\t\treturn STEP_SLOSH;\n"
+		"\t\tcase 'H':\t// heavy metal\n\t\t\treturn STEP_METAL;\n"
+		"\t\tcase CHAR_TEX_WOOD:\n\t\t\treturn STEP_WOOD;\n"
+		"\t\tcase 'L':\n\t\t\treturn STEP_GRAVEL;\n"
+		"\t\tcase CHAR_TEX_SNOW:\n\t\t\treturn STEP_SNOW;\n"
+		"\t\tcase 'P':\t// grass\n\t\tcase 'A':\t// sand\n\t\tcase 'E':\t// leaves\n\t\t\treturn STEP_DIRT;\n")
+	replace_once(pm, "\tcase STEP_SLOSH:\n\t\tswitch( irand )\n",
+		"\tcase STEP_WOOD:\n\t\tpmove->PM_PlaySound( CHAN_BODY, irand == 0 ? \"player/pl_wood1.wav\" : irand == 1 ? \"player/pl_wood3.wav\" :\n"
+		"\t\t\tirand == 2 ? \"player/pl_wood2.wav\" : \"player/pl_wood4.wav\", fvol, ATTN_NORM, 0, PITCH_NORM );\n\t\tbreak;\n"
+		"\tcase STEP_GRAVEL:\n\t\tpmove->PM_PlaySound( CHAN_BODY, irand == 0 ? \"player/pl_gravel1.wav\" : irand == 1 ? \"player/pl_gravel3.wav\" :\n"
+		"\t\t\tirand == 2 ? \"player/pl_gravel2.wav\" : \"player/pl_gravel4.wav\", fvol, ATTN_NORM, 0, PITCH_NORM );\n\t\tbreak;\n"
+		"\tcase STEP_SNOW:\n\t\tpmove->PM_PlaySound( CHAN_BODY, irand == 0 ? \"player/pl_snow1.wav\" : irand == 1 ? \"player/pl_snow3.wav\" :\n"
+		"\t\t\tirand == 2 ? \"player/pl_snow2.wav\" : \"player/pl_snow4.wav\", fvol, ATTN_NORM, 0, PITCH_NORM );\n\t\tbreak;\n"
+		"\tcase STEP_SLOSH:\n\t\tswitch( irand )\n")
+
+
 def integrate_death_anims(dlls: Path) -> None:
 	"""CBasePlayer::SetAnimation(PLAYER_DIE) picks the death sequence of the stub player.mdl; the DoD body models have their own (die_simple 19 ...
 	die_prone1 29), picked by the game when the player is killed (DodGC_DeathSequence). -1 keeps the stock choice."""
@@ -571,6 +645,7 @@ def main() -> int:
 	integrate_usercmd(dlls)
 	integrate_doddetect(dlls)
 	integrate_death_anims(dlls)
+	integrate_retail_sounds(args.hlsdk_dir)
 	integrate_body_queue(dlls)
 	integrate_weapons(dlls)
 	integrate_dod_hud(client)
