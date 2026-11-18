@@ -89,6 +89,10 @@ if (( ! ISO_ONLY )); then
 	echo "==> [dod-gc] building DoD HLSDK + engine DOL (profile=dod → dodgc.dol)"
 	# Modern Ethernet adapters require libogc2's native EXI drivers.
 	export XASH_GAMECUBE_OGC_STACK="${XASH_GAMECUBE_OGC_STACK:-libogc2}"
+	# playermove_t array caps for both the engine and the game DLL (one value, exported to both builds; the
+	# stock 600/64 makes two ~317 KiB static copies). Set either to "stock" to keep 600 / 64.
+	export XASH_GC_PM_MAX_PHYSENTS="${XASH_GC_PM_MAX_PHYSENTS:-256}"
+	export XASH_GC_PM_MAX_MOVEENTS="${XASH_GC_PM_MAX_MOVEENTS:-32}"
 	# CapFaces tip: default BBA off (~200 KiB MEM1 → tip≈390 KiB on caen).
 	# Set XASH_GAMECUBE_LINK_BBA=1 for Ethernet/net probes only.
 	export XASH_GAMECUBE_LINK_BBA="${XASH_GAMECUBE_LINK_BBA:-0}"

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import argparse
+import os
+import re
 import shutil
 from pathlib import Path
 
@@ -288,6 +290,23 @@ def integrate_retail_sounds(hlsdk: Path) -> None:
 	rename_sounds(hlsdk / "pm_shared" / "pm_shared.c", {"player/pl_fallpain2.wav": "player/pl_fallpain.wav",
 		"player/pl_fallpain3.wav": "player/pl_fallpain.wav"})
 	integrate_retail_footsteps(hlsdk / "pm_shared" / "pm_shared.c")
+
+
+def integrate_pm_caps(hlsdk: Path, engine: Path) -> None:
+	"""playermove_t array caps. The engine (xash3d-gc wscript, XASH_GC_PM_MAX_PHYSENTS / XASH_GC_PM_MAX_MOVEENTS) and the
+	game DLL are separate builds with their own copy of pm_defs.h, and the struct layout must match, so the SDK copy gets
+	the same numbers. Unset leaves the stock 600 / 64."""
+	phys, move = os.environ.get("XASH_GC_PM_MAX_PHYSENTS", ""), os.environ.get("XASH_GC_PM_MAX_MOVEENTS", "")
+	defs = hlsdk / "pm_shared" / "pm_defs.h"
+	if engine and (phys.isdigit() or move.isdigit()) and "GC_PM_MAX_PHYSENTS" not in (engine / "pm_shared" / "pm_defs.h").read_text():
+		raise SystemExit("the engine checkout does not support XASH_GC_PM_MAX_PHYSENTS; merge the engine change first "
+			"or set XASH_GC_PM_MAX_PHYSENTS=stock (the DLL and engine must agree on playermove_t)")
+	if phys.isdigit():
+		text = re.sub(r"#define MAX_PHYSENTS\t\d+", "#define MAX_PHYSENTS\t" + phys, defs.read_text(), count=1)
+		defs.write_text(text)
+	if move.isdigit():
+		text = re.sub(r"#define MAX_MOVEENTS\t\d+", "#define MAX_MOVEENTS\t" + move, defs.read_text(), count=1)
+		defs.write_text(text)
 
 
 def integrate_retail_footsteps(pm: Path) -> None:
@@ -646,6 +665,7 @@ def main() -> int:
 	integrate_doddetect(dlls)
 	integrate_death_anims(dlls)
 	integrate_retail_sounds(args.hlsdk_dir)
+	integrate_pm_caps(args.hlsdk_dir, args.engine_dir)
 	integrate_body_queue(dlls)
 	integrate_weapons(dlls)
 	integrate_dod_hud(client)
