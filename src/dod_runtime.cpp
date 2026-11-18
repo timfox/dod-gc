@@ -78,6 +78,7 @@ static int g_dod_seen_match;
 #define DOD_POINT_SCORE_PER_MINUTE 0.0f	/* retail has no continuous score: capture points and timed points (Dod_SetObjectiveTeamPoints) */
 
 extern int gmsgShowMenu;
+static DodTeam DodGC_TeamForPlayer( CBasePlayer *pPlayer ); // used by the team call-outs above its definition
 extern int gmsgScoreInfo;
 
 static int g_dod_menu_state[DOD_MAX_PLAYERS + 1];
