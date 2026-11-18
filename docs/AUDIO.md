@@ -78,3 +78,25 @@ tools/gen_viewsounds.py --models <retail dod>/models --check src/dod_viewsounds.
 ```
 
 `scripts/stage_dod_audio.py` stages every sound named there with the other weapon clips.
+
+## Retail sound audit (2026-11-18)
+
+How it was checked: the retail game DLL's precache list (`strings dlls/dod.so | grep .wav`, 430 names) and the
+animation events inside `models/v_*.mdl`. What changed is in the weapon, player-event and announcer sections above;
+the integrator rewrites the SDK's stock HL names in `integrate_retail_sounds`.
+
+Open items: gun and explosion clips are staged cut to 0.45-0.7 s (retail explode3/4 are 3-5 s); bullet whizz
+(`weapons/whizz1-17`), per-surface bullet impacts (`weapons/hit_*`), mortar and knife/grenade draw sounds are not
+played; the lean play route skips bullet-impact sounds in the SDK.
+
+## Captures to take (output/media on ceres)
+
+Take each when the feature is checked in Dolphin; name files `sound_<feature>_<map>.png|mp4`.
+
+| Feature | Capture |
+|---------|---------|
+| Reload / bolt / draw sounds | clip: Kar98k shot + reload, MP40 reload, bazooka reload (audio on) |
+| Pain and death | clip: a bot hits the player, then kills them |
+| Wood / gravel / snow steps | clip: walking a wooden floor, gravel and snow on maps that have them |
+| Round start and point captured | clip: a capture and the next round start; still of the HUD message |
+| Clip lengths (when done) | clip: a grenade explosion at full length |
