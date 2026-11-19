@@ -685,7 +685,7 @@ int Dod_NavLoad(DodNav *nav, const unsigned char *data, int len)
 	if (!nav)
 		return 0;
 	memset(nav, 0, sizeof(*nav));
-	nav->max_jump_rise = 56.0f;
+	nav->max_jump_rise = 1000.0f;	/* the baker joins waypoints, not cells: its jump links rise up to 235 between waypoints, so a tight limit cuts routes (flash needs 70) */
 	if (!data || len < 20 || memcmp(data, "DWPT", 4) != 0 || nav_be16(data + 4) != 2)
 		return 0;
 	nav->bsp_size = ((unsigned)data[8] << 24) | ((unsigned)data[9] << 16) | ((unsigned)data[10] << 8) | data[11];

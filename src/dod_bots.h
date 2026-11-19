@@ -312,7 +312,7 @@ typedef struct DodNav {
 	/* a search in flight (resumable, see Dod_NavSearchBegin): one at a time, shared by all bots */
 	int search_active, search_from, search_to, search_open, search_owner;
 	float search_stamp;
-	float max_jump_rise;	/* a jump link that climbs more than this is never searched (default 56) */
+	float max_jump_rise;	/* a jump link that climbs more than this is never searched (default 1000: off) */
 } DodNav;
 
 /* Parse a .wpt image into a zeroed or freed DodNav. The data must stay alive while the DodNav is used.

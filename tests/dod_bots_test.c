@@ -369,8 +369,7 @@ static void test_nav(void)
 
 	assert(len == 73);
 	assert(Dod_NavLoad(&nav, buf, len));
-	assert(nav.max_jump_rise == 56.0f);
-	nav.max_jump_rise = 1000.0f;	/* the toy jump climbs 200 units; the rise limit has its own test below */
+	assert(nav.max_jump_rise == 1000.0f);
 	assert(nav.node_count == 5 && nav.edge_count == 9 && nav.bsp_size == 123456u);
 	Dod_NavNodePos(&nav, 3, &x, &y, &z);
 	assert(x == 100.0f && y == 0.0f && z == 200.0f);
