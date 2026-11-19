@@ -106,7 +106,8 @@ bot, and a shot can have up to 12 actors.
   precache), and each shot's alias runs `film_cast <shot> <preroll>` before `cine_play`, or `film_cast_clear`
   for a shot with nobody in it. Boards draw the actors where they are at each panel (crouched and prone ones
   low) and the animatic shows them as dots.
-- Pose sequences are looked up by name in the retail model, best guess first; the game logs
+- Pose sequences are looked up by name in the retail model (DoD: dod_walk, dod_jog, dod_crawl for the crouched
+  walk, dod_crouch_idle, prone_idle, prone_forward, die_simple, stand/crouch_rifle_aim); the game logs
   `FILM ACTOR <id> pose <pose>: sequence N (<name>)` so the first capture shows which ones it found.
 
 ## Voice-over and ADR
