@@ -19,6 +19,7 @@
 #include "dod_runtime.h"
 #include "dod_game.h"
 #include "dod_film.h"
+#include "dod_weapons.h"
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -97,6 +98,35 @@ static float DodFilm_OriginZ( const float *origin, int pose )
 	return origin[2] - 36.0f + DodFilm_PoseHeight( (DodFilmPose)pose );
 }
 
+/* Per-actor variety from the actor's slot: a start phase in the cycle (0..256) and a
+ * stride factor (0.92..1.08). Fixed per slot, so a re-render of a shot is identical. */
+static unsigned DodFilm_ActorHash( int i )
+{
+	unsigned h = (unsigned)( i + 1 ) * 2654435761u;
+	h ^= h >> 15;
+	h *= 2246822519u;
+	h ^= h >> 13;
+	return h;
+}
+
+static float DodFilm_ActorPhase( int i )
+{
+	return (float)( DodFilm_ActorHash( i ) & 255u );
+}
+
+static float DodFilm_ActorStride( int i )
+{
+	return 0.92f + 0.16f * (float)( ( DodFilm_ActorHash( i ) >> 8 ) & 255u ) / 255.0f;
+}
+
+/* The third-person weapon the actor's class carries (p_*.mdl), or NULL. */
+static const char *DodFilm_WeaponModel( int team, int player_class )
+{
+	DodClass cls = player_class > DOD_CLASS_NONE ? (DodClass)player_class : DOD_CLASS_RIFLEMAN;
+	const DodWeaponDef *def = Dod_ClassWeaponDef( (DodTeam)team, cls );
+	return def && def->player_model && def->player_model[0] ? def->player_model : NULL;
+}
+
 static void DodFilm_Place( int i, float t, float dt )
 {
 	CDodFilmActor *ent = g_film_ents[i];
@@ -111,12 +141,15 @@ static void DodFilm_Place( int i, float t, float dt )
 		ent->pev->sequence = DodFilm_Sequence( ent, s.pose );
 		ent->ResetSequenceInfo();
 		ent->m_pose = s.pose;
-		ent->m_phase = 0.0f;
+		/* A looping pose starts at the actor's own point in the cycle, so a squad that
+		 * starts walking together does not step in lockstep. One-shot poses start at 0. */
+		ent->m_phase = DodFilm_PoseLoops( s.pose ) ? DodFilm_ActorPhase( i ) : 0.0f;
 	}
-	/* Walk cycles run at the speed the actor covers ground, so the feet do not slide much. */
-	float rate = 1.0f;
+	/* Walk cycles run at the speed the actor covers ground, so the feet do not slide much,
+	 * give or take the actor's own stride (a few percent), so the cycles drift apart. */
+	float rate = DodFilm_ActorStride( i );
 	if( s.moving && ent->m_flGroundSpeed > 1.0f ) {
-		rate = s.speed / ent->m_flGroundSpeed;
+		rate *= s.speed / ent->m_flGroundSpeed;
 		rate = rate < 0.5f ? 0.5f : ( rate > 2.0f ? 2.0f : rate );
 	}
 	if( t >= 0.0f )
@@ -303,6 +336,10 @@ static void DodFilm_CastCommand( void )
 		const char *body = DodGC_BodyModelForTeam( (DodTeam)a->team );
 		DodClass cls = a->player_class > DOD_CLASS_NONE ? (DodClass)a->player_class : DOD_CLASS_RIFLEMAN;
 		ent->pev->body = Dod_PlayerBodyValue( body, cls, i + 1 );
+		/* The engine draws weaponmodel on the actor's hand bones, as it does for a player. */
+		const char *gun = DodFilm_WeaponModel( a->team, cls );
+		if( gun )
+			ent->pev->weaponmodel = MAKE_STRING( gun );
 		ent->m_actor = i;
 		ent->m_pose = -1;
 		ent->m_phase = 0.0f;
@@ -345,6 +382,11 @@ void DodFilm_Init( void )
 		if( !model[0] )
 			continue;
 		PRECACHE_MODEL( (char *)STRING( ALLOC_STRING( model ) ) );
+		for( int c = DOD_CLASS_NONE + 1; c < DOD_CLASS_COUNT; c++ ) {
+			const char *gun = DodFilm_WeaponModel( team, c );
+			if( gun )
+				PRECACHE_MODEL( (char *)gun );
+		}
 		g_film_precached[team] = 1;
 		ALERT( at_console, "FILM: precached %s for actors\n", model );
 	}
