@@ -408,6 +408,7 @@ typedef struct DodIntelEntry {
 	float pos[3];
 	float placed, until;	/* when it was reported, and when it stops being worth chasing */
 	int kind;		/* DodIntelKind, 0 = empty slot */
+	int by;			/* who reported it last (a player index), so nobody answers their own call-out */
 } DodIntelEntry;
 
 typedef struct DodTeamIntel {
@@ -417,10 +418,10 @@ typedef struct DodTeamIntel {
 void Dod_IntelReset(DodTeamIntel *intel);
 /* A contact for `team` (the reporter's side): merged into one within DOD_INTEL_MERGE_RADIUS (the newer position wins
  * and the stronger kind stays), else it takes an empty or the oldest slot. */
-void Dod_IntelReport(DodTeamIntel *intel, DodTeam team, const float pos[3], int kind, float now, float ttl);
+void Dod_IntelReport(DodTeamIntel *intel, DodTeam team, const float pos[3], int kind, int by, float now, float ttl);
 /* The contact worth answering: fresh and strong beat old and weak, near beats far, anything inside min_dist of `from`
  * (the bot is already there) or beyond max_dist is skipped. Fills out_pos and out_placed; returns the kind or 0. */
-int Dod_IntelPick(const DodTeamIntel *intel, DodTeam team, const float from[3], float now, float min_dist, float max_dist, float out_pos[3], float *out_placed);
+int Dod_IntelPick(const DodTeamIntel *intel, DodTeam team, const float from[3], int self, float after, float now, float min_dist, float max_dist, float out_pos[3], float *out_placed);
 /* A bot got there and found nothing: drop the contacts within radius of pos. */
 void Dod_IntelClearNear(DodTeamIntel *intel, DodTeam team, const float pos[3], float radius);
 /* 0..1, fixed per bot (a hash of its slot and the skill), so a team has hunters and holders. */
