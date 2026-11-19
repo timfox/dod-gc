@@ -295,6 +295,7 @@ typedef struct DodNav {
 	unsigned char *state;
 	unsigned short *heap;		/* binary min-heap of open nodes by f */
 	short *hpos;			/* where each open node sits in the heap */
+	void *block;			/* the one allocation that holds every array above and edge_blocked */
 	int node_count, edge_count;
 	unsigned int bsp_size;		/* size of the BSP the graph was baked from */
 	int pen_from[8], pen_to[8];	/* edges a bot got stuck on, avoided for a while (shared by all bots) */
@@ -305,7 +306,7 @@ typedef struct DodNav {
 	float zone_min[DOD_NAV_MAX_ZONES][3], zone_max[DOD_NAV_MAX_ZONES][3];
 	unsigned char zone_teams[DOD_NAV_MAX_ZONES];	/* bit (1 << team) for each team the zone hurts */
 	int avoid_team;				/* the team whose routes are being planned, or 0 */
-	unsigned char *edge_blocked;		/* per edge: a solid toggle wall (func_wall_toggle) stops the walk along it right now; A* skips it */
+	unsigned char *edge_blocked;		/* a bit per edge: a solid toggle wall (func_wall_toggle) stops the walk along it right now; A* skips it */
 	int edge_blocked_count;
 	int allow_partial;	/* a route longer than the caller's array: return its first stretch instead of failing */
 	int ignore_blocked;	/* plan through blocked edges too (a bot that finds no other route walks up to the wall and breaches it) */
