@@ -269,9 +269,18 @@ static void DodFilm_FireFx( const DodFilmFx *f )
 
 static void DodFilm_RunFx( float t )
 {
+	static int logs;
 	int first, end = DodFilm_FxDue( &g_film_cast, g_film_fx_clock, t, &first );
-	for( int i = first; i < end; i++ )
+	for( int i = first; i < end; i++ ) {
 		DodFilm_FireFx( &g_film_cast.fx[i] );
+		if( logs < 24 ) {
+			logs++;
+			ALERT( at_console, "FILM FX %s: %d of %d, %s at %.2f s (%.0f %.0f %.0f), fireball %d smoke %d\n", g_film_shot,
+				i + 1, g_film_cast.fx_count, DodFilm_FxName( (DodFilmFxKind)g_film_cast.fx[i].kind ), t,
+				g_film_cast.fx[i].origin[0], g_film_cast.fx[i].origin[1], g_film_cast.fx[i].origin[2],
+				g_sModelIndexFireball, g_sModelIndexSmoke );
+		}
+	}
 	if( t > g_film_fx_clock )
 		g_film_fx_clock = t;
 }
