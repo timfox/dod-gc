@@ -169,8 +169,9 @@ The engine camera has no collision, so `film.py check <ep>.json` (and every `pla
 runs first) tests each shot against the map's BSP, sampled every 4 units along the path:
 
 - **inside the world**: the eye in solid in hull 0, the geometry that is drawn;
-- **too close to a surface**: the eye within a duck hull (16 units across, 18 up and down) of a wall, floor
-  or ceiling, where the near plane and a wide lens start cutting into it;
+- **too close to a surface**: drawn geometry within 16 units across or 18 up and down of the eye, where the
+  near plane and a wide lens start cutting into it. Only what is drawn counts: invisible player-clip brushes
+  (dod_charlie has them over the sea and along the shingle) do not stop a camera;
 - **through a soldier**: the eye inside an actor's body at that moment.
 
 Solid brush entities (`func_wall`, `func_breakable`, doors ...) count, at their spawn positions. `plan` stops

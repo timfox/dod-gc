@@ -6,9 +6,10 @@ checks every shot against the map's own BSP before anything is captured:
 
 - **inside the world**: the eye in solid (the point hull, hull 0, the one the renderer draws) anywhere along
   the path, sampled every few units, or the straight line between two samples crossing solid;
-- **too close to a surface**: the eye within a duck hull (16 units across, 18 up and down: hull 3) of a
-  wall, floor or ceiling, where the lens's near plane (4 units) and the 70 to 90 degree field of view start
-  cutting into it;
+- **too close to a surface**: drawn geometry within a box 16 units each way across and 18 up and down of the
+  eye, where the lens's near plane (4 units) and the 70 to 90 degree field of view start cutting into it.
+  The box is tested in hull 0, on a grid finer than any wall is thick, so invisible player-clip brushes
+  (the walls over the sea and along the shingle in dod_charlie) do not count: the camera may pass them;
 - **through a soldier**: the eye inside an actor's body (a box 20 units round his origin, his pose's height).
 
 Solid brush entities (func_wall, func_breakable, func_door ...) count as walls at their spawn positions.
@@ -28,9 +29,9 @@ from . import actors, campath
 
 ROOT = Path(__file__).resolve().parents[2]
 CONTENTS_SOLID = -2
-LUMP_ENTITIES, LUMP_PLANES, LUMP_NODES, LUMP_CLIPNODES, LUMP_LEAFS, LUMP_MODELS = 0, 1, 5, 9, 10, 14
+LUMP_ENTITIES, LUMP_PLANES, LUMP_NODES, LUMP_LEAFS, LUMP_MODELS = 0, 1, 5, 10, 14
 STEP = 4.0              # units between samples along a path
-NEAR = (16.0, 18.0)     # hull 3: half width, half height
+NEAR = (16.0, 18.0)     # the box round the eye: half width, half height (a duck hull's size)
 ACTOR_R = 20.0
 ACTOR_H = {"stand": 72.0, "crouch": 54.0, "prone": 20.0}
 SOLID_BRUSHES = ("func_wall", "func_breakable", "func_door", "func_door_rotating", "func_wall_toggle",
@@ -38,7 +39,7 @@ SOLID_BRUSHES = ("func_wall", "func_breakable", "func_door", "func_door_rotating
 
 
 class Bsp:
-    """The parts of a GoldSrc BSP that collision needs: hull 0 from nodes and leaves, hulls 1-3 from clipnodes."""
+    """The parts of a GoldSrc BSP that the check needs: hull 0 (what is drawn) from nodes and leaves."""
 
     def __init__(self, data):
         if struct.unpack_from("<i", data, 0)[0] != 30:
@@ -54,13 +55,11 @@ class Bsp:
         self.nodes = [struct.unpack_from("<ihh", nd, 24 * i) for i in range(len(nd) // 24)]
         lf = lump(LUMP_LEAFS)
         self.leaf_contents = [struct.unpack_from("<i", lf, 28 * i)[0] for i in range(len(lf) // 28)]
-        cn = lump(LUMP_CLIPNODES)
-        self.clipnodes = [struct.unpack_from("<ihh", cn, 8 * i) for i in range(len(cn) // 8)]
         md = lump(LUMP_MODELS)
         self.models = []
         for i in range(len(md) // 64):
             v = struct.unpack_from("<9f4i3i", md, 64 * i)
-            self.models.append({"headnode": v[9:13]})
+            self.models.append({"mins": v[0:3], "maxs": v[3:6], "headnode": v[9:13]})
         self.entities = _entities(lump(LUMP_ENTITIES).split(b"\0")[0].decode("latin-1"))
 
     def contents0(self, root, p):
@@ -71,15 +70,6 @@ class Bsp:
             nx, ny, nz, dist = self.planes[plane]
             num = c0 if nx * p[0] + ny * p[1] + nz * p[2] - dist >= 0.0 else c1
         return self.leaf_contents[-num - 1]
-
-    def contents_clip(self, root, p):
-        """Point contents in a clipnode hull (1-3): leaves are the contents values themselves."""
-        num = root
-        while num >= 0:
-            plane, c0, c1 = self.clipnodes[num]
-            nx, ny, nz, dist = self.planes[plane]
-            num = c0 if nx * p[0] + ny * p[1] + nz * p[2] - dist >= 0.0 else c1
-        return num
 
 
 def _entities(text):
@@ -104,7 +94,7 @@ class World:
 
     def __init__(self, bsp):
         self.bsp = bsp
-        self.parts = [(bsp.models[0]["headnode"], (0.0, 0.0, 0.0), "world")]
+        self.parts = [(bsp.models[0]["headnode"], (0.0, 0.0, 0.0), "world", bsp.models[0]["mins"], bsp.models[0]["maxs"])]
         for e in bsp.entities:
             cls, model = e.get("classname", ""), e.get("model", "")
             if cls not in SOLID_BRUSHES or not model.startswith("*"):
@@ -114,18 +104,35 @@ class World:
             idx = int(model[1:])
             if 0 < idx < len(bsp.models):
                 o = tuple(float(v) for v in e.get("origin", "0 0 0").split()) if e.get("origin") else (0.0, 0.0, 0.0)
-                self.parts.append((bsp.models[idx]["headnode"], o, e.get("targetname") or cls))
+                m = bsp.models[idx]
+                self.parts.append((m["headnode"], o, e.get("targetname") or cls, m["mins"], m["maxs"]))
+
+    def _solid(self, p, parts):
+        for heads, o, name, *_ in parts:
+            if heads[0] >= 0 and self.bsp.contents0(heads[0], (p[0] - o[0], p[1] - o[1], p[2] - o[2])) == CONTENTS_SOLID:
+                return name
+        return None
 
     def hit(self, p):
         """None when the eye at p is clear, else (what, which): 'solid' or 'near', and the model it is in."""
-        for heads, o, name in self.parts:
-            q = (p[0] - o[0], p[1] - o[1], p[2] - o[2])
-            if heads[0] >= 0 and self.bsp.contents0(heads[0], q) == CONTENTS_SOLID:
-                return "solid", name
-        for heads, o, name in self.parts:
-            q = (p[0] - o[0], p[1] - o[1], p[2] - o[2])
-            if heads[3] >= 0 and self.bsp.contents_clip(heads[3], q) == CONTENTS_SOLID:
-                return "near", name
+        name = self._solid(p, self.parts)
+        if name:
+            return "solid", name
+        # the box round the eye, on an 8-unit grid; brush entities only where their bounds reach the box
+        hx, hz = NEAR
+        near_parts = [self.parts[0]] + [
+            part for part in self.parts[1:]
+            if all(part[3][c] + part[1][c] - (hx if c < 2 else hz) <= p[c] <= part[4][c] + part[1][c] + (hx if c < 2 else hz)
+                   for c in range(3))]
+        steps = (-1.0, -0.5, 0.0, 0.5, 1.0)
+        for dz in steps:
+            for dy in steps:
+                for dx in steps:
+                    if dx == dy == dz == 0.0:
+                        continue
+                    name = self._solid((p[0] + dx * hx, p[1] + dy * hx, p[2] + dz * hz), near_parts)
+                    if name:
+                        return "near", name
         return None
 
 

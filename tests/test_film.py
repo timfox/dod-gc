@@ -291,10 +291,10 @@ class ActorTests(unittest.TestCase):
 
 
 def tiny_bsp():
-    """A floor at z=0 and a wall from x=100 on, in hull 0 and (16/18 units out) in hull 3, and a func_wall
-    filling x <= -300."""
+    """A floor at z=0 and a wall from x=100 on, a func_wall filling x <= -300, and a player-clip floor at z=40
+    in hull 3 only (invisible: the camera may pass it)."""
     import struct
-    planes = [(0, 0, 1, 0), (1, 0, 0, 100), (0, 0, 1, 18), (1, 0, 0, 84), (-1, 0, 0, 300), (-1, 0, 0, 284)]
+    planes = [(0, 0, 1, 0), (1, 0, 0, 100), (0, 0, 1, 40), (1, 0, 0, 84), (-1, 0, 0, 300), (-1, 0, 0, 284)]
     lumps = {i: b"" for i in range(15)}
     lumps[0] = b'{\n"classname" "worldspawn"\n}\n{\n"classname" "func_wall"\n"model" "*1"\n}\n\0'
     lumps[1] = b"".join(struct.pack("<4fi", *pl, 0) for pl in planes)
@@ -303,7 +303,7 @@ def tiny_bsp():
     lumps[10] = b"".join(struct.pack("<ii20x", c, 0) for c in (-2, -1))
     lumps[9] = b"".join(struct.pack("<ihh", *c) for c in ((2, 1, -2), (3, -2, -1), (5, -2, -1)))
     lumps[14] = (struct.pack("<9f4i3i", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1, -1, 0, 0, 0, 0)
-                 + struct.pack("<9f4i3i", 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, -1, -1, 2, 0, 0, 0))
+                 + struct.pack("<9f4i3i", -1000, -1000, -100, -300, 1000, 500, 0, 0, 0, 2, -1, -1, 2, 0, 0, 0))
     off, body, table = 4 + 15 * 8, b"", b""
     for i in range(15):
         table += struct.pack("<ii", off + len(body), len(lumps[i]))
@@ -323,6 +323,8 @@ class ClearanceTests(unittest.TestCase):
         self.assertIsNone(world.hit((0, 0, 50)))
         self.assertEqual(world.hit((90, 0, 50))[0], "near")     # 10 units from the wall
         self.assertEqual(world.hit((0, 0, 10))[0], "near")      # 10 above the floor
+        self.assertIsNone(world.hit((0, 0, 30)))                  # inside the clip brush, clear of what is drawn
+        self.assertEqual(world.hit((-290, 0, 50))[0], "near")   # 10 from the func_wall
         self.assertEqual(world.hit((120, 0, 50))[0], "solid")
         self.assertEqual(world.hit((0, 0, -5))[0], "solid")
         self.assertEqual(world.hit((-320, 0, 50))[1], "func_wall")  # brush entity at its origin
