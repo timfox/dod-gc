@@ -51,4 +51,7 @@ DodClass DodGC_OpenClass( CBasePlayer *pPlayer, DodTeam team, DodClass wanted );
 /* A human joins as the menus do (the test harness): spawns out of observer mode. */
 void DodGC_HumanJoin( CBasePlayer *pPlayer, DodTeam team, DodClass player_class );
 
+/* Publishes the playermove_t layout for the engine's early mismatch check (called from GameDLLInit). */
+void DodGC_RegisterPmLayout( void );
+
 #endif

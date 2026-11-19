@@ -15,6 +15,7 @@
 #include "dod_bot.h"
 #include "dod_bots.h"
 #include "animation.h"
+#include "pm_defs.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -462,6 +463,19 @@ static void DodGC_ApplyClass( CBasePlayer *pPlayer, DodClass player_class )
 		ALERT( at_console, "DoD player body %s: %s %s body %d\n", STRING( pPlayer->pev->netname ), model ? model : "-", Dod_ClassName( player_class ), pPlayer->pev->body );
 	}
 	DodGC_ClearMenu( pPlayer );
+}
+
+/* Publish this DLL's playermove_t layout (size and array caps, from its own copy of pm_defs.h) so the engine can compare
+ * it with its own before PM_Init runs. A mismatch (the DLL built with another XASH_GC_PM_MAX_PHYSENTS / MAX_MOVEENTS than
+ * the engine) used to crash in PM_InitTextureTypes; the engine now stops with a message that names both layouts. Called
+ * from GameDLLInit (integrate-dod-gameplay.py hooks it in). */
+void DodGC_RegisterPmLayout( void )
+{
+	static char layout[32];
+	static cvar_t gc_pm_layout_dll = { "gc_pm_layout_dll", layout, 0 };
+
+	snprintf( layout, sizeof( layout ), "%d,%d,%d", (int)sizeof( playermove_t ), MAX_PHYSENTS, MAX_MOVEENTS );
+	CVAR_REGISTER( &gc_pm_layout_dll );
 }
 
 CHalfLifeDoD::CHalfLifeDoD()

@@ -308,6 +308,17 @@ def integrate_doddetect(dlls: Path) -> None:
 		'/* info_doddetect is linked by the DoD game code (dod_runtime.cpp) */\n')
 
 
+def integrate_pm_layout_hook(dlls: Path) -> None:
+	"""GameDLLInit publishes the playermove_t layout (DodGC_RegisterPmLayout in dod_runtime.cpp) so the engine can stop with a clear
+	message when the game DLL and the engine were built with different XASH_GC_PM_MAX_* values."""
+	game = dlls / "game.cpp"
+	text = game.read_text()
+	if "DodGC_RegisterPmLayout" in text:
+		return
+	replace_once(game, 'void GameDLLInit( void )\n{\n',
+		'void DodGC_RegisterPmLayout( void );\nvoid GameDLLInit( void )\n{\n\tDodGC_RegisterPmLayout();\n')
+
+
 def rename_sounds(path: Path, renames: dict[str, str]) -> None:
 	"""Point every use of a stock HL sound name in `path` at the retail DoD one (idempotent; a missing name is not an error)."""
 	text = path.read_text()
@@ -745,6 +756,7 @@ def main() -> int:
 	integrate_voice_menu(dlls)
 	integrate_usercmd(dlls)
 	integrate_doddetect(dlls)
+	integrate_pm_layout_hook(dlls)
 	integrate_death_anims(dlls)
 	integrate_retail_sounds(args.hlsdk_dir)
 	integrate_pm_caps(args.hlsdk_dir, args.engine_dir)
