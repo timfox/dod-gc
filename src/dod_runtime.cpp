@@ -17,6 +17,7 @@
 #include "animation.h"
 #include "pm_defs.h"
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -28,6 +29,12 @@ static cvar_t dod_rounds = { "dod_rounds", "2", FCVAR_SERVER };
  * the bots by itself (any manual target pick pauses it for a while). */
 static cvar_t dod_spectate = { "dod_spectate", "0", FCVAR_SERVER };
 static cvar_t dod_spec_auto = { "dod_spec_auto", "1", FCVAR_SERVER };
+/* dod_gc_autojoin "<team> <class>" (debug, off when empty): the local human takes that side and class a couple of
+ * seconds after connecting, with the steps the menus take, so an automated run (no pad) gets a playable human and a
+ * view model. team 1 Allies / 2 Axis, class 1 rifleman .. 6 (DodClass). */
+static cvar_t dod_gc_autojoin = { "dod_gc_autojoin", "", FCVAR_SERVER };
+static float g_autojoin_seen[DOD_MAX_PLAYERS + 1];
+static BOOL g_autojoin_spec_done[DOD_MAX_PLAYERS + 1];
 /* Team body models (models/player/<name>/<name>.mdl, split onto the disc as
  * gc_studio/<name>.mdl). A map cfg can switch to us-para/axis-para/brit-inf. */
 /* Paratrooper teams: -1 follows the map (Dod_ParatroopersForMap), otherwise a bit mask: 1 Allies, 2 Axis. */
@@ -493,6 +500,7 @@ CHalfLifeDoD::CHalfLifeDoD()
 		CVAR_REGISTER( &dod_rounds );
 		CVAR_REGISTER( &dod_spectate );
 		CVAR_REGISTER( &dod_spec_auto );
+		CVAR_REGISTER( &dod_gc_autojoin );
 		CVAR_REGISTER( &dod_paras );
 		for( int k = 0; k < DOD_LIMIT_CVARS; k++ ) {
 			g_limit_cvar_storage[k].name = g_limit_cvars[k].name;
@@ -546,6 +554,8 @@ CHalfLifeDoD::CHalfLifeDoD()
 	memset( g_spec_last_target, 0, sizeof( g_spec_last_target ) );
 	g_spec_next_think = 0.0f;
 	memset( g_spec_join_pending, 0, sizeof( g_spec_join_pending ) );
+	memset( g_autojoin_seen, 0, sizeof( g_autojoin_seen ) );
+	memset( g_autojoin_spec_done, 0, sizeof( g_autojoin_spec_done ) );
 }
 
 /* The first open class for a side, starting at the one asked for: a bot's pick when limits turn its choice away. */
@@ -1249,6 +1259,43 @@ static void DodGC_SpectatorThink( void )
 		CBasePlayer *pSpec = (CBasePlayer *)UTIL_PlayerByIndex( i );
 		const int slot = i <= DOD_SPEC_SLOTS ? i : 0;
 		int count, mode, pick;
+		/* dod_gc_autojoin "0 ...": a spectator. The engine's own team overlay auto-confirms a join after a few seconds, so wait
+		 * until the human is playing and then turn them into an observer once (the director follows the bots). */
+		if( i <= DOD_MAX_PLAYERS && pSpec && pSpec->IsPlayer() && !DodBots_IsBot( pSpec ) && !g_autojoin_spec_done[i] ) {
+			const char *aj = CVAR_GET_STRING( "dod_gc_autojoin" );
+			int aj_team = -1, aj_class = 0, aj_bots = -1;
+			const int aj_n = ( aj && aj[0] ) ? sscanf( aj, "%d %d %d", &aj_team, &aj_class, &aj_bots ) : 0;
+			if( aj_n >= 2 && aj_team == 0 ) {
+				if( g_autojoin_seen[i] == 0.0f ) {
+					g_autojoin_seen[i] = gpGlobals->time;
+					if( aj_n >= 3 && aj_bots >= 0 )
+						CVAR_SET_FLOAT( "dod_bots", (float)aj_bots );
+				} else if( gpGlobals->time - g_autojoin_seen[i] > 8.0f && !pSpec->IsObserver() && g_dod_joined[i] ) {
+					g_autojoin_spec_done[i] = TRUE;
+					g_autojoin_seen[i] = 0.0f;
+					CVAR_SET_FLOAT( "dod_spectate", 1.0f );
+					DodGC_JoinSpectator( pSpec );
+				}
+			}
+		}
+		if( i <= DOD_MAX_PLAYERS && pSpec && pSpec->IsPlayer() && !DodBots_IsBot( pSpec ) && !g_dod_joined[i] ) {
+			const char *aj = CVAR_GET_STRING( "dod_gc_autojoin" );
+			int aj_team = 0, aj_class = 0, aj_bots = -1;
+			const int aj_n = ( aj && aj[0] ) ? sscanf( aj, "%d %d %d", &aj_team, &aj_class, &aj_bots ) : 0;
+			if( aj_n >= 2 && ( aj_team == DOD_TEAM_ALLIES || aj_team == DOD_TEAM_AXIS ) ) {
+				if( g_autojoin_seen[i] == 0.0f ) {
+					g_autojoin_seen[i] = gpGlobals->time;
+					/* optional third number: the bot count, set here because a cfg line for dod_bots is overwritten when
+					 * the game registers the cvar (the bots join about 3 s after the human, after this point) */
+					if( aj_n >= 3 && aj_bots >= 0 )
+						CVAR_SET_FLOAT( "dod_bots", (float)aj_bots );
+				}
+				else if( gpGlobals->time - g_autojoin_seen[i] > 2.0f ) {
+					g_autojoin_seen[i] = 0.0f;
+					DodGC_HumanJoin( pSpec, (DodTeam)aj_team, (DodClass)aj_class );
+				}
+			}
+		}
 		if( i <= DOD_MAX_PLAYERS && g_spec_join_pending[i] ) {
 			g_spec_join_pending[i] = FALSE;
 			if( pSpec && pSpec->IsPlayer() && !pSpec->IsObserver() && !DodBots_IsBot( pSpec ) )

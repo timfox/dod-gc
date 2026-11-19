@@ -319,6 +319,29 @@ def integrate_pm_layout_hook(dlls: Path) -> None:
 		'void DodGC_RegisterPmLayout( void );\nvoid GameDLLInit( void )\n{\n\tDodGC_RegisterPmLayout();\n')
 
 
+def integrate_studio_anim_pack(hlsdk: Path, engine: Path | None) -> None:
+	"""The client DLL's StudioModelRenderer::StudioGetAnim loads a sequence group with IEngineStudio.LoadCacheFile. For a
+	split DoD model the group is an animation pack (.gca, 3.5 MB), which cannot be read into MEM1 (Host_Error: LoadCacheFile:
+	can't load models/player/anim_*.gca on the first bot). The engine (engine_studio_api_t.GCGetAnim) fetches a sequence
+	from the pack in ARAM; the DLL uses it for any group with a pack. Needs an engine with the member."""
+	if engine is not None and "GCGetAnim" not in (engine / "common" / "r_studioint.h").read_text():
+		raise SystemExit("the engine checkout has no engine_studio_api_t.GCGetAnim; merge the engine change first "
+			"(the client DLL's studio renderer would try to read a 3.5 MB animation pack into MEM1)")
+	api = hlsdk / "common" / "r_studioint.h"
+	replace_once(api,
+		"	void		( *StudioRenderShadow )( int iSprite, float *p1, float *p2, float *p3, float *p4 );\n} engine_studio_api_t;",
+		"	void		( *StudioRenderShadow )( int iSprite, float *p1, float *p2, float *p3, float *p4 );\n\n"
+		"	// GameCube extension (xash3d-gc common/r_studioint.h): a sequence of a split model from its animation pack\n"
+		"	void		*( *GCGetAnim )( void *phdr, void *submodel, void *pseqdesc );\n} engine_studio_api_t;")
+	replace_once(hlsdk / "cl_dll" / "StudioModelRenderer.cpp",
+		"	if( pseqdesc->seqgroup == 0 )\n	{\n		return (mstudioanim_t *)( (byte *)m_pStudioHeader + pseqdesc->animindex );\n	}\n\n	paSequences",
+		"	if( pseqdesc->seqgroup == 0 )\n	{\n		return (mstudioanim_t *)( (byte *)m_pStudioHeader + pseqdesc->animindex );\n	}\n\n"
+		"	/* GameCube: a sequence group that is an animation pack (.gca) is streamed from ARAM by the engine. */\n"
+		"	if( IEngineStudio.GCGetAnim && strstr( pseqgroup->name, \".gca\" ))\n"
+		"	{\n		mstudioanim_t *packed = (mstudioanim_t *)IEngineStudio.GCGetAnim( m_pStudioHeader, m_pSubModel, pseqdesc );\n"
+		"		if( packed )\n			return packed;\n	}\n\n	paSequences")
+
+
 def rename_sounds(path: Path, renames: dict[str, str]) -> None:
 	"""Point every use of a stock HL sound name in `path` at the retail DoD one (idempotent; a missing name is not an error)."""
 	text = path.read_text()
@@ -757,6 +780,7 @@ def main() -> int:
 	integrate_usercmd(dlls)
 	integrate_doddetect(dlls)
 	integrate_pm_layout_hook(dlls)
+	integrate_studio_anim_pack(args.hlsdk_dir, args.engine_dir)
 	integrate_death_anims(dlls)
 	integrate_retail_sounds(args.hlsdk_dir)
 	integrate_pm_caps(args.hlsdk_dir, args.engine_dir)
