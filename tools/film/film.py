@@ -21,7 +21,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from tools.film import actors, campath, shots, stamp, voice  # noqa: E402
+from tools.film import actors, campath, clearance, shots, stamp, voice  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
 W, H = 1920, 1080
@@ -653,17 +653,33 @@ def preview_session(timeline, mapname, group, out_dir, fps, aspect=16 / 9, size=
 # --- CLI -----------------------------------------------------------------------------------------------
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("command", choices=("plan", "boards", "animatic", "assemble"))
+    ap.add_argument("command", choices=("plan", "check", "boards", "animatic", "assemble"))
     ap.add_argument("episode")
     ap.add_argument("--out", help="work directory (default out/film/<episode id>)")
     ap.add_argument("--captures", help="captured frames, one folder per map (default <out>/captures)")
     ap.add_argument("--burn-subs", action="store_true", help="burn narration subtitles into the picture")
     ap.add_argument("--output", help="finished film path")
+    ap.add_argument("--bsp", action="append", default=[], metavar="MAP=PATH",
+                    help="a map's .bsp for the clearance check (default: $FILM_BSP_DIR, content/dod/maps)")
     args = ap.parse_args(argv)
 
     ep = load_episode(args.episode)
     out = Path(args.out) if args.out else ROOT / "out" / "film" / ep["id"]
     timeline = build_timeline(ep, voice_dir=out / "voice")
+    # no camera through walls or soldiers: plan and check stop on a problem, previews only warn
+    problems, unchecked = clearance.check(timeline, bsps=dict(b.split("=", 1) for b in args.bsp))
+    for line in clearance.describe(problems):
+        print(f"clearance: {line}", file=sys.stderr)
+    for m in unchecked:
+        print(f"clearance: {m}.bsp not found: shots on {m} are checked against the soldiers only "
+              f"(set FILM_BSP_DIR or --bsp {m}=PATH)", file=sys.stderr)
+    if args.command == "check":
+        print(f"clearance: {sum(len(v) for v in problems.values())} problem(s) in {len(problems)} shot(s)"
+              + (f"; not checked against geometry: {', '.join(unchecked)}" if unchecked else ""))
+        return 1 if problems else 0
+    if problems and args.command == "plan":
+        print("error: camera paths clip (above); fix the shots or move the cameras", file=sys.stderr)
+        return 1
     plan = write_plan(ep, timeline, out)
     print(f"plan: {len(plan['segments'])} segments, {plan['duration']:.1f} s, sessions "
           + ", ".join(f"{m} ({len(v)} shots)" for m, v in plan["sessions"].items()) + f" -> {out}")

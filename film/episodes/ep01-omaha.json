@@ -306,8 +306,14 @@
         "map": "dod_charlie",
         "camera": {
           "type": "dolly",
-          "start": "waterline",
-          "end": "shingle",
+          "start": [
+            -60,
+            -3168
+          ],
+          "end": [
+            0,
+            -1700
+          ],
           "height": 30,
           "duration": 16,
           "lens": 32,
@@ -359,7 +365,7 @@
               {
                 "at": [
                   -250,
-                  -2380
+                  -2480
                 ],
                 "pose": "fallen",
                 "yaw": 120
@@ -483,7 +489,10 @@
         "map": "dod_charlie",
         "camera": {
           "type": "still",
-          "eye": "shingle",
+          "eye": [
+            0,
+            -504
+          ],
           "target": "draw_top",
           "height": 4,
           "duration": 13,
@@ -594,8 +603,14 @@
         "map": "dod_charlie",
         "camera": {
           "type": "dolly",
-          "start": "shingle",
-          "end": "crest",
+          "start": [
+            224,
+            100
+          ],
+          "end": [
+            224,
+            700
+          ],
           "height": 36,
           "duration": 15,
           "lens": 28,
@@ -758,9 +773,9 @@
         "camera": {
           "type": "orbit",
           "center": "draw_top",
-          "radius": 1100,
+          "radius": 1200,
           "height": 220,
-          "start_deg": 20,
+          "start_deg": 35,
           "end_deg": 95,
           "duration": 15,
           "lens": 28
