@@ -67,3 +67,12 @@ __pycache__/
 /.deps/
 /engine
 /hlsdk-portable
+
+# Film/documentary work is kept in a separate private repo; never commit it here.
+/film/
+/tools/film/
+/docs/FILM_PIPELINE.md
+/scripts/film-capture.sh
+/tests/test_film.py
+/tests/test_film_voice.py
+/out/film/
