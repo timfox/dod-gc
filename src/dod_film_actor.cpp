@@ -119,11 +119,13 @@ static float DodFilm_ActorStride( int i )
 	return 0.92f + 0.16f * (float)( ( DodFilm_ActorHash( i ) >> 8 ) & 255u ) / 255.0f;
 }
 
-/* The third-person weapon the actor's class carries (p_*.mdl), or NULL. */
+/* The third-person weapon an actor carries (p_*.mdl), or NULL: the side's rifle for every
+ * class. Each gun model costs the GameCube a file read and a resident mesh, and a cast of 24
+ * asking for every class's gun ran the file pool dry; one per side fits. */
 static const char *DodFilm_WeaponModel( int team, int player_class )
 {
-	DodClass cls = player_class > DOD_CLASS_NONE ? (DodClass)player_class : DOD_CLASS_RIFLEMAN;
-	const DodWeaponDef *def = Dod_ClassWeaponDef( (DodTeam)team, cls );
+	(void)player_class;
+	const DodWeaponDef *def = Dod_ClassWeaponDef( (DodTeam)team, DOD_CLASS_RIFLEMAN );
 	return def && def->player_model && def->player_model[0] ? def->player_model : NULL;
 }
 
@@ -385,11 +387,9 @@ void DodFilm_Init( void )
 		if( !model[0] )
 			continue;
 		PRECACHE_MODEL( (char *)STRING( ALLOC_STRING( model ) ) );
-		for( int c = DOD_CLASS_NONE + 1; c < DOD_CLASS_COUNT; c++ ) {
-			const char *gun = DodFilm_WeaponModel( team, c );
-			if( gun )
-				PRECACHE_MODEL( (char *)gun );
-		}
+		const char *gun = DodFilm_WeaponModel( team, DOD_CLASS_RIFLEMAN );
+		if( gun )
+			PRECACHE_MODEL( (char *)gun );
 		g_film_precached[team] = 1;
 		ALERT( at_console, "FILM: precached %s for actors\n", model );
 	}
