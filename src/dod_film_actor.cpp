@@ -15,6 +15,7 @@
 #include "util.h"
 #include "cbase.h"
 #include "gamerules.h"
+#include "weapons.h"
 #include "dod_runtime.h"
 #include "dod_game.h"
 #include "dod_film.h"
@@ -36,6 +37,7 @@ static CDodFilmActor *g_film_ents[DOD_FILM_MAX_ACTORS];
 static int g_film_seq[DOD_FILM_MAX_ACTORS][DOD_POSE_COUNT];	/* looked-up sequence + 1, 0 unknown */
 static float g_film_start;
 static float g_film_last;
+static float g_film_fx_clock;	/* the shot time fx have been fired up to */
 static char g_film_shot[32];
 static int g_film_commands_added;
 static int g_film_precached[4];	/* by DodTeam */
@@ -128,6 +130,108 @@ static void DodFilm_Place( int i, float t, float dt )
 	ent->pev->animtime = gpGlobals->time;
 }
 
+static int DodFilm_Byte( float v )
+{
+	return v < 1.0f ? 1 : ( v > 255.0f ? 255 : (int)v );
+}
+
+static void DodFilm_Streaks( const Vector &o, float up, int color, int count, int speed )
+{
+	MESSAGE_BEGIN( MSG_BROADCAST, SVC_TEMPENTITY );
+		WRITE_BYTE( TE_STREAK_SPLASH );
+		WRITE_COORD( o.x );
+		WRITE_COORD( o.y );
+		WRITE_COORD( o.z );
+		WRITE_COORD( 0.0f );
+		WRITE_COORD( 0.0f );
+		WRITE_COORD( up );
+		WRITE_BYTE( color );
+		WRITE_SHORT( count );
+		WRITE_SHORT( speed );
+		WRITE_SHORT( speed / 2 );
+	MESSAGE_END();
+}
+
+static void DodFilm_Smoke( const Vector &o, float scale, int framerate )
+{
+	MESSAGE_BEGIN( MSG_BROADCAST, SVC_TEMPENTITY );
+		WRITE_BYTE( TE_SMOKE );
+		WRITE_COORD( o.x );
+		WRITE_COORD( o.y );
+		WRITE_COORD( o.z );
+		WRITE_SHORT( g_sModelIndexSmoke );
+		WRITE_BYTE( DodFilm_Byte( scale ) );
+		WRITE_BYTE( framerate );
+	MESSAGE_END();
+}
+
+/* One effect. Broadcast, not by PVS or PAS: the camera is often far from the player.
+ * The sound is left to the film's own mix (TE_EXPLFLAG_NOSOUND). */
+static void DodFilm_FireFx( const DodFilmFx *f )
+{
+	Vector o( f->origin[0], f->origin[1], f->origin[2] );
+	float s = f->scale;
+	switch( f->kind ) {
+	case DOD_FX_KIND_EXPLOSION:
+		MESSAGE_BEGIN( MSG_BROADCAST, SVC_TEMPENTITY );
+			WRITE_BYTE( TE_EXPLOSION );
+			WRITE_COORD( o.x );
+			WRITE_COORD( o.y );
+			WRITE_COORD( o.z + 24.0f * s );
+			WRITE_SHORT( g_sModelIndexFireball );
+			WRITE_BYTE( DodFilm_Byte( 30.0f * s ) );	/* scale * 10, a grenade's */
+			WRITE_BYTE( 15 );
+			WRITE_BYTE( TE_EXPLFLAG_NOSOUND );
+		MESSAGE_END();
+		DodFilm_Streaks( o, 1.0f, 5, (int)( 24 * s ), (int)( 220 * s ) );
+		DodFilm_Smoke( o + Vector( 0, 0, 40.0f * s ), 40.0f * s, 8 );
+		break;
+	case DOD_FX_KIND_WATER:
+		/* a tall white column: two showers of white streaks and a spray puff */
+		DodFilm_Streaks( o, 1.0f, 0, (int)( 40 * s ), (int)( 420 * s ) );
+		DodFilm_Streaks( o, 1.0f, 0, (int)( 24 * s ), (int)( 220 * s ) );
+		MESSAGE_BEGIN( MSG_BROADCAST, SVC_TEMPENTITY );
+			WRITE_BYTE( TE_SPRITE );
+			WRITE_COORD( o.x );
+			WRITE_COORD( o.y );
+			WRITE_COORD( o.z + 48.0f * s );
+			WRITE_SHORT( g_sModelIndexSmoke );
+			WRITE_BYTE( DodFilm_Byte( 30.0f * s ) );
+			WRITE_BYTE( 200 );
+		MESSAGE_END();
+		break;
+	case DOD_FX_KIND_DIRT:
+		DodFilm_Streaks( o, 1.0f, 4, (int)( 20 * s ), (int)( 260 * s ) );
+		DodFilm_Smoke( o + Vector( 0, 0, 16.0f * s ), 18.0f * s, 12 );
+		break;
+	case DOD_FX_KIND_SMOKE:
+		DodFilm_Smoke( o, 30.0f * s, 6 );
+		break;
+	case DOD_FX_KIND_TRACER:
+		MESSAGE_BEGIN( MSG_BROADCAST, SVC_TEMPENTITY );
+			WRITE_BYTE( TE_TRACER );
+			WRITE_COORD( o.x );
+			WRITE_COORD( o.y );
+			WRITE_COORD( o.z );
+			WRITE_COORD( f->end[0] );
+			WRITE_COORD( f->end[1] );
+			WRITE_COORD( f->end[2] );
+		MESSAGE_END();
+		break;
+	default:
+		break;
+	}
+}
+
+static void DodFilm_RunFx( float t )
+{
+	int first, end = DodFilm_FxDue( &g_film_cast, g_film_fx_clock, t, &first );
+	for( int i = first; i < end; i++ )
+		DodFilm_FireFx( &g_film_cast.fx[i] );
+	if( t > g_film_fx_clock )
+		g_film_fx_clock = t;
+}
+
 static void DodFilm_CastCommand( void )
 {
 	char path[96], err[96];
@@ -163,6 +267,9 @@ static void DodFilm_CastCommand( void )
 	float preroll = CMD_ARGC() > 2 ? (float)atof( CMD_ARGV( 2 ) ) : 0.0f;
 	g_film_start = gpGlobals->time + ( preroll > 0.0f ? preroll : 0.0f );
 	g_film_last = gpGlobals->time;
+	g_film_fx_clock = gpGlobals->time - g_film_start;	/* minus the preroll: an fx at 0 fires on the first frame */
+	if( g_film_fx_clock >= 0.0f )
+		g_film_fx_clock = -0.001f;
 	int placed = 0;
 	for( int i = 0; i < g_film_cast.actor_count; i++ ) {
 		const DodFilmActor *a = &g_film_cast.actors[i];
@@ -194,8 +301,8 @@ static void DodFilm_CastCommand( void )
 		DodFilm_Place( i, gpGlobals->time - g_film_start, 0.0f );
 		placed++;
 	}
-	ALERT( at_console, "FILM CAST %s: %d of %d actor(s), clock starts in %.2f s\n", g_film_shot, placed,
-		g_film_cast.actor_count, g_film_start - gpGlobals->time );
+	ALERT( at_console, "FILM CAST %s: %d of %d actor(s), %d fx, clock starts in %.2f s\n", g_film_shot, placed,
+		g_film_cast.actor_count, g_film_cast.fx_count, g_film_start - gpGlobals->time );
 }
 
 static void DodFilm_ClearCommand( void )
@@ -237,7 +344,7 @@ void DodFilm_Init( void )
 
 void DodFilm_Think( void )
 {
-	if( !g_film_cast.actor_count )
+	if( !g_film_cast.actor_count && !g_film_cast.fx_count )
 		return;
 	float dt = gpGlobals->time - g_film_last;
 	g_film_last = gpGlobals->time;
@@ -245,4 +352,5 @@ void DodFilm_Think( void )
 		dt = 0.0f;
 	for( int i = 0; i < g_film_cast.actor_count; i++ )
 		DodFilm_Place( i, gpGlobals->time - g_film_start, dt );
+	DodFilm_RunFx( gpGlobals->time - g_film_start );
 }
