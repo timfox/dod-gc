@@ -811,6 +811,15 @@ static void DodGC_CycleWeapon( CBasePlayer *pPlayer, int step );
 BOOL CHalfLifeDoD::ClientCommand( CBasePlayer *pPlayer, const char *pcmd )
 {
 	const int index = DodGC_PlayerIndex( pPlayer );
+	if( index >= 1 && index <= DOD_MAX_PLAYERS && !g_join_done[index] && CVAR_GET_STRING( "dod_gc_join" )[0] && !DodBots_IsBot( pPlayer )
+		&& ( FStrEq( pcmd, "dod_team" ) || FStrEq( pcmd, "dod_class" ) || FStrEq( pcmd, "menuselect" ) ) ) {
+		float delay = 0.0f;
+		sscanf( CVAR_GET_STRING( "dod_gc_join" ), "%f", &delay );
+		if( gpGlobals->time < delay ) {
+			ALERT( at_console, "DoD join: held '%s' from the human until game time %.0f\n", pcmd, delay );
+			return TRUE;	/* a test that joins the human at a set time: nothing joins it earlier */
+		}
+	}
 	if( index >= 1 && index <= DOD_MAX_PLAYERS && g_dod_voice_menu[index]
 		&& ( FStrEq( pcmd, "dod_nextweapon" ) || FStrEq( pcmd, "dod_prevweapon" ) || FStrEq( pcmd, "dod_lastweapon" ) ) ) {
 		/* the voice menu owns the D-pad while it is open */
