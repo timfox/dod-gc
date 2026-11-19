@@ -27,6 +27,12 @@
 #define DOD_HUD_CHAT_LINES 3	/* saytext MAX_LINES: 5 feed + 3 chat lines of 38 px fill the 306 px band */
 #define DOD_HUD_MAX_FLAGS 12
 
+/* Every function that draws HUD pixels, by name. tests/test_hud_draw_registry.py fails when src/client/hud_dod.cpp has a
+ * drawing function that is not listed here and covered in tests/dod_hud_geom_test.c ("covers: <name>"), so a new draw
+ * path cannot slip past the overlap model. Draws outside this repo must be gated on the gc_hud_retail cvar. */
+#define DOD_HUD_DRAW_FUNCTIONS \
+	"CHudDod::DrawKills", "CHudDod::DrawVoice", "CHudDod::DrawBoard", "CHudDod::DrawRetail"
+
 typedef struct DodRect {
 	int x, y, w, h;
 } DodRect;
