@@ -234,6 +234,24 @@ static DodTeamIntel g_intel;	/* what each team knows about where the enemy is (s
 /* walls bots breached (see BreachWall) */
 static struct { int ent; float first; int done; } g_breach[8];
 static byte *g_nav_file;
+#if defined( __GAMECUBE__ )
+/* The graph's file image and its search block live in the engine's map arena when it has room (they are per map, and the arena
+ * resets at map change), which keeps ~65 KB of dod_charlie's graph off the nearly full heap. Heap is the fallback. */
+extern "C" size_t GC_MapArenaFind( size_t bytes );
+extern "C" void *GC_MapLoadBufferTailAlloc( size_t after_offset, size_t need );
+static BOOL g_nav_file_arena;
+static void *Dod_NavArenaAlloc( size_t bytes )
+{
+	size_t at = GC_MapArenaFind( bytes + 32 );
+	unsigned char *p;
+	if( at == (size_t)-1 )
+		return NULL;
+	p = (unsigned char *)GC_MapLoadBufferTailAlloc( at, bytes + 32 );
+	if( !p )
+		return NULL;
+	return (void *)( ( (unsigned long)p + 31 ) & ~31UL );
+}
+#endif
 static char g_nav_map[32];
 
 static void FreeNav( void )
@@ -241,8 +259,16 @@ static void FreeNav( void )
 	memset( g_breach, 0, sizeof( g_breach ) );
 	Dod_NavFree( &g_nav );
 	if( g_nav_file )
-		FREE_FILE( g_nav_file );
+	{
+#if defined( __GAMECUBE__ )
+		if( !g_nav_file_arena )
+#endif
+			FREE_FILE( g_nav_file );
+	}
 	g_nav_file = NULL;
+#if defined( __GAMECUBE__ )
+	g_nav_file_arena = FALSE;
+#endif
 	g_nav_map[0] = '\0';
 }
 
@@ -405,14 +431,39 @@ static void EnsureNav( void )
 		ALERT( at_console, "DoD nav: could not load %s (try %d of 12), bots steer without a graph until it loads\n", path, tries );
 		return;
 	}
+#if defined( __GAMECUBE__ )
+	{
+		byte *copy = (byte *)Dod_NavArenaAlloc( (size_t)len );
+		Dod_NavSetAllocator( Dod_NavArenaAlloc );
+		if( copy )
+		{
+			memcpy( copy, g_nav_file, (size_t)len );
+			FREE_FILE( g_nav_file );
+			g_nav_file = copy;
+			g_nav_file_arena = TRUE;
+		}
+	}
+#endif
 	if( !Dod_NavLoad( &g_nav, g_nav_file, len ) )
 	{
 		ALERT( at_console, "DoD nav: %s is not a valid waypoint file\n", path );
-		FREE_FILE( g_nav_file );
+#if defined( __GAMECUBE__ )
+		if( !g_nav_file_arena )
+#endif
+			FREE_FILE( g_nav_file );
 		g_nav_file = NULL;
+#if defined( __GAMECUBE__ )
+		g_nav_file_arena = FALSE;
+#endif
 		return;
 	}
-	ALERT( at_console, "DoD nav: %s %d waypoints, %d edges (%d bytes)\n", path, g_nav.node_count, g_nav.edge_count, len );
+	ALERT( at_console, "DoD nav: %s %d waypoints, %d edges (%d bytes, file in %s, graph in %s)\n", path, g_nav.node_count, g_nav.edge_count, len,
+#if defined( __GAMECUBE__ )
+		g_nav_file_arena ? "arena" : "heap",
+#else
+		"heap",
+#endif
+		g_nav.block_external ? "arena" : "heap" );
 	LoadHazards();
 }
 

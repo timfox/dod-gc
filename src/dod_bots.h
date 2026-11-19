@@ -296,6 +296,7 @@ typedef struct DodNav {
 	unsigned short *heap;		/* binary min-heap of open nodes by f */
 	short *hpos;			/* where each open node sits in the heap */
 	void *block;			/* the one allocation that holds every array above and edge_blocked */
+	int block_external;		/* block came from the allocator hook (GameCube map arena): Dod_NavFree does not free() it */
 	int node_count, edge_count;
 	unsigned int bsp_size;		/* size of the BSP the graph was baked from */
 	int pen_from[8], pen_to[8];	/* edges a bot got stuck on, avoided for a while (shared by all bots) */
@@ -319,6 +320,9 @@ typedef struct DodNav {
 /* Parse a .wpt image into a zeroed or freed DodNav. The data must stay alive while the DodNav is used.
  * Returns 1 on success, 0 on a bad file (nothing stays allocated then). */
 int Dod_NavLoad(DodNav *nav, const unsigned char *data, int len);
+/* Optional allocator for the per-map block (GameCube: the map arena, which the engine resets at map change). The hook returns NULL when
+ * it has no room and Dod_NavLoad then falls back to malloc. */
+void Dod_NavSetAllocator(void *(*alloc)(size_t bytes));
 void Dod_NavFree(DodNav *nav);
 void Dod_NavNodePos(const DodNav *nav, int node, float *x, float *y, float *z);
 /* Edges whose segment crosses one of the boxes (each grown by 24 on x and y, 36 on z): the ones worth a hull trace when a wall that can
