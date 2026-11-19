@@ -200,7 +200,7 @@ typedef struct DodRetailInput {
 	int clip;		/* rounds in the clip, < 0: none */
 	int reserve;		/* rounds carried outside the clip */
 	int max_clip;		/* retail: the WeaponList max clip; <= 0 (HL WeaponList has none): the table's */
-	int safe_right, safe_bottom;	/* title-safe margins in layout pixels the ammo block keeps clear (0: retail) */
+	int safe_left, safe_top, safe_right, safe_bottom;	/* title-safe margins in layout pixels every corner block keeps clear (0: retail) */
 	int text_w;		/* width of the widest "x NN" spare count in the client font, layout pixels (0: retail's 45) */
 	int num_points;		/* capture points on the objective bar */
 	int owner[DOD_RETAIL_MAX_POINTS];	/* 0 neutral, 1 Allies, 2 Axis */
@@ -231,7 +231,7 @@ static inline void dod_retail_add(DodRetailDraw *out, int *n, int max, DodRetail
 static inline int Dod_RetailHudLayoutText(const DodRetailInput *in, DodRetailDraw *out, int max,
 	DodRetailText *text)
 {
-	int n = 0, y0, health, rows;
+	int n = 0, y0, health, rows, sl, st, sb;
 	DodRetailCell c;
 
 	if (text) {
@@ -241,11 +241,14 @@ static inline int Dod_RetailHudLayoutText(const DodRetailInput *in, DodRetailDra
 	if (!in || !out || max <= 0 || in->screen_w <= 0 || in->screen_h <= 0)
 		return 0;
 	health = dod_retail_clamp(in->health, 0, 100);
+	sl = in->safe_left;
+	st = in->safe_top;
+	sb = in->safe_bottom;
 
 	/* Status panel (CHudDodIcons::Draw): nothing while dead or watching. */
 	if (!in->dead && !in->spectating) {
-		y0 = in->screen_h - dod_cell_main.h;
-		dod_retail_add(out, &n, max, dod_cell_main, 0, y0);
+		y0 = in->screen_h - sb - dod_cell_main.h;
+		dod_retail_add(out, &n, max, dod_cell_main, sl, y0);
 
 		/* Stamina: the bottom n rows of the tube, bottom-aligned at x 8. */
 		rows = (int)(dod_cell_stamina.h * (in->stamina < 0.0f ? 0.0f
@@ -254,25 +257,25 @@ static inline int Dod_RetailHudLayoutText(const DodRetailInput *in, DodRetailDra
 			c = dod_cell_stamina;
 			c.y += c.h - rows;
 			c.h = rows;
-			dod_retail_add(out, &n, max, c, 8, in->screen_h - rows);
+			dod_retail_add(out, &n, max, c, 8 + sl, in->screen_h - sb - rows);
 		}
 
 		/* Health bar: grows upward with health, x 99. */
 		rows = (int)(dod_cell_healthbar.h * health / 100.0f);
 		c = dod_cell_healthbar;
 		c.h = dod_retail_clamp(rows + 1, 0, dod_cell_healthbar.h);
-		dod_retail_add(out, &n, max, c, 99, y0 + 28 + (dod_cell_healthbar.h - c.h));
+		dod_retail_add(out, &n, max, c, 99 + sl, y0 + 28 + (dod_cell_healthbar.h - c.h));
 
 		/* Overlay: covers the monitor from the top down as health falls. */
 		rows = (int)(dod_cell_health_overlay.h * (1.0f - health / 100.0f));
 		c = dod_cell_health_overlay;
 		c.h = dod_retail_clamp(rows + 1, 0, dod_cell_health_overlay.h);
 		if (rows + 1 > 0)
-			dod_retail_add(out, &n, max, c, 54, y0 + 27);
+			dod_retail_add(out, &n, max, c, 54 + sl, y0 + 27);
 
 		if (in->show_reinforcements)
-			dod_retail_add(out, &n, max, dod_cell_reinforcements, dod_cell_main.w,
-				in->screen_h - dod_cell_reinforcements.h);
+			dod_retail_add(out, &n, max, dod_cell_reinforcements, dod_cell_main.w + sl,
+				in->screen_h - sb - dod_cell_reinforcements.h);
 	}
 
 	/* Clip ammo (CHudAmmo::Draw): bottom right, the empty clip with the
@@ -315,13 +318,13 @@ static inline int Dod_RetailHudLayoutText(const DodRetailInput *in, DodRetailDra
 	if (in->seconds_left >= 0) {
 		const int t = in->seconds_left;
 		const int minutes = dod_retail_clamp(t / 60, 0, 99), seconds = t % 60;
-		const int plate_y = in->spectating ? (int)(in->screen_h / 480.0f * 54.0f + 0.5f) : 2;
+		const int plate_y = in->spectating ? (int)(in->screen_h / 480.0f * 54.0f + 0.5f) : 2 + st;
 		const int digit_y = plate_y + 6;
-		dod_retail_add(out, &n, max, dod_cell_timer, 0, plate_y);
-		dod_retail_add(out, &n, max, Dod_RetailTimerDigit(minutes / 10), 10, digit_y);
-		dod_retail_add(out, &n, max, Dod_RetailTimerDigit(minutes % 10), 24, digit_y);
-		dod_retail_add(out, &n, max, Dod_RetailTimerDigit(seconds / 10), 44, digit_y);
-		dod_retail_add(out, &n, max, Dod_RetailTimerDigit(seconds % 10), 58, digit_y);
+		dod_retail_add(out, &n, max, dod_cell_timer, sl, plate_y);
+		dod_retail_add(out, &n, max, Dod_RetailTimerDigit(minutes / 10), 10 + sl, digit_y);
+		dod_retail_add(out, &n, max, Dod_RetailTimerDigit(minutes % 10), 24 + sl, digit_y);
+		dod_retail_add(out, &n, max, Dod_RetailTimerDigit(seconds / 10), 44 + sl, digit_y);
+		dod_retail_add(out, &n, max, Dod_RetailTimerDigit(seconds % 10), 58 + sl, digit_y);
 	}
 
 	/* Objective icons (CObjectiveIcons::Draw): one 32x32 flag per area,
@@ -329,8 +332,8 @@ static inline int Dod_RetailHudLayoutText(const DodRetailInput *in, DodRetailDra
 	if (in->num_points > 0) {
 		const int count = in->num_points < DOD_RETAIL_MAX_POINTS ? in->num_points : DOD_RETAIL_MAX_POINTS;
 		const int icon_y = in->spectating ? (int)(2.0f * (54.0f * in->screen_h / 480.0f) + 0.5f)
-			: (int)(2.0f * in->screen_h / 480.0f + 0.5f);
-		int i, x = in->seconds_left >= 0 ? 82 : 10;
+			: (int)(2.0f * in->screen_h / 480.0f + 0.5f) + st;
+		int i, x = ( in->seconds_left >= 0 ? 82 : 10 ) + sl;
 		for (i = 0; i < count; i++, x += 34) {
 			DodRetailCell icon = { DOD_SHEET_OBJ_NEUTRAL, 0, 0, 32, 32 };
 			if (in->owner[i] == 1)

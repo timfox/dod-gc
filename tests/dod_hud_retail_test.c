@@ -258,8 +258,34 @@ static void test_ammo_title_safe(void)
 	(void)bottom;
 }
 
+static void test_corners_title_safe(void)
+{
+	DodRetailInput in = base();
+	DodRetailDraw d[DOD_RETAIL_MAX_DRAWS];
+	int n, i, minx = 9999, miny = 9999, maxy = 0;
+
+	in.show_reinforcements = 1;
+	in.seconds_left = 90;
+	in.num_points = 3;
+	in.safe_left = 32;
+	in.safe_top = 24;
+	in.safe_right = 32;
+	in.safe_bottom = 24;
+	n = Dod_RetailHudLayout(&in, d, DOD_RETAIL_MAX_DRAWS);
+	for (i = 0; i < n; i++) {
+		if (d[i].cell.sheet == DOD_SHEET_CROSS) continue;
+		if (d[i].x < minx) minx = d[i].x;
+		if (d[i].y < miny) miny = d[i].y;
+		if (d[i].y + d[i].cell.h > maxy) maxy = d[i].y + d[i].cell.h;
+	}
+	assert(minx >= 32);
+	assert(miny >= 24);
+	assert(maxy <= 480 - 24);
+}
+
 int main(void)
 {
+	test_corners_title_safe();
 	test_ammo_title_safe();
 	test_panel_full_health();
 	test_half_health_and_stamina();

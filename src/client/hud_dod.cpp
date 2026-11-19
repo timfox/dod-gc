@@ -385,8 +385,8 @@ int CHudDod::DrawRetail( float flTime )
 	in.screen_h = 480;
 	/* title-safe area: about 5% off the right and bottom edges so the ammo block is not lost to TV overscan or the
 	 * output edge. The text width is measured in the HUD font (wider than retail's at 640). */
-	in.safe_right = 32;
-	in.safe_bottom = 24;
+	in.safe_left = in.safe_right = 32;
+	in.safe_top = in.safe_bottom = 24;
 	in.text_w = (int)( gHUD.DrawHudStringLen( "x 99" ) / sx + 0.5f );
 	in.health = gHUD.m_Health.m_iHealth;
 	in.stamina = m_fHaveState ? (float)m_state.stamina : 100.0f;
