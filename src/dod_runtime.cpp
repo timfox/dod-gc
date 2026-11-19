@@ -1666,7 +1666,6 @@ private:
 	BOOL m_bHasBounds;
 	int m_iPointIndex;
 	BOOL m_bTouchKeys;	/* the map set point_can_allies_touch / point_can_axis_touch */
-	BOOL m_bFixed;	/* a flag that starts owned and has no way to be taken (no capture area, no touch keys): it only counts in the master's tally */
 	int m_iDefaultOwner;
 	int m_iPointsForCap;	/* point_points_for_cap: Score for each player who captures it */
 	int m_iTeamPoints, m_iTimePoints;	/* point_team_points (on capture), point_pointvalue (timed) */
@@ -1687,7 +1686,6 @@ CDoDControlPoint::CDoDControlPoint()
 {
 	m_iPointIndex = -1;
 	m_bTouchKeys = FALSE;
-	m_bFixed = FALSE;
 	m_iDefaultOwner = DOD_TEAM_UNASSIGNED;
 	m_iPointsForCap = 1;
 	m_iTeamPoints = 0;
@@ -1769,7 +1767,6 @@ void CDoDControlPoint::SetAreaDriven( float capture_seconds )
 	if( m_bAreaDriven )
 		return;
 	m_bAreaDriven = TRUE;
-	m_bFixed = FALSE;
 	if( capture_seconds > 0.0f )
 		Dod_RegisterObjective( m_iPointIndex, DOD_OBJ_CAPTURE_POINT, (DodTeam)m_iDefaultOwner,
 			capture_seconds, DOD_POINT_SCORE_PER_MINUTE );
@@ -1819,9 +1816,8 @@ void CDoDControlPoint::Spawn( void )
 			id++;
 		m_iPointIndex = id;
 	}
-	m_bFixed = ( m_iDefaultOwner == DOD_TEAM_ALLIES || m_iDefaultOwner == DOD_TEAM_AXIS ) && !m_bTouchKeys;
-	if( m_bFixed )
-		m_iAreaCanCap[0] = m_iAreaCanCap[DOD_TEAM_ALLIES] = m_iAreaCanCap[DOD_TEAM_AXIS] = 0;
+	/* A point that starts owned and has no capture area is still taken by touch, as in retail (flash's four owned points,
+	 * donner's HQ flags). Treating it as uncapturable left flash with no captures at all. */
 	Dod_RegisterObjective( m_iPointIndex, DOD_OBJ_CAPTURE_POINT,
 		(DodTeam)m_iDefaultOwner, 10.0f, DOD_POINT_SCORE_PER_MINUTE );
 	Dod_SetObjectivePointsForCap( m_iPointIndex, m_iPointsForCap );
@@ -1847,7 +1843,7 @@ void CDoDControlPoint::Think( void )
 		if( objective )
 			ShowOwner( objective->owner );
 	}
-	if( m_bAreaDriven || m_bFixed ) {
+	if( m_bAreaDriven ) {
 		pev->nextthink = gpGlobals->time + 0.25f;
 		return;
 	}
