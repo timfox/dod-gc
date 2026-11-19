@@ -1753,9 +1753,10 @@ void CDoDControlPoint::FillView( DodGCObjectiveView *view ) const
 		view->num_cap[DOD_TEAM_ALLIES] = m_iAreaNumCap[DOD_TEAM_ALLIES];
 		view->num_cap[DOD_TEAM_AXIS] = m_iAreaNumCap[DOD_TEAM_AXIS];
 	} else {
-		/* sphere capture (see Think): anyone may capture within 128 units */
-		view->mins = pev->origin - Vector( 128, 128, 128 );
-		view->maxs = pev->origin + Vector( 128, 128, 128 );
+		/* sphere capture (see Think): anyone may capture within 128 units. The box bots are told to stand in must sit inside
+		 * that sphere: a 128 box let them stop at its edge, up to 221 units out at a corner, and never capture (flash, donner). */
+		view->mins = pev->origin - Vector( 64, 64, 64 );
+		view->maxs = pev->origin + Vector( 64, 64, 64 );
 		view->can_cap[DOD_TEAM_ALLIES] = view->can_cap[DOD_TEAM_AXIS] = 1;
 		view->num_cap[DOD_TEAM_ALLIES] = view->num_cap[DOD_TEAM_AXIS] = 1;
 	}
