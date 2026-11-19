@@ -149,6 +149,7 @@ typedef struct DodBotState {
 	int path_len, path_idx;		/* nodes planned, and the one being walked to */
 	int path_goal;			/* goal id the path was planned for */
 	float path_replan;		/* earliest time to plan again */
+	int plan_resume, plan_resume_goal;	/* graph searches of the current plan attempt already done in earlier frames, and for which goal */
 	float path_best, path_progress_time;	/* closest approach to the current node, and when it improved */
 	int nav_fails;
 	int ladder_dir;			/* +1 climbing up, -1 down, 0 not on a ladder */
@@ -1112,13 +1113,15 @@ static BOOL NodeVisible( CBasePlayer *pBot, int node )
 
 /* Planning is the one expensive thing a bot does (a search over the whole graph), so it is rationed: at most
  * DOD_BOT_PLAN_SEARCHES searches per plan, and only one bot plans in a given server frame. */
-#define DOD_BOT_PLAN_SEARCHES 4
+#define DOD_BOT_PLAN_SEARCHES 4	/* per plan attempt, over as many server frames as it takes */
+#define DOD_BOT_PLAN_SEARCHES_PER_CALL 1	/* per server frame: one graph search lands on a frame, not four (a spike of 24 ms with 4 bots) */
 static float g_plan_stamp = -1.0f;
 
 static BOOL PlanPath( CBasePlayer *pBot, DodBotState *state )
 {
 	PhaseTimer timer( DOD_PH_PLAN );
-	int starts[6], goals[4], tmp[DOD_NAV_MAX_PATH], ns, ng, i, j, k, pass, len, searches = 0;
+	int starts[6], goals[4], tmp[DOD_NAV_MAX_PATH], ns, ng, i, j, k, pass, len, searches = 0, done_now = 0;
+	const int skip = state->plan_resume_goal == state->nav_id ? state->plan_resume : 0;
 	const Vector origin = pBot->pev->origin;
 	if( gpGlobals->time <= g_plan_stamp )
 	{
@@ -1148,8 +1151,21 @@ static BOOL PlanPath( CBasePlayer *pBot, DodBotState *state )
 				continue;
 			for( j = 0; j < ng; j++ )
 			{
-				if( searches++ >= DOD_BOT_PLAN_SEARCHES )
+				searches++;
+				if( searches <= skip )
+					continue;	/* tried in an earlier frame */
+				if( searches > DOD_BOT_PLAN_SEARCHES )
+				{
+					state->plan_resume = 0;
 					return FALSE;
+				}
+				if( done_now++ >= DOD_BOT_PLAN_SEARCHES_PER_CALL )
+				{
+					state->plan_resume = searches - 1;
+					state->plan_resume_goal = state->nav_id;
+					state->path_replan = gpGlobals->time + 0.05f;	/* carry on with the next candidate next frame */
+					return FALSE;
+				}
 				len = Dod_NavPath( &g_nav, starts[i], goals[j], tmp, DOD_NAV_MAX_PATH );
 				if( len <= 0 )
 					continue;
@@ -1166,6 +1182,7 @@ static BOOL PlanPath( CBasePlayer *pBot, DodBotState *state )
 					if( ( Vector( x1, y1, 0 ) - Vector( origin.x, origin.y, 0 ) ).Length() < ( Vector( x1, y1, 0 ) - Vector( x0, y0, 0 ) ).Length() )
 						state->path_idx = 1;
 				}
+				state->plan_resume = 0;
 				state->path_goal = state->nav_id;
 				state->path_best = 1e9f;
 				state->path_progress_time = gpGlobals->time;
@@ -1178,6 +1195,7 @@ static BOOL PlanPath( CBasePlayer *pBot, DodBotState *state )
 			}
 		}
 	}
+	state->plan_resume = 0;
 	return FALSE;
 }
 
