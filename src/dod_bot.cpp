@@ -619,8 +619,23 @@ static void PlanBots( void )
 			BotNote( "plan: time x10, humans*100+bots", (int)( gpGlobals->time * 10.0f ), humans * 100 + bots );
 		}
 	}
+	/* The test harness (dod_gc_autojoin "team class bots") names a bot count: the cvar set from the join path has
+	 * not been seen to stick on the GameCube listen route (the PlanBots log read 7 after "1 1 8"), so apply it
+	 * here, where the count is decided. */
+	int requested_bots = (int)CVAR_GET_FLOAT( "dod_bots" );
+	{
+		const char *aj = CVAR_GET_STRING( "dod_gc_autojoin" );
+		int aj_team = -1, aj_class = 0, aj_bots = -1;
+		if( aj && aj[0] && sscanf( aj, "%d %d %d", &aj_team, &aj_class, &aj_bots ) >= 3 && aj_bots >= 0 )
+		{
+			static int logged;
+			if( !logged++ )
+				BotNote( "autojoin bot count overrides dod_bots (cvar, autojoin)", requested_bots, aj_bots );
+			requested_bots = aj_bots;
+		}
+	}
 	target = Dod_BotTargetCount(
-		Dod_BotRequestedCount( (int)CVAR_GET_FLOAT( "dod_bots" ), NetworkUp(), CVAR_GET_FLOAT( "dod_bots_online" ) != 0.0f ),
+		Dod_BotRequestedCount( requested_bots, NetworkUp(), CVAR_GET_FLOAT( "dod_bots_online" ) != 0.0f ),
 		gpGlobals->maxClients, humans, DOD_BOT_HARD_CAP );
 	if( bots == 0 && target == 0 )
 		FreeBotState();
