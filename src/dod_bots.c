@@ -430,7 +430,9 @@ int Dod_BotChooseObjectiveRole(const DodBotObjectiveInfo *list, int count, DodTe
 int Dod_BotRole(int rank, int team_bots, int held_points)
 {
 	int defenders;
-	if (team_bots < 2 || held_points <= 0)
+	/* a team of three or fewer is all attackers: nobody is a permanent defender (a defender idling at its own point left a
+	 * two-bot team with one attacker, who could not take a point needing two players) */
+	if (team_bots <= 3 || held_points <= 0)
 		return DOD_ROLE_ATTACKER;
 	defenders = team_bots / 3;
 	if (defenders < 1)

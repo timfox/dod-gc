@@ -641,7 +641,8 @@ static void test_goap(void)
 	/* roles: a lone bot attacks; with a held point a third (at least one) of the team defends */
 	assert(Dod_BotRole(0, 1, 2) == DOD_ROLE_ATTACKER);
 	assert(Dod_BotRole(0, 3, 0) == DOD_ROLE_ATTACKER && Dod_BotRole(2, 3, 0) == DOD_ROLE_ATTACKER);
-	assert(Dod_BotRole(0, 2, 1) == DOD_ROLE_ATTACKER && Dod_BotRole(1, 2, 1) == DOD_ROLE_DEFENDER);
+	assert(Dod_BotRole(0, 2, 1) == DOD_ROLE_ATTACKER && Dod_BotRole(1, 2, 1) == DOD_ROLE_ATTACKER);	/* a small team is all attackers */
+	assert(Dod_BotRole(2, 3, 2) == DOD_ROLE_ATTACKER);
 	assert(Dod_BotRole(0, 6, 1) == DOD_ROLE_ATTACKER && Dod_BotRole(3, 6, 1) == DOD_ROLE_ATTACKER);
 	assert(Dod_BotRole(4, 6, 1) == DOD_ROLE_DEFENDER && Dod_BotRole(5, 6, 1) == DOD_ROLE_DEFENDER);
 
