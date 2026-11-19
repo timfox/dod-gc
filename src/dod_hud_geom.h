@@ -23,8 +23,8 @@
 #define DOD_HUD_PANEL_PAD 6	/* menu / voice / board panels: text inset */
 #define DOD_HUD_GAP 4		/* clearance kept between neighbouring elements */
 
-#define DOD_HUD_KILL_LINES 3	/* the kill feed shows at most this many lines */
-#define DOD_HUD_CHAT_LINES 5	/* saytext MAX_LINES */
+#define DOD_HUD_KILL_LINES 5	/* retail shows five; the chat block gives up lines instead */
+#define DOD_HUD_CHAT_LINES 3	/* saytext MAX_LINES: 5 feed + 3 chat lines of 38 px fill the 306 px band */
 #define DOD_HUD_MAX_FLAGS 12
 
 typedef struct DodRect {

@@ -221,6 +221,7 @@ def integrate_gc_hud(client: Path) -> None:
 	# Chat lines and the chat prompt inside the safe area (dod_hud_geom.h): lines bottom-anchored above the status panel,
 	# hidden while a modal panel or the prompt is up, the prompt above the on-screen keyboard.
 	say = client / "saytext.cpp"
+	replace_once(say, "#define MAX_LINES\t5\n", "#define MAX_LINES\tDOD_HUD_CHAT_LINES\n")
 	replace_once(say, "#define MAX_LINE_WIDTH  ( ScreenWidth - 40 )\n#define LINE_START  10\n",
 		"#define MAX_LINE_WIDTH  ( ScreenWidth - ScreenWidth / 20 )\n#define LINE_START  ( ScreenWidth / 20 )\n")
 	replace_once(say,
