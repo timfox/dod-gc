@@ -332,13 +332,9 @@ static void FreeBotState( void )
 {
 	FreeNav();
 	Dod_IntelReset( &g_intel );
-#if defined( __GAMECUBE__ )
-	g_bot = NULL;	/* BSS pool, nothing to free */
-#else
 	if( g_bot )
 		free( g_bot );
 	g_bot = NULL;
-#endif
 	g_bot_slots = 0;
 }
 
@@ -367,17 +363,7 @@ static BOOL EnsureBotState( void )
 		BotNote( "no bot state: too few slots", slots, DOD_BOT_MEM_BUDGET );
 		return FALSE;
 	}
-#if defined( __GAMECUBE__ )
-	/* Bot state lives in BSS: a 7-11 KB calloc late in the match fails on a fragmented heap that still reports tens
-	 * of KB free ("no bot state: out of memory" with 26 KB free and no bots at all). */
-	static unsigned char s_bot_pool[DOD_BOT_MEM_BUDGET] __attribute__((aligned( 32 )));
-	if( slots * (int)sizeof( DodBotState ) <= (int)sizeof( s_bot_pool )) {
-		memset( s_bot_pool, 0, sizeof( s_bot_pool ));
-		g_bot = (DodBotState *)s_bot_pool;
-	}
-#else
 	g_bot = (DodBotState *)calloc( slots, sizeof( DodBotState ) );
-#endif
 	if( !g_bot ) {
 		BotNote( "no bot state: out of memory", slots, (int)sizeof( DodBotState ) );
 		return FALSE;
