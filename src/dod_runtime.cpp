@@ -1548,6 +1548,7 @@ static void DodGC_UpdateMovement( void )
 
 #if defined( __GAMECUBE__ )
 extern "C" size_t GC_MemHeapFreeBytes( void );
+extern "C" void GC_HeapCensusReport( const char *stage );
 
 /* Free engine heap, sampled twice a second; the minimum is logged every 10 s (the margin on charlie is only ~32 KB). */
 static void DodGC_HeapMonitor( void )
@@ -1565,7 +1566,6 @@ static void DodGC_HeapMonitor( void )
 		ALERT( at_console, "DoD heap: free %u KB, lowest since start %u KB\n", (unsigned)( now_free / 1024 ), (unsigned)( lowest / 1024 ) );
 		{
 			/* Census builds only (engine XASH_GC_HEAP_CENSUS_BOOT): who holds the heap right now. A no-op otherwise. */
-			extern "C" void GC_HeapCensusReport( const char *stage );
 			GC_HeapCensusReport( "dod heap 10s" );
 		}
 	}
