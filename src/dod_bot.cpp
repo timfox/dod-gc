@@ -740,6 +740,40 @@ static void PlanBots( void )
 		next_edict_log = gpGlobals->time + 10.0f;
 		ALERT( at_console, "DoD edicts: %d in use of %d (%d humans, %d bots)\n", g_engfuncs.pfnNumberOfEntities(), gpGlobals->maxEntities, humans, bots );
 		{
+			/* what the edicts are: the top classnames by count (the cap, not memory, ends a crowded match) */
+			const char *cls[40];
+			int cnt[40], ncls = 0, ei, ci, top, round_;
+			for( ei = gpGlobals->maxClients + 1; ei < gpGlobals->maxEntities; ei++ )
+			{
+				edict_t *ee = INDEXENT( ei );
+				const char *cn;
+				if( !ee || ee->free || !ee->v.classname )
+					continue;
+				cn = STRING( ee->v.classname );
+				for( ci = 0; ci < ncls; ci++ )
+					if( !strcmp( cls[ci], cn ) )
+						break;
+				if( ci == ncls && ncls < 40 )
+				{
+					cls[ncls] = cn;
+					cnt[ncls++] = 0;
+				}
+				if( ci < ncls )
+					cnt[ci]++;
+			}
+			for( round_ = 0; round_ < 8; round_++ )
+			{
+				top = -1;
+				for( ci = 0; ci < ncls; ci++ )
+					if( cnt[ci] > 0 && ( top < 0 || cnt[ci] > cnt[top] ) )
+						top = ci;
+				if( top < 0 )
+					break;
+				ALERT( at_console, "DoD edict class %s x%d\n", cls[top], cnt[top] );
+				cnt[top] = 0;
+			}
+		}
+		{
 			/* where each bot stands against its goal: the quickest way to see a bot that cannot get anywhere */
 			int bi;
 			for( bi = 1; bi <= gpGlobals->maxClients && bi <= DOD_BOT_MAX_SLOTS; bi++ )
