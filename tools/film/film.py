@@ -21,7 +21,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from tools.film import actors, campath, clearance, shots, stamp, voice  # noqa: E402
+from tools.film import actors, campath, foley, clearance, shots, stamp, voice  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
 W, H = 1920, 1080
@@ -121,6 +121,7 @@ def build_timeline(ep, root=ROOT, voice_dir=None):
         seg["start"] = round(t, 3)
         seg["narration"] = narration_lines(src, voice_dir)
         seg["adr"] = adr_lines(src, voice_dir)
+        seg["foley"] = foley.expand({**src, "id": seg["id"]}, seg["dur"])
         seg["lower_third"] = src.get("lower_third")
         seg["chapter"] = src.get("chapter")
         for n in seg["narration"]:
@@ -398,9 +399,20 @@ def shot_clip(seg, frames, fps, aspect, grade, work, src_size):
     return out
 
 
+def music_path(name, plan_dir, root=ROOT):
+    """A music file: absolute, else next to the plan, else in the repo (social-media/music is kept out of git)."""
+    p = Path(name)
+    if p.is_absolute():
+        return p
+    for base in (plan_dir, root):
+        if (Path(base) / p).exists():
+            return Path(base) / p
+    raise SystemExit(f"music not found: {name} (looked in {plan_dir} and {root})")
+
+
 def build_audio(ep, timeline, plan_dir, work):
-    """Narration and ADR at their times over an optional music bed. The bed ducks under narration and,
-    less, under ADR; ADR ducks a little under narration so the voice-over always reads."""
+    """Narration, ADR and foley at their times over an optional music bed. The bed ducks under narration and,
+    less, under ADR; ADR and foley duck under narration so the voice-over always reads."""
     dur = timeline["duration"]
     inputs, nar, adr = [], [], []
 
@@ -425,9 +437,10 @@ def build_audio(ep, timeline, plan_dir, work):
                 left, right = g * min(1.0, 1 - a["pan"]), g * min(1.0, 1 + a["pan"])
                 add(a["audio"], s["start"] + a["at"], f"pan=stereo|c0={left:.3f}*c0|c1={right:.3f}*c0", adr, "ADR")
     music = ep.get("music")
+    fol = foley.build_track(ep, timeline, work, ROOT)
     out = work / "audio.wav"
     base = ["ffmpeg", "-v", "error", "-y"]
-    if not nar and not adr and not music:
+    if not nar and not adr and not music and not fol:
         run(base + ["-f", "lavfi", "-t", f"{dur:.3f}", "-i", "anullsrc=r=48000:cl=stereo", str(out)])
         return out
     fc = nar + adr
@@ -440,14 +453,23 @@ def build_audio(ep, timeline, plan_dir, work):
         return None
 
     voice_bus, adr_bus = bus(nar, "n", "voice"), bus(adr, "a", "adr")
+    fx_bus = None
+    if fol:
+        fi = inputs.count("-i")
+        inputs += ["-i", str(fol)]
+        fc.append(f"[{fi}:a]aresample=48000,apad[fx]")
+        fx_bus = "fx"
     if music:
-        mp = Path(music["file"]) if Path(music["file"]).is_absolute() else plan_dir / music["file"]
+        mp = music_path(music["file"], plan_dir)
         mi = inputs.count("-i")
-        inputs += ["-stream_loop", "-1", "-i", str(mp)]
-        fc.append(f"[{mi}:a]aresample=48000,volume={music.get('gain', 0.35)},"
-                  f"afade=t=out:st={max(0, dur - 4):.2f}:d=4[bed]")
+        # "start" skips into the track (a lead-in, or a better section); "fade_in" brings the bed up gently
+        inputs += ["-stream_loop", "-1", "-ss", f"{float(music.get('start', 0)):.3f}", "-i", str(mp)]
+        fade_in = float(music.get("fade_in", 0))
+        fc.append(f"[{mi}:a]aresample=48000,aformat=channel_layouts=stereo,volume={music.get('gain', 0.35)},"
+                  + (f"afade=t=in:st=0:d={fade_in:.2f}," if fade_in else "")
+                  + f"afade=t=out:st={max(0, dur - float(music.get('fade_out', 4))):.2f}:d={float(music.get('fade_out', 4)):.2f}[bed]")
     # every bus the bed and ADR key off has to be split once per use
-    keys = {"voice": (["adr"] if adr_bus else []) + (["bed"] if music else []),
+    keys = {"voice": (["adr"] if adr_bus else []) + (["fx"] if fx_bus else []) + (["bed"] if music else []),
             "adr": ["bed"] if music else []}
     for name, uses in (("voice", keys["voice"]), ("adr", keys["adr"])):
         if (voice_bus if name == "voice" else adr_bus) and uses:
@@ -455,6 +477,13 @@ def build_audio(ep, timeline, plan_dir, work):
         elif (voice_bus if name == "voice" else adr_bus):
             fc.append(f"[{name}]anull[{name}_m]")
     final = []
+    if fx_bus:
+        # the battle stays under the narrator; it doesn't push the music around
+        if voice_bus:
+            fc.append("[fx][voice_kfx]sidechaincompress=threshold=0.04:ratio=4:attack=30:release=500[fx_d]")
+            final.append("[fx_d]")
+        else:
+            final.append("[fx]")
     if adr_bus:
         if voice_bus:
             fc.append("[adr_m][voice_kadr]sidechaincompress=threshold=0.05:ratio=3:attack=30:release=400[adr_d]")

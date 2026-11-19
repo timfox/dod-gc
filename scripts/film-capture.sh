@@ -90,7 +90,7 @@ Muted = True
 [Interface]
 ConfirmStop = False
 [General]
-DumpPath = $DUMP/
+DumpPath = $DUMP
 [Movie]
 DumpFrames = True
 DumpFramesSilent = True
@@ -98,8 +98,6 @@ INI
 	# Older Dolphin builds read the dump switches from GFX.ini, newer ones from [Movie] in Dolphin.ini: set both
 	cat > "$USER_DIR/Config/GFX.ini" <<INI
 [Settings]
-DumpFrames = True
-DumpFramesSilent = True
 DumpFramesAsImages = True
 DumpPath = $DUMP
 InternalResolution = $FILM_IR
@@ -117,7 +115,7 @@ OSREPORT = True
 Verbosity = 3
 WriteToFile = True
 INI
-	dodgc_pkill_own_dolphin "${XDG_RUNTIME_DIR:-/tmp}/dodgc-film-"
+	dodgc_pkill_own_dolphin "$USER_DIR"  # only this run's Dolphin: another capture may be running
 	set +e
 	"$DOLPHIN" -u "$USER_DIR" -e "$ISO" >"$LOG" 2>&1 &
 	DPID=$!
@@ -139,17 +137,18 @@ INI
 	kill "$DPID" 2>/dev/null || true
 	wait "$DPID" 2>/dev/null || true
 	cat "$USER_DIR"/Logs/*.log >> "$LOG" 2>/dev/null || true
-	# Dolphin writes into DumpPath/Frames on some versions, and into the user folder's Dump/Frames on others
-	for frames in "$DUMP/Frames" "$USER_DIR/Dump/Frames"; do
-		if [[ -d "$frames" ]]; then
-			find "$frames" -maxdepth 1 -type f -exec mv -t "$DUMP" {} +
-			rmdir "$frames" 2>/dev/null || true
+	# Dolphin writes into DumpPath/Frames on some versions, or its user dir's Dump/Frames
+	for fd in "$DUMP/Frames" "$USER_DIR/Dump/Frames"; do
+		if [[ -d "$fd" ]]; then
+			find "$fd" -maxdepth 1 -type f -name 'framedump*' -exec mv -t "$DUMP" {} +
+			rmdir "$fd" 2>/dev/null || true
 		fi
 	done
-	n=$(find "$DUMP" -maxdepth 1 -type f | wc -l)
+	n=$(find "$DUMP" -maxdepth 1 -type f -name 'framedump*' | wc -l)
 	grep -aoE "CINE (START|DONE|STOP) [^\r]*" "$LOG" | sort -u | sed 's/^/    /' || true
 	echo "==> $MAP: session_done=$done_ok images=$n -> $DUMP"
 	(( done_ok )) || { echo "error: $MAP did not finish its shots (timeout ${FILM_TIMEOUT}s or failure)" >&2; exit 1; }
+	(( n > 0 )) || { echo "error: $MAP played its shots but Dolphin dumped no frames (check [Movie] DumpFrames in $USER_DIR/Config/Dolphin.ini)" >&2; exit 1; }
 done
 
 if (( ASSEMBLE )); then

@@ -21,9 +21,11 @@ film/episodes/<ep>.json ──plan──▶ out/film/<ep>/cine/*.cam + film-<map
 | `tools/film/film.py` | `plan`, `boards`, `animatic`, `assemble`. |
 | `tools/film/actors.py`, `src/dod_film.c`, `src/dod_film_actor.cpp` | Actors: soldiers placed and moving in a shot (below). |
 | `tools/film/voice.py` | Narration and ADR rendered with a local TTS model (Qwen3-TTS), effects, levels, and the dialogue mix (below). |
+| `tools/film/foley.py` | Foley: the game's own sounds placed under each shot (below). |
 | `tools/film/stamp.py` | Reads the engine's frame stamp off captured images. |
 | `scripts/film-capture.sh` | Plan, build a listen disc per map with `build-lean-iso.sh --film`, run Dolphin with frame dumping until the engine logs `FILM SESSION DONE`, then assemble. |
-| `film/episodes/` | Episodes. `ep01-omaha.json` is the sample: Omaha Beach on 6 June 1944, six shots on `dod_charlie`. |
+| `film/episodes/` | Episodes: `ep01-omaha` (dod_charlie), `ep02-salerno` (dod_avalanche), `ep03-lafiere` (dod_merderet), each with a fact check. `film/SERIES.md` matches the other maps to events. |
+| `tools/film/scout.py` | Renders the real map (BSP, WAD textures, lightmaps) from any camera on the host, for framing shots before capture (below). |
 
 ## Episode format
 
@@ -32,7 +34,8 @@ film/episodes/<ep>.json ──plan──▶ out/film/<ep>/cine/*.cam + film-<map
   "id": "ep01-omaha", "title": "...", "fps": 30,
   "aspect": "2.39",            // 16:9, 1.85 or 2.39 (letterboxed in a 1920x1080 frame)
   "grade": "archival",         // clean, archival (muted, warm, grain, vignette) or monochrome
-  "music": {"file": "music/bed.wav", "gain": 0.35},          // optional; ducks under narration
+  "music": {"file": "social-media/music/Mournful March.mp3",  // optional; ducks under narration and ADR
+            "gain": 0.3, "start": 0.5, "fade_in": 3, "fade_out": 6},  // file: absolute, next to the plan, or in the repo
   "anchors": {"dod_charlie": {"shingle": [0, -384], "sea": [-352, -3420, -250]}},
   "server_cmds": {"dod_charlie": ["dod_bots 8"]},             // console lines before the shots
   "sequence": [
@@ -163,6 +166,45 @@ tools/film/film.py animatic film/episodes/ep01-omaha.json     # the animatic, no
 `--backend placeholder` renders speech-shaped noise of the right length instead, to check timing and the
 mix with no GPU. The models download from Hugging Face on first use (about 9 GB for both).
 
+## Scouting the real map
+
+`tools/film/scout.py` draws what a camera sees in the actual level, on the host, from the map's BSP and its
+WAD textures with the baked lightmaps: about a fifth of a second a frame with numba installed. Use it to
+place cameras before anything goes to Dolphin; the waypoint sketch in the boards cannot show walls, roofs or
+rubble.
+
+```
+export FILM_BSP_DIR=content/dod/maps FILM_WAD_DIR=content/dod      # the defaults on the capture machine
+tools/film/scout.py top  dod_avalanche -o top.png                 # overhead, grid every 512 units, flags and spawns
+tools/film/scout.py view dod_avalanche 220 260 -60 --look -300 -250 -150 --fov 60 -o v.png
+tools/film/scout.py shots film/episodes/ep02-salerno.json         # A, middle and B frame of every shot + contact.jpg
+```
+
+Shot frames mark each actor with a box at his place at that moment (grey when a wall hides his feet). It
+draws brush geometry only: no studio models (trees placed as models, guns, vehicles), sprites, decals, fog or
+sky box, and masked textures (fences, foliage brushes) are cut out at palette index 255. Brush entities
+rendered at zero amount (clip walls, light shafts) are left out, as the game does.
+
+## Foley from the game
+
+`tools/film/foley.py` lays the game's own sounds under a shot: surf and wind beds, MG and rifle fire,
+explosions, footsteps. A shot's `foley` list names sounds by their path under the game's sound folders
+(`weapons/mg42_shoot.wav`), found in the episode's `foley_dirs` (default `content/dod/sound`, then
+`content/valve/sound`, the retail files on the capture machine; never committed).
+
+```json
+"foley": [
+  {"sound": "ambience/waves.wav", "loop": true, "gain": -16, "fade": 1.5},
+  {"sound": ["weapons/mg42_shoot.wav", "weapons/30cal_shoot.wav"], "at": 1, "dur": 10,
+   "every": [1.2, 3.0], "gain": -20, "pan": [-0.6, 0.6], "fx": "distant"},
+  {"sound": "weapons/explode3.wav", "at": 6.5, "gain": -12, "fx": "distant", "rate": 0.8}
+]
+```
+
+`loop` makes a bed for `dur` (default: the rest of the shot); `every: [min, max]` repeats hits at random
+spacing, each picking a sound from the list, a level near `gain` and a place in `pan`'s range; `fx` takes the
+voice effects; `rate` below 1 slows and deepens a sound. Cues are seeded, so a re-assemble sounds the same.
+The foley track ducks under narration and leaves the music alone. A missing sound is a warning.
 ## Clearance: no camera through the map
 
 The engine camera has no collision, so `film.py check <ep>.json` (and every `plan`, which the capture script
@@ -206,6 +248,12 @@ These films are about real events in which real people died. Narration states on
 support, with numbers given as estimates where the sources do. Each episode lists its `sources`, opens with
 a note that the scenes are game recreations and not archive footage, and closes with a dedication. No
 gore beyond what the game shows, no glorification, no invented personal stories presented as real.
+
+Each episode keeps a fact check beside it (`film/episodes/<ep>.factcheck.md`): every spoken line, card and
+lower third with the source that supports it, and what changed. Re-check it whenever narration changes.
+
+Music beds come from `social-media/music` (Tim's own tracks, made with Suno, kept out of git); check the
+plan's commercial-use terms before publishing.
 
 Footage uses Valve's Day of Defeat assets from a legally owned copy; check the publishing terms before
 releasing anything outside the project.

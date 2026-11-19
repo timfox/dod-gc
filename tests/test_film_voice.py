@@ -10,7 +10,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from tools.film import film, voice  # noqa: E402
+from tools.film import film, foley, voice  # noqa: E402
 
 VOICES = {
     "narrator": {"design": "Older man, deep calm voice", "delivery": "Measured and grave", "mode": "clone"},
@@ -85,6 +85,32 @@ class LineTests(unittest.TestCase):
         self.assertNotEqual(k, voice.line_key(ep, {**ln, "take": 2}, "qwen3"))
 
 
+class FoleyTests(unittest.TestCase):
+    SRC = {"id": "s1", "foley": [
+        {"sound": "ambience/surf.wav", "loop": True, "gain": -16, "fade": 1},
+        {"sound": ["weapons/mg42_shoot.wav", "weapons/30cal_shoot.wav"], "at": 1, "dur": 8, "every": [1, 2],
+         "pan": [-0.5, 0.5], "fx": "distant"},
+        {"sound": "weapons/explode3.wav", "at": 6.5, "rate": 0.8}]}
+
+    def test_expand(self):
+        ev = foley.expand(self.SRC, 12.0)
+        self.assertEqual(ev, foley.expand(self.SRC, 12.0))          # seeded: the same every time
+        bed = ev[0]
+        self.assertTrue(bed["loop"])
+        self.assertEqual((bed["at"], bed["dur"]), (0.0, 12.0))      # a bed runs to the end of the segment
+        hits = [e for e in ev if e["id"].startswith("s1_fol02_")]
+        self.assertGreaterEqual(len(hits), 4)
+        self.assertTrue(all(1 <= e["at"] < 9 for e in hits))
+        self.assertTrue(all(-0.5 <= e["pan"] <= 0.5 for e in hits))
+        gaps = [b["at"] - a["at"] for a, b in zip(hits, hits[1:])]
+        self.assertTrue(all(0.99 <= g <= 2.01 for g in gaps))
+        self.assertEqual(ev[-1]["rate"], 0.8)
+
+    def test_needs_a_sound(self):
+        with self.assertRaises(ValueError):
+            foley.expand({"id": "x", "foley": [{"at": 1}]}, 5)
+
+
 @unittest.skipUnless(shutil.which("ffmpeg"), "needs ffmpeg")
 class RenderTests(unittest.TestCase):
     def test_placeholder_render_lands_on_the_clock_and_in_the_mix(self):
@@ -111,6 +137,15 @@ class RenderTests(unittest.TestCase):
             subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "sine=f=110:d=4", str(out / "bed.wav")],
                            check=True)
             ep["music"] = {"file": "bed.wav", "gain": 0.3}
+            snd = out / "sound"
+            (snd / "weapons").mkdir(parents=True)
+            subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "anoisesrc=d=0.4:a=0.5",
+                            str(snd / "weapons" / "mg42_shoot.wav")], check=True)
+            ep["foley_dirs"] = [str(snd)]
+            ep["sequence"][0]["card"]["foley"] = [
+                {"sound": "weapons/mg42_shoot.wav", "at": 1, "dur": 6, "every": [0.8, 1.5], "fx": "distant"},
+                {"sound": "weapons/mg42_shoot.wav", "loop": True, "gain": -24, "fade": 1},
+                {"sound": "weapons/not_there.wav", "at": 2}]
             tl = film.build_timeline(ep, voice_dir=vdir)
             a = tl["segments"][0]
             n1, n2 = a["narration"]
@@ -125,6 +160,10 @@ class RenderTests(unittest.TestCase):
             work = out / "work"
             work.mkdir()
             mixed = film.build_audio(ep, tl, out, work)
+            fol = work / "foley" / "foley.wav"
+            self.assertTrue(fol.exists())
+            with wave.open(str(fol)) as w:
+                self.assertAlmostEqual(w.getnframes() / w.getframerate(), 18.0, places=1)
             with wave.open(str(mixed)) as w:
                 self.assertEqual(w.getnchannels(), 2)
                 self.assertAlmostEqual(w.getnframes() / w.getframerate(), 18.0, places=1)
