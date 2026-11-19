@@ -1563,6 +1563,11 @@ static void DodGC_HeapMonitor( void )
 	if( gpGlobals->time >= next_log ) {
 		next_log = gpGlobals->time + 10.0f;
 		ALERT( at_console, "DoD heap: free %u KB, lowest since start %u KB\n", (unsigned)( now_free / 1024 ), (unsigned)( lowest / 1024 ) );
+		{
+			/* Census builds only (engine XASH_GC_HEAP_CENSUS_BOOT): who holds the heap right now. A no-op otherwise. */
+			extern "C" void GC_HeapCensusReport( const char *stage );
+			GC_HeapCensusReport( "dod heap 10s" );
+		}
 	}
 }
 #else
