@@ -322,6 +322,8 @@ static void DodGC_EnterObserver( CBasePlayer *pPlayer, BOOL announce )
 	}
 	joining = false;
 	DodGC_EnsurePlayer( pPlayer );
+	ALERT( at_console, "DoD spectator joined: mode=%d target=%d team=%d\n", pPlayer->pev->iuser1, pPlayer->pev->iuser2, (int)DodGC_TeamForPlayer( pPlayer ) );
+	ClientPrint( pPlayer->pev, HUD_PRINTTALK, "You are spectating. Fire/Aim: next/previous player, Jump: camera mode.\n" );
 	if( announce )
 		ClientPrint( pPlayer->pev, HUD_PRINTTALK, "You are spectating. Fire/Aim: next/previous player, Jump: camera mode.\n" );
 }
