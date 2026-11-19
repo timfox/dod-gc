@@ -37,6 +37,68 @@ static void test_pull_in(void)
 	assert(o[0] == 0.0f);
 }
 
+static void test_look_at(void)
+{
+	const float from[3] = { 0, 0, 100 }, below[3] = { 100, 0, 0 }, left[3] = { 0, 50, 100 };
+	float a[3];
+	DodCam_LookAt(from, below, a);
+	assert(near(a[1], 0.0f, 0.01f) && near(a[0], 45.0f, 0.01f) && a[2] == 0.0f);	/* down is +pitch */
+	DodCam_LookAt(from, left, a);
+	assert(near(a[1], 90.0f, 0.01f) && near(a[0], 0.0f, 0.01f));
+}
+
+static void test_shots_frame_the_target(void)
+{
+	const float feet[3] = { 1000, -500, 64 };
+	int shot, i;
+	for (shot = 0; shot < DODCAM_SHOTS; shot++) {
+		for (i = 0; i <= 10; i++) {
+			float o[3], a[3], dx, dy, d, yawto;
+			DodCam_ShotPose(shot, i / 10.0f, feet, 30.0f, shot, o, a);
+			dx = feet[0] - o[0];
+			dy = feet[1] - o[1];
+			d = sqrtf(dx * dx + dy * dy);
+			assert(d > 60.0f && d < 260.0f);		/* never inside or far from the soldier */
+			assert(o[2] >= feet[2] && o[2] < feet[2] + 260.0f);
+			yawto = atan2f(dy, dx) * (180.0f / 3.14159265f);
+			assert(fabsf(DodCam_AngleDelta(a[1], yawto)) < 0.1f);	/* aimed at the target */
+			assert(a[0] > -60.0f && a[0] < 80.0f && a[2] == 0.0f);
+		}
+	}
+}
+
+static void test_shots_move_smoothly(void)
+{
+	const float feet[3] = { 0, 0, 0 };
+	int shot, i;
+	for (shot = 0; shot < DODCAM_SHOTS; shot++) {
+		float prev[3], o[3], a[3];
+		DodCam_ShotPose(shot, 0.0f, feet, 0.0f, 0, prev, a);
+		for (i = 1; i <= 360; i++) {	/* 6 s at 60 fps */
+			float dx, dy, dz;
+			DodCam_ShotPose(shot, i / 360.0f, feet, 0.0f, 0, o, a);
+			dx = o[0] - prev[0]; dy = o[1] - prev[1]; dz = o[2] - prev[2];
+			assert(sqrtf(dx * dx + dy * dy + dz * dz) < 3.0f);	/* no jump inside a shot */
+			memcpy(prev, o, sizeof(prev));
+		}
+	}
+}
+
+static void test_cine_cuts(void)
+{
+	DodCamCine c;
+	float t;
+	memset(&c, 0, sizeof(c));
+	assert(DodCam_CineStep(&c, 3, 10.0f, &t) && t == 0.0f && c.shot == 0);
+	assert(!DodCam_CineStep(&c, 3, 13.0f, &t) && near(t, 0.5f, 0.001f));
+	assert(DodCam_CineStep(&c, 3, 16.0f, &t) && c.shot == 1);	/* shot time over: next shot */
+	assert(DodCam_CineStep(&c, 4, 16.5f, &t) && c.shot == 2 && t == 0.0f);	/* new target: cut */
+	assert(DodCam_CineStep(&c, 4, 1.0f, &t));	/* clock went back (new map): restart */
+	for (int i = 0; i < 10; i++)
+		DodCam_CineStep(&c, 4, 100.0f + i * 7.0f, &t);
+	assert(c.shot >= 0 && c.shot < DODCAM_SHOTS);
+}
+
 static void test_first_frame_snaps_then_follows(void)
 {
 	DodCamState s;
@@ -128,6 +190,10 @@ int main(void)
 {
 	test_passthrough_outside_chase();
 	test_pull_in();
+	test_look_at();
+	test_shots_frame_the_target();
+	test_shots_move_smoothly();
+	test_cine_cuts();
 	test_first_frame_snaps_then_follows();
 	test_frame_rate_independent();
 	test_snaps();
