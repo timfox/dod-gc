@@ -1319,6 +1319,10 @@ int Dod_BotAnswersIntel(float aggression, int role, float distance, int kind, fl
 	if (aggression > 1.0f)
 		aggression = 1.0f;
 	p = 0.25f + 0.75f * aggression;
+	/* a call-out within 1500 units always pulls a defender off its post: the fight is on its doorstep (the sides never met on
+	 * charlie and avalanche while defenders stood still at their points) */
+	if (role == DOD_ROLE_DEFENDER && distance < 1500.0f)
+		return 1;
 	if (role == DOD_ROLE_DEFENDER)
 		p *= 0.5f;
 	if (kind == DOD_INTEL_DEATH)

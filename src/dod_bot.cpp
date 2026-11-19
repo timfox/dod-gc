@@ -226,16 +226,88 @@ static DodBotState *BotState( int index )
  * runs on a map, freed with the bot state or when the map changes. Without it bots steer with the look-ahead. */
 static DodNav g_nav;
 static DodTeamIntel g_intel;	/* what each team knows about where the enemy is (shared by its bots) */
+/* walls bots breached (see BreachWall) */
+static struct { int ent; float first; int done; } g_breach[8];
 static byte *g_nav_file;
 static char g_nav_map[32];
 
 static void FreeNav( void )
 {
+	memset( g_breach, 0, sizeof( g_breach ) );
 	Dod_NavFree( &g_nav );
 	if( g_nav_file )
 		FREE_FILE( g_nav_file );
 	g_nav_file = NULL;
 	g_nav_map[0] = '\0';
+}
+
+/* A solid func_wall_toggle across the way (charlie's shingle walls: the Allies are meant to blow them with satchels at the
+ * capture areas, which bots do not do). A bot stuck on one for DOD_BOT_BREACH_DELAY seconds breaches it, as if a satchel went off:
+ * the wall's own targetname is fired, which toggles it away like the map's logic would. */
+#define DOD_BOT_BREACH_DELAY 15.0f
+
+static void BreachWall( CBasePlayer *pBot, edict_t *wall )
+{
+	int i, free_slot = -1;
+	if( !FClassnameIs( wall, "func_wall_toggle" ) || wall->v.solid == SOLID_NOT || FStringNull( wall->v.targetname ) )
+		return;
+	for( i = 0; i < 8; i++ )
+	{
+		if( g_breach[i].ent == ENTINDEX( wall ) )
+			break;
+		if( !g_breach[i].ent && free_slot < 0 )
+			free_slot = i;
+	}
+	if( i == 8 )
+	{
+		if( free_slot < 0 )
+			return;
+		i = free_slot;
+		g_breach[i].ent = ENTINDEX( wall );
+		g_breach[i].first = gpGlobals->time;
+		g_breach[i].done = 0;
+	}
+	if( g_breach[i].done || gpGlobals->time - g_breach[i].first < DOD_BOT_BREACH_DELAY )
+		return;
+	g_breach[i].done = 1;
+	ALERT( at_console, "DoD bot %s breaches the wall %s (ent %d) after %.0f s stuck on it\n", STRING( pBot->pev->netname ),
+		STRING( wall->v.targetname ), ENTINDEX( wall ), gpGlobals->time - g_breach[i].first );
+	FireTargets( STRING( wall->v.targetname ), pBot, pBot, USE_TOGGLE, 0 );
+}
+
+/* A bot got stuck on a brush entity (a func_wall the waypoint graph was not baked with): every edge whose hull trace hits that
+ * same entity is avoided for 15 minutes, not just the one the bot was on, so the next plan does not walk into the same wall by
+ * a neighbouring edge. At most once per entity every 20 s. */
+static void BlockEdgesAround( edict_t *blocker, float now )
+{
+	static int candidates[256];
+	static float next_for[32];
+	float mins[1][3], maxs[1][3];
+	int n, i, blocked = 0;
+	const int slot = ENTINDEX( blocker ) & 31;
+	if( now < next_for[slot] || g_nav.node_count < 1 )
+		return;
+	next_for[slot] = now + 20.0f;
+	mins[0][0] = blocker->v.absmin.x - 24.0f; mins[0][1] = blocker->v.absmin.y - 24.0f; mins[0][2] = blocker->v.absmin.z - 24.0f;
+	maxs[0][0] = blocker->v.absmax.x + 24.0f; maxs[0][1] = blocker->v.absmax.y + 24.0f; maxs[0][2] = blocker->v.absmax.z + 24.0f;
+	n = Dod_NavEdgesCrossing( &g_nav, mins, maxs, 1, candidates, (int)( sizeof( candidates ) / sizeof( candidates[0] ) ) );
+	for( i = 0; i < n && blocked < 96; i++ )
+	{
+		int from, to;
+		float ax, ay, az, bx, by, bz;
+		TraceResult tr;
+		Dod_NavEdgeNodes( &g_nav, candidates[i], &from, &to );
+		Dod_NavNodePos( &g_nav, from, &ax, &ay, &az );
+		Dod_NavNodePos( &g_nav, to, &bx, &by, &bz );
+		UTIL_TraceHull( Vector( ax, ay, az ), Vector( bx, by, bz ), ignore_monsters, human_hull, NULL, &tr );
+		if( tr.flFraction < 1.0f && tr.pHit == blocker )
+		{
+			Dod_NavPenalize( &g_nav, from, to, now + 900.0f );
+			blocked++;
+		}
+	}
+	ALERT( at_console, "DoD nav: %s (ent %d, model %s) traps bots: %d of %d edges through it avoided for 15 minutes\n", STRING( blocker->v.classname ),
+		ENTINDEX( blocker ), STRING( blocker->v.model ), blocked, n );
 }
 
 /* How long an edge that bots got stuck on stays penalised: doubles with every report (a table of the worst ones). */
@@ -1325,6 +1397,34 @@ static BOOL NavTarget( CBasePlayer *pBot, DodBotState *state, Vector *target )
 						STRING( pBot->pev->netname ), th.flFraction, (int)th.fStartSolid, (int)th.fAllSolid,
 						th.pHit ? STRING( th.pHit->v.classname ) : "none", th.pHit ? ENTINDEX( th.pHit ) : -1, th.vecPlaneNormal.x, th.vecPlaneNormal.y, th.vecPlaneNormal.z,
 						tf.flFraction, (int)tf.fStartSolid, origin.x, origin.y, origin.z, to.x, to.y, to.z );
+				}
+			}
+			{
+				/* what blocks the way: a brush entity (a wall, a toggle wall) rather than the map itself, and the bot's whole situation */
+				TraceResult bh;
+				edict_t *blocker = NULL;
+				static int ctx_logs;
+				UTIL_TraceHull( origin, Vector( nx, ny, origin.z ), ignore_monsters, human_hull, pBot->edict(), &bh );
+				if( bh.flFraction < 1.0f && bh.pHit && !FNullEnt( bh.pHit ) && ENTINDEX( bh.pHit ) > 0 && !( bh.pHit->v.flags & ( FL_CLIENT | FL_FAKECLIENT ) ) )
+					blocker = bh.pHit;
+				if( ctx_logs < 40 )
+				{
+					const int pn = state->path_idx > 0 ? state->path[state->path_idx - 1] : -1;
+					float px = 0, py = 0, pz = 0;
+					ctx_logs++;
+					if( pn >= 0 )
+						Dod_NavNodePos( &g_nav, pn, &px, &py, &pz );
+					ALERT( at_console, "DoD stuck ctx %s: team %d action %s goal %s %d, edge %d -> %d (kind %d) from %.0f,%.0f,%.0f to %.0f,%.0f,%.0f, bot at %.0f,%.0f,%.0f, blocker %s (ent %d)\n",
+						STRING( pBot->pev->netname ), (int)TeamOf( pBot ), g_action_names[state->behavior], state->has_goal ? "id" : "none", state->has_goal ? state->goal_id : -1,
+						pn, state->path[state->path_idx], pn >= 0 ? Dod_NavEdgeKind( &g_nav, pn, state->path[state->path_idx] ) : -1, px, py, pz, nx, ny, nz,
+						origin.x, origin.y, origin.z, blocker ? STRING( blocker->v.classname ) : "none", blocker ? ENTINDEX( blocker ) : -1 );
+				}
+				if( blocker )
+				{
+					if( FClassnameIs( blocker, "func_wall_toggle" ) )
+						BreachWall( pBot, blocker );
+					else
+						BlockEdgesAround( blocker, now );
 				}
 			}
 			{
