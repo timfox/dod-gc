@@ -1506,7 +1506,7 @@ static BOOL NavTarget( CBasePlayer *pBot, DodBotState *state, Vector *target )
 				}
 				{
 					/* the top stuck edges, so each cause can be named: edge, kind, blocker, count; printed every 60 s */
-					struct StuckEdge { int a, b, kind, count, ent; char cls[24]; };
+					struct StuckEdge { int a, b, kind, count, ent; char cls[24]; float frac, nrm[3], ox, oy, oz; };
 					static StuckEdge top[48];
 					static int ntop;
 					static float next_report;
@@ -1528,6 +1528,8 @@ static BOOL NavTarget( CBasePlayer *pBot, DodBotState *state, Vector *target )
 						top[k].ent = blocker ? ENTINDEX( blocker ) : -1;
 						strncpy( top[k].cls, blocker ? STRING( blocker->v.classname ) : "map", sizeof( top[k].cls ) - 1 );
 						top[k].cls[sizeof( top[k].cls ) - 1] = 0;
+						top[k].frac = bh.flFraction; top[k].nrm[0] = bh.vecPlaneNormal.x; top[k].nrm[1] = bh.vecPlaneNormal.y; top[k].nrm[2] = bh.vecPlaneNormal.z;
+						top[k].ox = origin.x; top[k].oy = origin.y; top[k].oz = origin.z;
 					}
 					if( now >= next_report )
 					{
@@ -1541,7 +1543,14 @@ static BOOL NavTarget( CBasePlayer *pBot, DodBotState *state, Vector *target )
 									best = j;
 							if( best < 0 )
 								break;
-							ALERT( at_console, "DoD stuck top %d: edge %d -> %d (kind %d) blocker %s (ent %d) x%d\n", shown + 1, top[best].a, top[best].b, top[best].kind, top[best].cls, top[best].ent, top[best].count );
+							{
+								float ax = 0, ay = 0, az = 0, bx = 0, by = 0, bz = 0;
+								if( top[best].a >= 0 ) Dod_NavNodePos( &g_nav, top[best].a, &ax, &ay, &az );
+								if( top[best].b >= 0 ) Dod_NavNodePos( &g_nav, top[best].b, &bx, &by, &bz );
+								ALERT( at_console, "DoD stuck top %d: edge %d -> %d (kind %d) blocker %s (ent %d) x%d; node a %.0f,%.0f,%.0f b %.0f,%.0f,%.0f; last bot %.0f,%.0f,%.0f, hull trace frac %.2f normal %.2f,%.2f,%.2f\n",
+									shown + 1, top[best].a, top[best].b, top[best].kind, top[best].cls, top[best].ent, top[best].count, ax, ay, az, bx, by, bz,
+									top[best].ox, top[best].oy, top[best].oz, top[best].frac, top[best].nrm[0], top[best].nrm[1], top[best].nrm[2] );
+							}
 							top[best].count = -top[best].count;
 						}
 						for( int j = 0; j < ntop; j++ )
