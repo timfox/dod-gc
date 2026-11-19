@@ -1238,7 +1238,7 @@ static BOOL NodeVisible( CBasePlayer *pBot, int node )
 /* Planning is the one expensive thing a bot does (a search over the whole graph), so it is rationed: at most
  * DOD_BOT_PLAN_SEARCHES searches per plan, and only one bot plans in a given server frame. */
 #define DOD_BOT_PLAN_SEARCHES 4	/* per plan attempt, over as many server frames as it takes */
-#define DOD_BOT_PLAN_NODE_BUDGET 200	/* nodes one plan call expands (about 1 ms on the GameCube); a search carries over to the next frame and only one runs at a time */
+#define DOD_BOT_PLAN_NODE_BUDGET 100	/* nodes one plan call expands (200 measured 2.3-2.8 ms worst plan call on the host, charlie, 4 bots); a search carries over to the next frame and only one runs at a time */
 static float g_plan_stamp = -1.0f;
 
 static BOOL PlanPath( CBasePlayer *pBot, DodBotState *state )
