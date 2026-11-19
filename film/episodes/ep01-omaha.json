@@ -12,73 +12,428 @@
   ],
   "anchors": {
     "dod_charlie": {
-      "sea": [-352, -3420, -250],
-      "waterline": [-352, -3168],
-      "beach_mid": [-400, -1800],
-      "shingle": [0, -384],
-      "draw_top": [224, 960],
-      "bunker_w": [-1440, 640],
-      "bunker_e": [1376, 640]
+      "sea": [
+        -352,
+        -3420,
+        -250
+      ],
+      "waterline": [
+        -352,
+        -3168
+      ],
+      "beach_mid": [
+        -400,
+        -1800
+      ],
+      "shingle": [
+        0,
+        -384
+      ],
+      "draw_top": [
+        224,
+        960
+      ],
+      "bunker_w": [
+        -1440,
+        640
+      ],
+      "bunker_e": [
+        1376,
+        640
+      ],
+      "surf": [
+        -352,
+        -3560,
+        -250
+      ],
+      "obstacles": [
+        -300,
+        -2500
+      ],
+      "wave_l": [
+        -520,
+        -2900
+      ],
+      "wave_c": [
+        -380,
+        -2760
+      ],
+      "wave_r": [
+        -220,
+        -2980
+      ],
+      "crest": [
+        256,
+        800
+      ],
+      "crest_l": [
+        180,
+        860
+      ],
+      "crest_r": [
+        330,
+        830
+      ],
+      "bluff_w_eye": [
+        -1440,
+        640
+      ]
     }
   },
   "server_cmds": {
     "dod_charlie": []
   },
   "sequence": [
-    {"card": {"id": "title", "dur": 7, "style": "title",
-      "kicker": "FilmGc documentary · sample episode",
-      "title": "Omaha",
-      "body": "Normandy, the morning of 6 June 1944",
-      "chapter": "Title"}},
-    {"card": {"id": "note", "dur": 8, "style": "note",
-      "title": "About these pictures",
-      "body": "The scenes in this film are rebuilt in the game Day of Defeat. They are recreations, not the real ground and not archive footage. The film is offered in memory of those who were there."}},
-    {"shot": {"id": "s01_sea", "map": "dod_charlie", "chapter": "The landing",
-      "note": "Establishing crane: from just above the water, rise to show the beach and the bluffs beyond.",
-      "lower_third": "Omaha Beach\nNormandy · 6 June 1944",
-      "camera": {"type": "crane", "at": "sea", "target": "draw_top", "from_height": 40, "to_height": 520, "duration": 19, "fov": 72, "drift": "waterline"},
-      "narration": [
-        {"text": "Before dawn on the sixth of June 1944, the largest seaborne invasion in history was under way off the coast of Normandy."},
-        {"text": "Allied troops would land on five beaches, code-named Utah, Omaha, Gold, Juno and Sword."}
-      ]}},
-    {"shot": {"id": "s02_beach", "map": "dod_charlie",
-      "note": "Low dolly from the waterline up the open sand toward the shingle, the ground the first waves had to cross.",
-      "camera": {"type": "dolly", "start": "waterline", "end": "shingle", "height": 24, "duration": 19, "fov": 68, "pitch": 2},
-      "narration": [
-        {"text": "Omaha, about eight kilometres of sand beneath steep bluffs, was assigned to the United States 1st and 29th Infantry Divisions."},
-        {"text": "The first assault waves came ashore at around half past six in the morning, into heavy fire."}
-      ]}},
-    {"shot": {"id": "s03_shingle", "map": "dod_charlie",
-      "note": "Locked off low at the shingle, looking up at the bluffs; a slow push in.",
-      "camera": {"type": "still", "eye": "shingle", "target": "draw_top", "height": 6, "duration": 19, "fov": 66, "fov_end": 52},
-      "narration": [
-        {"text": "Rough seas, currents and smoke pushed many landing craft away from their planned sectors, and much of the supporting armour never reached the shore."},
-        {"text": "From the bluffs, German positions overlooked the whole length of the beach."}
-      ]}},
-    {"shot": {"id": "s04_draw", "map": "dod_charlie", "chapter": "Up the bluffs",
-      "lower_third": "The bluffs\nPaths and valleys led off the beach",
-      "note": "Dolly up the route from the shingle to the top of the bluff, following the ground.",
-      "camera": {"type": "dolly", "start": "shingle", "end": "draw_top", "height": 40, "duration": 17, "fov": 70, "pitch": -4},
-      "narration": [
-        {"text": "By mid-morning, small groups, often led by junior officers and sergeants, had begun to work their way up the bluffs between the strongpoints."},
-        {"text": "One by one, the defences above the beach were taken."}
-      ]}},
-    {"shot": {"id": "s05_bluff", "map": "dod_charlie", "chapter": "Nightfall",
-      "note": "Slow orbit high over the bluff top, ending on the view back toward the sea.",
-      "camera": {"type": "orbit", "center": "draw_top", "radius": 520, "height": 260, "start_deg": 20, "end_deg": 95, "duration": 16, "fov": 62},
-      "narration": [
-        {"text": "By nightfall the Americans held a beachhead only about two kilometres deep."},
-        {"text": "It had cost them an estimated two thousand four hundred casualties, the heaviest of any D-Day beach."}
-      ]}},
-    {"shot": {"id": "s06_sea_view", "map": "dod_charlie",
-      "note": "From high on the bluff, look out over the beach to the sea; slow pull out, then hold.",
-      "camera": {"type": "still", "eye": "draw_top", "target": "sea", "height": 180, "duration": 15, "fov": 60, "fov_end": 72},
-      "narration": [
-        {"text": "Today the Normandy American Cemetery at Colleville-sur-Mer stands on the bluff above Omaha Beach."},
-        {"text": "More than nine thousand Americans are buried there."}
-      ]}},
-    {"card": {"id": "end", "dur": 9, "style": "note",
-      "title": "In memory of all who served and fell in Normandy",
-      "footer": "Scenes rendered with xash3d-gc using Day of Defeat assets (Valve) from a legally owned copy. Facts: U.S. Army Center of Military History, Omaha Beachhead (1945); American Battle Monuments Commission; The National WWII Museum."}}
+    {
+      "card": {
+        "id": "title",
+        "dur": 7,
+        "style": "title",
+        "kicker": "FilmGc documentary \u00b7 sample episode",
+        "title": "Omaha",
+        "body": "Normandy, the morning of 6 June 1944",
+        "chapter": "Title"
+      }
+    },
+    {
+      "card": {
+        "id": "note",
+        "dur": 8,
+        "style": "note",
+        "title": "About these pictures",
+        "body": "The scenes in this film are rebuilt in the game Day of Defeat. They are recreations, not the real ground and not archive footage. The film is offered in memory of those who were there."
+      }
+    },
+    {
+      "shot": {
+        "id": "s01_dawn",
+        "map": "dod_charlie",
+        "camera": {
+          "type": "crane",
+          "at": "surf",
+          "target": "draw_top",
+          "from_height": 20,
+          "to_height": 560,
+          "duration": 16,
+          "lens": 24,
+          "drift": "waterline"
+        },
+        "board": {
+          "no": "1",
+          "size": "EWS",
+          "angle": "Rising from water level",
+          "action": "First light. Camera lifts off the surf line and keeps rising until the whole beach and the bluffs behind it fill the frame.",
+          "sound": "Surf, wind, distant engines offshore",
+          "sea": true
+        },
+        "narration": [
+          {
+            "text": "Before dawn on the sixth of June 1944, the largest seaborne invasion in history was under way off the coast of Normandy."
+          }
+        ],
+        "chapter": "The landing",
+        "lower_third": "Omaha Beach\nNormandy \u00b7 6 June 1944"
+      }
+    },
+    {
+      "shot": {
+        "id": "s02_bluffs",
+        "map": "dod_charlie",
+        "camera": {
+          "type": "still",
+          "eye": "waterline",
+          "target": "draw_top",
+          "height": 60,
+          "duration": 10,
+          "lens": 35,
+          "lens_end": 75
+        },
+        "board": {
+          "no": "2",
+          "size": "WS to MS",
+          "angle": "Eye level",
+          "action": "Slow push in from the water's edge on the bluffs: the ground the whole film is about.",
+          "sound": "Wind; engines growing",
+          "sea": true
+        },
+        "narration": [
+          {
+            "text": "Allied troops would land on five beaches, code-named Utah, Omaha, Gold, Juno and Sword."
+          }
+        ]
+      }
+    },
+    {
+      "shot": {
+        "id": "s03_waterline",
+        "map": "dod_charlie",
+        "camera": {
+          "type": "still",
+          "eye": "waterline",
+          "target": "obstacles",
+          "height": 8,
+          "duration": 12,
+          "lens": 28,
+          "handheld": 0.6,
+          "seed": 3
+        },
+        "board": {
+          "no": "3",
+          "size": "MS",
+          "angle": "Low, at the waterline",
+          "action": "Handheld at knee height in the shallows. Figures wade toward the beach obstacles ahead.",
+          "figures": [
+            "wave_l",
+            "wave_c",
+            "wave_r"
+          ],
+          "sound": "Water around the lens, shouting off screen",
+          "sea": true
+        },
+        "narration": [
+          {
+            "text": "Omaha, about eight kilometres of sand beneath steep bluffs, was assigned to the United States 1st and 29th Infantry Divisions."
+          }
+        ]
+      }
+    },
+    {
+      "shot": {
+        "id": "s04_crossing",
+        "map": "dod_charlie",
+        "camera": {
+          "type": "dolly",
+          "start": "waterline",
+          "end": "shingle",
+          "height": 30,
+          "duration": 16,
+          "lens": 32,
+          "pitch": 0,
+          "handheld": 0.3,
+          "seed": 4
+        },
+        "board": {
+          "no": "4",
+          "size": "WS",
+          "angle": "Eye level, tracking",
+          "action": "Tracking forward across the open sand behind the advance, the bluffs never getting closer fast enough.",
+          "figures": [
+            "beach_mid",
+            "obstacles"
+          ],
+          "sound": "Footfalls in wet sand, MG fire distant"
+        },
+        "narration": [
+          {
+            "text": "The first assault waves came ashore at around half past six in the morning, into heavy fire."
+          }
+        ]
+      }
+    },
+    {
+      "shot": {
+        "id": "s05_overlook",
+        "map": "dod_charlie",
+        "camera": {
+          "type": "still",
+          "eye": "bluff_w_eye",
+          "target": "beach_mid",
+          "height": 40,
+          "duration": 10,
+          "lens": 50,
+          "lens_end": 65
+        },
+        "board": {
+          "no": "5",
+          "size": "WS",
+          "angle": "High angle, from the bluff",
+          "action": "Reverse angle from a strongpoint on the bluff, looking down the whole length of open beach.",
+          "sound": "Wind at height; the battle small and far below",
+          "sea": true
+        },
+        "narration": [
+          {
+            "text": "From the bluffs, German positions overlooked the whole length of the beach."
+          }
+        ]
+      }
+    },
+    {
+      "shot": {
+        "id": "s06_shingle",
+        "map": "dod_charlie",
+        "camera": {
+          "type": "still",
+          "eye": "shingle",
+          "target": "draw_top",
+          "height": 4,
+          "duration": 13,
+          "lens": 40,
+          "dutch": -8,
+          "handheld": 0.4,
+          "seed": 6
+        },
+        "board": {
+          "no": "6",
+          "size": "MS",
+          "angle": "Ground level, dutch tilt",
+          "action": "Pinned at the shingle bank, horizon tipped. The bluff fills the top of frame and does not move.",
+          "sound": "Ringing ears; muffled fire",
+          "figures": [
+            "crest"
+          ]
+        },
+        "narration": [
+          {
+            "text": "Rough seas, currents and smoke pushed many landing craft away from their planned sectors, and much of the supporting armour never reached the shore."
+          }
+        ]
+      }
+    },
+    {
+      "shot": {
+        "id": "s07_draw",
+        "map": "dod_charlie",
+        "camera": {
+          "type": "dolly",
+          "start": "shingle",
+          "end": "crest",
+          "height": 36,
+          "duration": 15,
+          "lens": 28,
+          "pitch": -6,
+          "handheld": 0.45,
+          "seed": 7
+        },
+        "board": {
+          "no": "7",
+          "size": "WS",
+          "angle": "Eye level, climbing",
+          "action": "Handheld climb off the beach up the draw, the slope rising in frame.",
+          "figures": [
+            "crest_l",
+            "crest_r"
+          ],
+          "sound": "Breathing, boots on scree"
+        },
+        "narration": [
+          {
+            "text": "By mid-morning, small groups, often led by junior officers and sergeants, had begun to work their way up the bluffs between the strongpoints."
+          }
+        ],
+        "chapter": "Up the bluffs",
+        "lower_third": "The bluffs\nPaths and valleys led off the beach"
+      }
+    },
+    {
+      "shot": {
+        "id": "s08_crest",
+        "map": "dod_charlie",
+        "camera": {
+          "type": "crane",
+          "at": [
+            400,
+            250
+          ],
+          "target": [
+            256,
+            800,
+            330
+          ],
+          "from_height": 4,
+          "to_height": 110,
+          "duration": 8,
+          "lens": 24
+        },
+        "board": {
+          "no": "8",
+          "size": "MS",
+          "angle": "Low angle, looking up",
+          "action": "From the ground, the camera rises with the figures as they top the crest against the sky.",
+          "figures": [
+            "crest_l",
+            "crest_r"
+          ],
+          "sound": "Wind returns; the fire thins"
+        },
+        "narration": [
+          {
+            "text": "One by one, the defences above the beach were taken."
+          }
+        ]
+      }
+    },
+    {
+      "shot": {
+        "id": "s09_nightfall",
+        "map": "dod_charlie",
+        "camera": {
+          "type": "orbit",
+          "center": "draw_top",
+          "radius": 1100,
+          "height": 220,
+          "start_deg": 20,
+          "end_deg": 95,
+          "duration": 15,
+          "lens": 28
+        },
+        "board": {
+          "no": "9",
+          "size": "EWS",
+          "angle": "High, arcing",
+          "action": "A slow arc high over the bluff top as the light goes, ending on the view back to the sea.",
+          "sound": "Evening wind, a single distant gun"
+        },
+        "narration": [
+          {
+            "text": "By nightfall the Americans held a beachhead only about two kilometres deep."
+          },
+          {
+            "text": "It had cost them an estimated two thousand four hundred casualties, the heaviest of any D-Day beach."
+          }
+        ],
+        "chapter": "Nightfall"
+      }
+    },
+    {
+      "shot": {
+        "id": "s10_remembrance",
+        "map": "dod_charlie",
+        "camera": {
+          "type": "still",
+          "eye": "draw_top",
+          "target": "sea",
+          "height": 180,
+          "duration": 16,
+          "lens": 50,
+          "lens_end": 28
+        },
+        "board": {
+          "no": "10",
+          "size": "WS to EWS",
+          "angle": "High, over the beach",
+          "action": "From the top of the bluff, a slow pull out over the empty beach to the sea. Hold, then fade to the dedication.",
+          "sound": "Surf only",
+          "sea": true
+        },
+        "narration": [
+          {
+            "text": "Today the Normandy American Cemetery at Colleville-sur-Mer stands on the bluff above Omaha Beach."
+          },
+          {
+            "text": "More than nine thousand Americans are buried there."
+          }
+        ]
+      }
+    },
+    {
+      "card": {
+        "id": "end",
+        "dur": 9,
+        "style": "note",
+        "title": "In memory of all who served and fell in Normandy",
+        "footer": "Scenes rendered with xash3d-gc using Day of Defeat assets (Valve) from a legally owned copy. Facts: U.S. Army Center of Military History, Omaha Beachhead (1945); American Battle Monuments Commission; The National WWII Museum."
+      }
+    }
   ]
 }

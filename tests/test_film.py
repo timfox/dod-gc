@@ -119,9 +119,9 @@ class PlanTests(unittest.TestCase):
                 for line in s["narration"]:
                     self.assertLessEqual(line["at"] + line["dur"], s["dur"] + 0.05, (s["id"], line["text"]))
             cfg = (Path(tmp) / "film-dod_charlie.cfg").read_text()
-            self.assertIn("cine_play s01_sea", cfg)
+            self.assertIn("cine_play s01_dawn", cfg)
             self.assertTrue(cfg.rstrip().endswith("film_0"))
-            self.assertEqual(plan["sessions"]["dod_charlie"][0], "s01_sea")
+            self.assertEqual(plan["sessions"]["dod_charlie"][0], "s01_dawn")
             self.assertIn("-->", (Path(tmp) / "subtitles.srt").read_text())
 
     def test_dolly_follows_walkable_route(self):
@@ -133,6 +133,48 @@ class PlanTests(unittest.TestCase):
         for k in p.keys:
             n = g.nodes[g.nearest(k.o[0], k.o[1])]
             self.assertLess(((n[0] - k.o[0]) ** 2 + (n[1] - k.o[1]) ** 2) ** 0.5, 400)
+
+
+class GrammarTests(unittest.TestCase):
+    def setUp(self):
+        self.g = shots.MapGraph.load("dod_charlie")
+
+    def test_lens(self):
+        self.assertAlmostEqual(shots.lens_fov(50), 39.6, places=1)
+        self.assertAlmostEqual(shots.lens_fov(24), 73.7, places=1)
+        self.assertAlmostEqual(shots.fov_lens(shots.lens_fov(35)), 35.0, places=3)
+
+    def test_modifiers(self):
+        spec = {"type": "still", "eye": [0, -384], "target": [224, 960], "duration": 10, "lens": 35, "lens_end": 75,
+                "dutch": [0, -8], "handheld": 0.5, "seed": 2}
+        p = shots.build(spec, self.g)
+        q = shots.build(spec, self.g)
+        self.assertEqual([k.o for k in p.keys], [k.o for k in q.keys])       # same seed, same shake
+        self.assertLessEqual(len(p.keys), campath.MAX_KEYS)
+        self.assertAlmostEqual(p.duration, 10.0, places=2)
+        _, a0, f0 = campath.sample(p, 0)
+        _, a1, f1 = campath.sample(p, 10)
+        self.assertAlmostEqual(f0, shots.lens_fov(35), delta=0.1)
+        self.assertAlmostEqual(f1, shots.lens_fov(75), delta=0.1)
+        self.assertLess(a1[2], -6)                                          # rolled into the dutch
+        steady = shots.build({k: v for k, v in spec.items() if k not in ("handheld", "seed", "dutch")}, self.g)
+        self.assertTrue(any(abs(campath.sample(p, t)[1][1] - campath.sample(steady, t)[1][1]) > 0.2
+                            for t in (2, 4, 6, 8)))                         # handheld moves the frame
+
+    def test_boards_render(self):
+        ep = film.load_episode(ROOT / "film" / "episodes" / "ep01-omaha.json")
+        tl = film.build_timeline(ep)
+        from tools.film import board
+        with tempfile.TemporaryDirectory() as tmp:
+            pages = board.render_sheets(ep, tl, Path(tmp), ep["anchors"])
+            self.assertGreaterEqual(len(pages), 2)
+            self.assertEqual(Image.open(pages[0]).mode, "RGB")
+        self.assertIn("| 1 |", board.shot_list(ep, tl))
+        # the sketch puts the ground below the sky: a camera looking level sees mesh in the lower half
+        im = board.sketch(self.g, (-352, -3168, -200), (0, 85, 0), 70, 400, 200)
+        lower = sum(1 for x in range(0, 400, 4) for y in range(110, 200, 4) if im.getpixel((x, y))[0] < 200)
+        upper = sum(1 for x in range(0, 400, 4) for y in range(0, 60, 4) if im.getpixel((x, y))[0] < 200)
+        self.assertGreater(lower, upper)
 
 
 if __name__ == "__main__":

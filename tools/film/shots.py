@@ -229,12 +229,80 @@ def from_keys(rows):
 GENERATORS = {"dolly": dolly, "orbit": orbit, "crane": crane, "still": still, "pan": pan}
 
 
+# --- film grammar on top of a move ---------------------------------------------------------------------
+SENSOR_W = 36.0  # full-frame still / large-format cine width: a 35mm lens reads like it does on set
+
+
+def lens_fov(mm):
+    """Horizontal field of view of a focal length on a 36 mm wide sensor (24 mm ~ 74, 50 mm ~ 40, 85 mm ~ 24)."""
+    return math.degrees(2 * math.atan(SENSOR_W / (2.0 * float(mm))))
+
+
+def fov_lens(fov):
+    return SENSOR_W / (2 * math.tan(math.radians(fov) / 2))
+
+
+def dutch(path, roll):
+    """Tilt the horizon: roll degrees, or [start, end] to roll during the shot."""
+    r0, r1 = (roll, roll) if not isinstance(roll, (list, tuple)) else roll
+    T = path.duration or 1.0
+    keys = [campath.Key(k.t, k.o, (k.a[0], k.a[1], k.a[2] + r0 + (r1 - r0) * (k.t / T)), k.fov, k.mode)
+            for k in path.keys]
+    return campath.Path(campath.validate(keys))
+
+
+def handheld(path, amount=0.5, seed=1, rate=4.0):
+    """Operator shake: resample the move and add slow, smooth drift (no frame-to-frame jitter).
+
+    amount 0.2 is a steadied shoulder rig, 0.5 a walking operator, 1.0 running. Deterministic per seed so a
+    re-capture matches the board.
+    """
+    import random
+    rng = random.Random(seed)
+    T = path.duration
+    n = min(campath.MAX_KEYS, max(2, int(T * rate) + 1))
+
+    def drift(scale):
+        # sum of a few slow sines with random phase: reads as breathing and footfall, not noise
+        parts = [(rng.uniform(0.25, 0.6), rng.uniform(0, 6.28), 1.0), (rng.uniform(0.9, 1.6), rng.uniform(0, 6.28), 0.45),
+                 (rng.uniform(2.0, 2.8), rng.uniform(0, 6.28), 0.2)]
+        return lambda t: scale * sum(w * math.sin(2 * math.pi * f * t + ph) for f, ph, w in parts)
+
+    dp, dy, dr = drift(1.1 * amount), drift(1.4 * amount), drift(0.9 * amount)
+    dx, dz = drift(2.5 * amount), drift(2.0 * amount)
+    keys = []
+    for i in range(n):
+        t = T * i / (n - 1)
+        o, a, fov = campath.sample(path, t)
+        keys.append(campath.Key(round(t, 3), (o[0] + dx(t), o[1] + dx(t + 7.0), o[2] + dz(t)),
+                                (a[0] + dp(t), a[1] + dy(t), a[2] + dr(t)), fov))
+    return campath.Path(campath.validate(keys))
+
+
+MODIFIERS = ("dutch", "handheld", "seed")
+
+
 def build(spec, graph, anchors=None):
-    """A shot's "camera" object -> campath.Path."""
+    """A shot's "camera" object -> campath.Path.
+
+    Besides the move's own numbers a camera takes film grammar: "lens"/"lens_end" (focal length in mm, in place
+    of fov/fov_end), "dutch" (roll degrees, or [start, end]) and "handheld" (0..1 operator shake).
+    """
     spec = dict(spec)
     kind = spec.pop("type")
+    mods = {k: spec.pop(k) for k in MODIFIERS if k in spec}
+    if "lens" in spec:
+        spec["fov"] = round(lens_fov(spec.pop("lens")), 2)
+    if "lens_end" in spec:
+        spec["fov_end"] = round(lens_fov(spec.pop("lens_end")), 2)
     if kind == "keys":
-        return from_keys(spec["keys"])
-    if kind not in GENERATORS:
+        path = from_keys(spec["keys"])
+    elif kind not in GENERATORS:
         raise ValueError(f"unknown camera type {kind!r}")
-    return GENERATORS[kind](graph, anchors=anchors, **spec)
+    else:
+        path = GENERATORS[kind](graph, anchors=anchors, **spec)
+    if "dutch" in mods:
+        path = dutch(path, mods["dutch"])
+    if mods.get("handheld"):
+        path = handheld(path, float(mods["handheld"]), int(mods.get("seed", 1)))
+    return path
