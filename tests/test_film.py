@@ -290,5 +290,62 @@ class ActorTests(unittest.TestCase):
             self.assertGreater(checked, 50)
 
 
+def tiny_bsp():
+    """A floor at z=0 and a wall from x=100 on, in hull 0 and (16/18 units out) in hull 3, and a func_wall
+    filling x <= -300."""
+    import struct
+    planes = [(0, 0, 1, 0), (1, 0, 0, 100), (0, 0, 1, 18), (1, 0, 0, 84), (-1, 0, 0, 300), (-1, 0, 0, 284)]
+    lumps = {i: b"" for i in range(15)}
+    lumps[0] = b'{\n"classname" "worldspawn"\n}\n{\n"classname" "func_wall"\n"model" "*1"\n}\n\0'
+    lumps[1] = b"".join(struct.pack("<4fi", *pl, 0) for pl in planes)
+    # nodes: plane, front, back (+ 16 bytes of bounds/faces); leaves: -1 is leaf 0 (solid), -2 leaf 1 (empty)
+    lumps[5] = b"".join(struct.pack("<ihh16x", *n) for n in ((0, 1, -1), (1, -1, -2), (4, -1, -2)))
+    lumps[10] = b"".join(struct.pack("<ii20x", c, 0) for c in (-2, -1))
+    lumps[9] = b"".join(struct.pack("<ihh", *c) for c in ((2, 1, -2), (3, -2, -1), (5, -2, -1)))
+    lumps[14] = (struct.pack("<9f4i3i", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1, -1, 0, 0, 0, 0)
+                 + struct.pack("<9f4i3i", 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, -1, -1, 2, 0, 0, 0))
+    off, body, table = 4 + 15 * 8, b"", b""
+    for i in range(15):
+        table += struct.pack("<ii", off + len(body), len(lumps[i]))
+        body += lumps[i]
+    return struct.pack("<i", 30) + table + body
+
+
+class ClearanceTests(unittest.TestCase):
+    def seg(self, keys, cast=()):
+        text = "cam 1\n" + "".join(f"key {t} {x} {y} {z} 0 0 0 90 linear\n" for t, x, y, z in keys)
+        return {"kind": "shot", "id": "s", "map": "m", "path": campath.parse(text), "cast": list(cast)}
+
+    def test_walls_and_near_plane(self):
+        from tools.film import clearance
+        world = clearance.World(clearance.Bsp(tiny_bsp()))
+        self.assertEqual(len(world.parts), 2)
+        self.assertIsNone(world.hit((0, 0, 50)))
+        self.assertEqual(world.hit((90, 0, 50))[0], "near")     # 10 units from the wall
+        self.assertEqual(world.hit((0, 0, 10))[0], "near")      # 10 above the floor
+        self.assertEqual(world.hit((120, 0, 50))[0], "solid")
+        self.assertEqual(world.hit((0, 0, -5))[0], "solid")
+        self.assertEqual(world.hit((-320, 0, 50))[1], "func_wall")  # brush entity at its origin
+        probs = clearance.check_shot(world, self.seg([(0, 0, 0, 50), (2, 200, 0, 50)]))
+        self.assertEqual([p[2] for p in probs], ["near", "solid"])
+        self.assertAlmostEqual(probs[0][1][0], 84, delta=4)
+        self.assertAlmostEqual(probs[1][1][0], 100, delta=4)
+        self.assertEqual(clearance.check_shot(world, self.seg([(0, -100, 0, 50), (2, 40, 0, 60)])), [])
+
+    def test_soldiers(self):
+        from tools.film import clearance
+        man = {"id": "a", "team": "allies", "class": "rifleman", "keys": [[0, (40, 0, 36), None, "stand"]]}
+        probs = clearance.check_shot(None, self.seg([(0, 0, 0, 50), (2, 80, 0, 50)], [man]))
+        self.assertEqual([(p[2], p[3]) for p in probs], [("actor", "a")])
+        # above his head is fine
+        self.assertEqual(clearance.check_shot(None, self.seg([(0, 0, 0, 140), (2, 80, 0, 140)], [man])), [])
+
+    def test_episode_clears_its_soldiers(self):
+        from tools.film import clearance
+        tl = film.build_timeline(film.load_episode(ROOT / "film" / "episodes" / "ep01-omaha.json"))
+        problems, _ = clearance.check(tl, bsps={})
+        self.assertEqual(clearance.describe(problems), [])
+
+
 if __name__ == "__main__":
     unittest.main()
