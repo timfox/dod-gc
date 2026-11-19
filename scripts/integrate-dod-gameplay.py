@@ -340,6 +340,24 @@ def integrate_precache_bodies_hook(dlls: Path) -> None:
 		"\tg_serveractive = 1;\n#ifdef __GAMECUBE__\n\tDodGC_PrecacheTeamBodies();\n#endif\n")
 
 
+def integrate_weaponbox_null_check(dlls: Path) -> None:
+	"""CBaseEntity::Create returns NULL when the engine has no edict or no private block left (a crowded GameCube match), and
+	the stock weapon box code writes through the result: a dead player or a dropped gun then wrote through a NULL pointer. Skip the
+	drop instead."""
+	player = dlls / "player.cpp"
+	text = player.read_text()
+	if "weaponbox: no edict" in text:
+		return
+	replace_once(player,
+		"	CWeaponBox *pWeaponBox = (CWeaponBox *)CBaseEntity::Create( \"weaponbox\", pev->origin, pev->angles, edict() );\n\n	pWeaponBox->pev->angles.x = 0;",
+		"	CWeaponBox *pWeaponBox = (CWeaponBox *)CBaseEntity::Create( \"weaponbox\", pev->origin, pev->angles, edict() );\n"
+		"	if( !pWeaponBox )\n		return;	// weaponbox: no edict or private block left, drop nothing\n\n	pWeaponBox->pev->angles.x = 0;")
+	replace_once(player,
+		"			CWeaponBox *pWeaponBox = (CWeaponBox *)CBaseEntity::Create( \"weaponbox\", pev->origin + gpGlobals->v_forward * 10, pev->angles, edict() );\n			pWeaponBox->pev->angles.x = 0;",
+		"			CWeaponBox *pWeaponBox = (CWeaponBox *)CBaseEntity::Create( \"weaponbox\", pev->origin + gpGlobals->v_forward * 10, pev->angles, edict() );\n"
+		"			if( !pWeaponBox )\n				return;	// weaponbox: no edict or private block left\n			pWeaponBox->pev->angles.x = 0;")
+
+
 def integrate_studio_anim_pack(hlsdk: Path, engine: Path | None) -> None:
 	"""The client DLL's StudioModelRenderer::StudioGetAnim loads a sequence group with IEngineStudio.LoadCacheFile. For a
 	split DoD model the group is an animation pack (.gca, 3.5 MB), which cannot be read into MEM1 (Host_Error: LoadCacheFile:
@@ -884,6 +902,7 @@ def main() -> int:
 	integrate_doddetect(dlls)
 	integrate_pm_layout_hook(dlls)
 	integrate_precache_bodies_hook(dlls)
+	integrate_weaponbox_null_check(dlls)
 	integrate_studio_anim_pack(args.hlsdk_dir, args.engine_dir)
 	integrate_death_anims(dlls)
 	integrate_retail_sounds(args.hlsdk_dir)
