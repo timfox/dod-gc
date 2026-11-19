@@ -171,6 +171,15 @@ static void DodFilm_FireFx( const DodFilmFx *f )
 {
 	Vector o( f->origin[0], f->origin[1], f->origin[2] );
 	float s = f->scale;
+	/* A burst, a spout or a puff sits on the ground under its point: the plan's heights
+	 * come from the nearest waypoint, which on a slope or a bluff can be well off. Water
+	 * keeps its height (a trace goes through water to the bottom). */
+	if( f->kind == DOD_FX_KIND_EXPLOSION || f->kind == DOD_FX_KIND_DIRT || f->kind == DOD_FX_KIND_SMOKE ) {
+		TraceResult tr;
+		UTIL_TraceLine( o + Vector( 0, 0, 512 ), o - Vector( 0, 0, 512 ), ignore_monsters, NULL, &tr );
+		if( !tr.fStartSolid && !tr.fAllSolid && tr.flFraction < 1.0f )
+			o.z = tr.vecEndPos.z;
+	}
 	switch( f->kind ) {
 	case DOD_FX_KIND_EXPLOSION:
 		MESSAGE_BEGIN( MSG_BROADCAST, SVC_TEMPENTITY );
