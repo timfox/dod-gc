@@ -374,6 +374,18 @@ def integrate_pm_caps(hlsdk: Path, engine: Path) -> None:
 		defs.write_text(text)
 
 
+def restore_pm_caps(hlsdk: Path) -> None:
+	"""Put the SDK's pm_defs.h back to the stock 600 / 64. The patch in integrate_pm_caps is only needed while the game archives
+	are compiled; the archives keep the layout they were built with, so the source tree is restored right after and never left
+	patched. A patched tree pairs only with an engine built with the same XASH_GC_PM_MAX_* values (a mismatch crashes in
+	PM_InitTextureTypes: playermove_t differs between the game DLL and the engine)."""
+	defs = hlsdk / "pm_shared" / "pm_defs.h"
+	text = defs.read_text()
+	text = re.sub(r"#define MAX_PHYSENTS\t\d+", "#define MAX_PHYSENTS\t600", text, count=1)
+	text = re.sub(r"#define MAX_MOVEENTS\t\d+", "#define MAX_MOVEENTS\t64", text, count=1)
+	defs.write_text(text)
+
+
 def integrate_retail_footsteps(pm: Path) -> None:
 	# Footsteps: retail has wood, gravel and snow floors (pl_wood, pl_gravel, pl_snow) and grass, sand and leaves walk as
 	# dirt; the stock code has no such steps (a wooden floor sounds like concrete).
@@ -592,7 +604,11 @@ def main() -> int:
 	parser = argparse.ArgumentParser()
 	parser.add_argument("--hlsdk-dir", required=True, type=Path)
 	parser.add_argument("--engine-dir", type=Path)
+	parser.add_argument("--restore-pm-caps", action="store_true", help="restore the SDK pm_defs.h to the stock 600/64 and exit")
 	args = parser.parse_args()
+	if args.restore_pm_caps:
+		restore_pm_caps(args.hlsdk_dir)
+		return 0
 	root = Path(__file__).resolve().parent.parent
 	dlls = args.hlsdk_dir / "dlls"
 	client = args.hlsdk_dir / "cl_dll"
