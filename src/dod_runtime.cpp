@@ -61,6 +61,9 @@ static BOOL g_dod_cvars_registered;
 static float g_spec_hold_until[DOD_SPEC_SLOTS + 1];
 static float g_spec_target_since[DOD_SPEC_SLOTS + 1];
 static int g_spec_last_target[DOD_SPEC_SLOTS + 1];
+/* Eye of the player the spectator was following, so free-fly starts there and not inside the map. */
+static Vector g_spec_eye[DOD_SPEC_SLOTS + 1];
+static BOOL g_spec_eye_valid[DOD_SPEC_SLOTS + 1];
 static float g_spec_next_think;
 /* dod_spectate 1: InitHUD asks for the join, SpectatorThink makes it. The first
  * InitHUD runs inside CBasePlayer::Spawn, whose tail (game_playerspawn, the kit,
@@ -1237,6 +1240,17 @@ static void DodGC_SpectatorThink( void )
 		if( mode != Dod_SpecSanitizeMode( mode ) ) {
 			pSpec->Observer_SetMode( Dod_SpecSanitizeMode( mode ) );
 			mode = pSpec->pev->iuser1;
+		}
+		if( slot ) {
+			if( mode != DOD_SPEC_ROAMING && pSpec->m_hObserverTarget ) {
+				CBaseEntity *tgt = pSpec->m_hObserverTarget;
+				g_spec_eye[slot] = tgt->pev->origin + tgt->pev->view_ofs;
+				g_spec_eye_valid[slot] = TRUE;
+			} else if( mode == DOD_SPEC_ROAMING && g_spec_eye_valid[slot] ) {
+				/* Just switched to free-fly: start at the followed player's eye. */
+				UTIL_SetOrigin( pSpec->pev, g_spec_eye[slot] );
+				g_spec_eye_valid[slot] = FALSE;
+			}
 		}
 		if( !tick || !DodGC_SpecCandidates( pSpec, list, DOD_MAX_PLAYERS, &count ) )
 			continue;
