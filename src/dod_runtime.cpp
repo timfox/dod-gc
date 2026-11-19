@@ -1852,6 +1852,7 @@ private:
 	BOOL m_bResolved;
 	BOOL m_bStarted;
 	BOOL m_bContested;
+	float m_flNextStateLog;	/* throttle for the capture area state log */
 	CDoDControlPoint *m_pPoint;
 };
 
