@@ -307,6 +307,9 @@ typedef struct DodNav {
 	int avoid_team;				/* the team whose routes are being planned, or 0 */
 	unsigned char *edge_blocked;		/* per edge: a solid toggle wall (func_wall_toggle) stops the walk along it right now; A* skips it */
 	int edge_blocked_count;
+	/* a search in flight (resumable, see Dod_NavSearchBegin): one at a time, shared by all bots */
+	int search_active, search_from, search_to, search_open, search_owner;
+	float search_stamp;
 	float max_jump_rise;	/* a jump link that climbs more than this is never searched (default 56) */
 } DodNav;
 
@@ -347,6 +350,12 @@ int Dod_NavInside(const DodNav *nav, const float mins[3], const float maxs[3], f
 /* A* from one node to another. Fills path (from first to last, inclusive) and returns its length, or 0 when
  * there is no path or it is longer than max_path. */
 int Dod_NavPath(DodNav *nav, int from, int to, int *path, int max_path);
+/* The same search in slices. Begin starts it for `owner` (returns 1; also 1 when the owner is already running this
+ * very search; 0 when another owner's search is in flight and was stepped within the last second, which is left
+ * alone). Step expands at most `budget` nodes: returns 0 while it goes on, the path length when done, -1 when
+ * there is no path (or it is longer than max_path). Only one search is in flight, so a plan call stays small. */
+int Dod_NavSearchBegin(DodNav *nav, int from, int to, int owner, float now);
+int Dod_NavSearchStep(DodNav *nav, int budget, float now, int *path, int max_path);
 
 /* ---------------------------------------------------------------- spectator
  * A spectator is the local human watching a bot match. It takes the human's own
