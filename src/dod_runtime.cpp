@@ -1930,7 +1930,15 @@ void CDoDCaptureArea::Think( void )
 	if( !m_pPoint )
 		return;	/* an area without a point (charlie's `*8`) only gates map logic */
 	if( m_iszMaster && !UTIL_IsMasterTriggered( m_iszMaster, NULL ) )
+	{
+		static float next_master_log;
+		if( gpGlobals->time >= next_master_log )
+		{
+			next_master_log = gpGlobals->time + 30.0f;
+			ALERT( at_console, "DoD capture area point %d is closed by its master %s\n", m_pPoint->PointIndex(), STRING( m_iszMaster ) );
+		}
 		return;
+	}
 	for( i = 1; i <= gpGlobals->maxClients; ++i ) {
 		CBasePlayer *player = (CBasePlayer *)UTIL_PlayerByIndex( i );
 		DodTeam team;
@@ -1942,6 +1950,14 @@ void CDoDCaptureArea::Think( void )
 		team = DodGC_TeamForPlayer( player );
 		if( team == DOD_TEAM_ALLIES || team == DOD_TEAM_AXIS )
 			++inside[team];
+	}
+	if( inside[DOD_TEAM_ALLIES] + inside[DOD_TEAM_AXIS] > 0 && gpGlobals->time >= m_flNextStateLog )
+	{
+		const DodObjectiveState *st = Dod_GetObjective( m_pPoint->PointIndex() );
+		m_flNextStateLog = gpGlobals->time + 10.0f;
+		ALERT( at_console, "DoD capture area point %d: inside Allies %d Axis %d, needs Allies %d Axis %d, may capture Allies %d Axis %d, owner %d, progress %.0f%%\n",
+			m_pPoint->PointIndex(), inside[DOD_TEAM_ALLIES], inside[DOD_TEAM_AXIS], m_iNumCap[DOD_TEAM_ALLIES], m_iNumCap[DOD_TEAM_AXIS],
+			m_iCanCap[DOD_TEAM_ALLIES], m_iCanCap[DOD_TEAM_AXIS], st ? (int)st->owner : -1, st ? st->capture_progress * 100.0f : 0.0f );
 	}
 	{
 		int allies = ( m_iCanCap[DOD_TEAM_ALLIES] && inside[DOD_TEAM_ALLIES] >= m_iNumCap[DOD_TEAM_ALLIES] ) ? inside[DOD_TEAM_ALLIES] : 0;

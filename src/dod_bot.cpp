@@ -1645,6 +1645,16 @@ static void BotThink( CBasePlayer *pBot, DodBotState *state, CBasePlayer *enemy 
 	{
 		state->known_pos = enemy->pev->origin;
 		state->known_until = now + BotSkill().memory;
+		{
+			/* the first time any bot of one team sees the other on this map, for the match log */
+			static char contact_map[32];
+			if( strcmp( contact_map, STRING( gpGlobals->mapname ) ) )
+			{
+				strncpy( contact_map, STRING( gpGlobals->mapname ), sizeof( contact_map ) - 1 );
+				ALERT( at_console, "DoD contact: first enemy sighting: %s (team %d) sees %s (team %d) at %.0f units, game time %.1f\n", STRING( pBot->pev->netname ),
+					(int)team, STRING( enemy->pev->netname ), (int)TeamOf( enemy ), ( enemy->pev->origin - pBot->pev->origin ).Length(), now );
+			}
+		}
 		state->search_left = 2;	/* if it slips away, sweep the area round where it was before giving up */
 		if( now >= state->next_report )
 		{

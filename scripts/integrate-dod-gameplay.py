@@ -902,6 +902,14 @@ def main() -> int:
 		'\t\tCVAR_SET_STRING( "mp_teamlist", "Allies;Axis" );\n\t}\n'
 		'\tif( !gpGlobals->deathmatch )\n\t{\n\t\t// generic half-life\n',
 	)
+	# Mounted guns (func_tank): the stock Half-Life tank aims at and fires on the first client in its view with no team check
+	# (CFuncTank::FindTarget returns the player), so an active func_tank killed the Axis bots at their own spawn on avalanche
+	# (an Axis MG at 508,2099,387, spawnflags 1). A DoD mounted gun fires for the player on it, not on its own.
+	replace_once(
+		dlls / "func_tank.cpp",
+		"edict_t *CFuncTank::FindTarget( edict_t *pPlayer )\n{\n\treturn pPlayer;\n}",
+		"edict_t *CFuncTank::FindTarget( edict_t *pPlayer )\n{\n\t/* Day of Defeat: no automatic target; a controlled tank follows its controller (TrackTarget) */\n\treturn NULL;\n}",
+	)
 	# The DoD runtime defines these classes; drop the hlsdk stubs so they do not collide.
 	for stub in ("dod_control_point", "dod_control_point_master", "dod_score_ent"):
 		remove_once(dlls / "subs.cpp", f"LINK_ENTITY_TO_CLASS( {stub}, CPointEntity )\n")
