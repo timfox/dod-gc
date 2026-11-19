@@ -867,8 +867,10 @@ static void test_aggression(void)
 	assert(sum > 1.0f);
 	for (i = 0; i < 1000; ++i) {
 		const float roll = (float)i / 1000.0f;
-		answered += Dod_BotAnswersIntel(1.0f, DOD_ROLE_ATTACKER, 300.0f, DOD_INTEL_SEEN, roll);
-		defender_answered += Dod_BotAnswersIntel(1.0f, DOD_ROLE_DEFENDER, 300.0f, DOD_INTEL_SEEN, roll);
+		answered += Dod_BotAnswersIntel(1.0f, DOD_ROLE_ATTACKER, 2000.0f, DOD_INTEL_SEEN, roll);
+		defender_answered += Dod_BotAnswersIntel(1.0f, DOD_ROLE_DEFENDER, 2000.0f, DOD_INTEL_SEEN, roll);
+		/* inside 1500 units a defender always leaves its post, whatever the roll */
+		assert(Dod_BotAnswersIntel(0.0f, DOD_ROLE_DEFENDER, 1400.0f, DOD_INTEL_DEATH, roll));
 	}
 	assert(answered > defender_answered * 3 / 2);
 	assert(!Dod_BotAnswersIntel(1.0f, DOD_ROLE_ATTACKER, 2500.0f, DOD_INTEL_SEEN, 0.0f));
