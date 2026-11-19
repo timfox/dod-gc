@@ -1,7 +1,7 @@
 /* Film actors: scripted props for camera shots.
  *
  * An actor is a prop entity wearing a team's player model, not a bot: it costs one
- * edict and no client slot, so a shot can have a dozen soldiers on the GameCube where
+ * edict and no client slot, so a shot can have up to 24 soldiers on the GameCube where
  * the listen server has room for exactly one bot. Each shot has a cast file,
  * cine/<shot>.act, written by a film plan:
  *
@@ -9,11 +9,16 @@
  *   actor <name> <allies|axis> [class]
  *   key <t> <x> <y> <z> <yaw|-> <pose>
  *   ...
+ *   fx <t> <kind> <x> <y> <z> [scale]
+ *   fx <t> tracer <x> <y> <z> <x2> <y2> <z2>
  *
  * Keys belong to the actor above them and run in time order. Between keys the actor
  * moves in a straight line at constant speed; yaw "-" faces the way it is moving (or
  * keeps the last facing when standing still). Times are seconds from the first frame
- * of the shot, the same clock as the camera's .cam path. This file is engine-free so
+ * of the shot, the same clock as the camera's .cam path. An fx line is a one-off effect
+ * at a point (a shell burst, a splash, a smoke puff, a tracer from one point to another),
+ * fired by the game when the shot's clock passes its time; fx lines can come anywhere
+ * after the header and in any order. This file is engine-free so
  * the parsing and sampling are host-tested; the entity side is dod_film_actor.cpp. */
 #ifndef DODGC_DOD_FILM_H
 #define DODGC_DOD_FILM_H
@@ -22,10 +27,15 @@
 extern "C" {
 #endif
 
-#define DOD_FILM_MAX_ACTORS 12
+#define DOD_FILM_MAX_ACTORS 24
 #define DOD_FILM_MAX_KEYS 16
 #define DOD_FILM_NAME 32
+#define DOD_FILM_MAX_FX 128
 #define DOD_FILM_YAW_TRAVEL 1000.0f	/* yaw "-": face the direction of travel */
+/* Set in an actor's pev->iuser4. The GameCube engine draws studio props on its lean listen
+ * route through a model allowlist that leaves out player bodies; this tag admits the actors
+ * and puts them ahead of the map's props (xash3d-gc engine/client/cl_frame.c, GC_FILM_ACTOR_TAG). */
+#define DODGC_FILM_ACTOR_TAG 0x46494C4D	/* 'FILM' */
 
 typedef enum {
 	DOD_POSE_STAND = 0,
@@ -57,9 +67,28 @@ typedef struct {
 	DodFilmKey keys[DOD_FILM_MAX_KEYS];
 } DodFilmActor;
 
+typedef enum {
+	DOD_FX_KIND_EXPLOSION = 0,	/* a shell burst on land: fireball, sparks, thrown dirt, smoke */
+	DOD_FX_KIND_WATER,		/* a shell in the water: a white column of spray */
+	DOD_FX_KIND_DIRT,		/* a near miss: a spout of sand or earth, no fire */
+	DOD_FX_KIND_SMOKE,		/* a rising puff of smoke */
+	DOD_FX_KIND_TRACER,		/* a tracer round from origin to end */
+	DOD_FX_KIND_COUNT
+} DodFilmFxKind;
+
+typedef struct {
+	float t;
+	DodFilmFxKind kind;
+	float origin[3];
+	float end[3];		/* tracer only */
+	float scale;		/* 1 is a grenade-sized blast */
+} DodFilmFx;
+
 typedef struct {
 	int actor_count;
 	DodFilmActor actors[DOD_FILM_MAX_ACTORS];
+	int fx_count;
+	DodFilmFx fx[DOD_FILM_MAX_FX];	/* sorted by time once parsed */
 } DodFilmCast;
 
 /* Where an actor is at time t: origin, facing and pose. Before the first key it
@@ -77,6 +106,14 @@ typedef struct {
  * with a reason in err. Keys out of time order, unknown poses or teams, and too many
  * actors or keys are errors: a cast that is wrong should fail loudly, not play wrong. */
 int DodFilm_ParseCast(DodFilmCast *cast, const char *text, char *err, int err_size);
+
+/* The fx due when the shot's clock moves from t0 to t1: indices [*first, return) of
+ * cast->fx with t0 < t <= t1 (an fx at exactly 0 fires on the first step past it). */
+int DodFilm_FxDue(const DodFilmCast *cast, float t0, float t1, int *first);
+
+/* The kind's name in cast files ("explosion", "water", ...) and back; -1 when unknown. */
+const char *DodFilm_FxName(DodFilmFxKind kind);
+int DodFilm_FxFromName(const char *name);
 
 /* Sample an actor at time t (seconds from the shot's first frame). */
 void DodFilm_Sample(const DodFilmActor *actor, float t, DodFilmSample *out);

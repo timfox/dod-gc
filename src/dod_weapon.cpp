@@ -194,7 +194,12 @@ void CDodWeapon::Spawn( void )
 	/* Late precache: this is the only model/sound load for this weapon. */
 	/* A bot has no view, so it never spends the viewmodel budget. */
 	if( !DodBots_Granting() )
+	{
 		PRECACHE_MODEL( (char *)def->view_model );
+		/* Casings thrown by the view model's 6001/6002 events (retail
+		 * models/shells.mdl, 8 KB, bodies small/medium/large/mg42). */
+		PRECACHE_MODEL( "models/shells.mdl" );
+	}
 	PRECACHE_MODEL( (char *)def->player_model );
 	/* Sounds are not precached on the GameCube build: loading them late stalls the
 	 * client's resource verification (weapon fire/reload are silent). */

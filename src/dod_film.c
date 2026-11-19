@@ -10,18 +10,20 @@ static const char *const pose_names[DOD_POSE_COUNT] = {
 	"stand", "walk", "run", "crouch", "crouch_walk", "prone", "crawl", "aim", "crouch_aim", "fallen",
 };
 
-/* Candidates, best first. HL player models name their gait sequences idle, walk, run,
- * crouch_idle, crouchrun; DoD adds prone and aiming sequences. */
-static const char *const seq_stand[] = { "idle", "standing", "ref_aim_garand", 0 };
-static const char *const seq_walk[] = { "walk", "walking", "run", 0 };
-static const char *const seq_run[] = { "run", "running", "walk", 0 };
-static const char *const seq_crouch[] = { "crouch_idle", "crouch", "crouching", "idle", 0 };
-static const char *const seq_crouch_walk[] = { "crouchrun", "crouch_walk", "crouchwalk", "crouch_idle", 0 };
-static const char *const seq_prone[] = { "prone_idle", "prone", "proneidle", "crouch_idle", 0 };
-static const char *const seq_crawl[] = { "prone_forward", "prone_walk", "crawl", "prone_idle", "crouchrun", 0 };
-static const char *const seq_aim[] = { "ref_aim_garand", "ref_aim_k98", "ref_aim_mp40", "idle", 0 };
-static const char *const seq_crouch_aim[] = { "crouch_aim_garand", "crouch_aim_k98", "crouch_aim_mp40", "crouch_idle", 0 };
-static const char *const seq_fallen[] = { "death_simple", "death_backwards", "die_simple", "die_backwards", 0 };
+/* Candidates, best first. The retail DoD player models (all five, and player.mdl) share one 345-sequence
+ * table: dod_walk 10, dod_jog 11, dod_sprint 12, dod_crawl 13 (DoD's crouched walk), dod_crouch_idle 14,
+ * prone_idle 15, prone_forward 16 (the prone crawl), die_* 19-29, stand/crouch_rifle_aim 112/113.
+ * HL names follow as fallbacks for other models. */
+static const char *const seq_stand[] = { "dod_idle1", "look_idle", "idle", "standing", 0 };
+static const char *const seq_walk[] = { "dod_walk", "walk", "walking", 0 };
+static const char *const seq_run[] = { "dod_jog", "dod_sprint", "run", "running", "walk", 0 };
+static const char *const seq_crouch[] = { "dod_crouch_idle", "crouch_idle", "crouch", 0 };
+static const char *const seq_crouch_walk[] = { "dod_crawl", "crouchrun", "crouch_walk", "dod_crouch_idle", 0 };
+static const char *const seq_prone[] = { "prone_idle", "prone", 0 };
+static const char *const seq_crawl[] = { "prone_forward", "prone_walk", "crawl", "prone_idle", 0 };
+static const char *const seq_aim[] = { "stand_rifle_aim", "ref_aim_garand", "dod_idle1", "idle", 0 };
+static const char *const seq_crouch_aim[] = { "crouch_rifle_aim", "crouch_aim_garand", "dod_crouch_idle", 0 };
+static const char *const seq_fallen[] = { "die_simple", "die_forwards", "death_simple", 0 };
 
 static const char *const *const pose_seqs[DOD_POSE_COUNT] = {
 	seq_stand, seq_walk, seq_run, seq_crouch, seq_crouch_walk, seq_prone, seq_crawl, seq_aim, seq_crouch_aim, seq_fallen,
@@ -66,6 +68,48 @@ int DodFilm_PoseLoops(DodFilmPose pose)
 	return pose != DOD_POSE_FALLEN;
 }
 
+static const char *const fx_names[DOD_FX_KIND_COUNT] = {
+	"explosion", "water", "dirt", "smoke", "tracer",
+};
+
+const char *DodFilm_FxName(DodFilmFxKind kind)
+{
+	return kind >= 0 && kind < DOD_FX_KIND_COUNT ? fx_names[kind] : "?";
+}
+
+int DodFilm_FxFromName(const char *name)
+{
+	int i;
+	for (i = 0; i < DOD_FX_KIND_COUNT; ++i)
+		if (!strcmp(name, fx_names[i]))
+			return i;
+	return -1;
+}
+
+static int fx_cmp(const void *a, const void *b)
+{
+	float ta = ((const DodFilmFx *)a)->t, tb = ((const DodFilmFx *)b)->t;
+	return ta < tb ? -1 : ta > tb ? 1 : 0;
+}
+
+int DodFilm_FxDue(const DodFilmCast *cast, float t0, float t1, int *first)
+{
+	int i = 0, j;
+	if (!cast || t1 <= t0) {
+		if (first)
+			*first = 0;
+		return 0;
+	}
+	while (i < cast->fx_count && cast->fx[i].t <= t0)
+		++i;
+	j = i;
+	while (j < cast->fx_count && cast->fx[j].t <= t1)
+		++j;
+	if (first)
+		*first = i;
+	return j;
+}
+
 static int set_err(char *err, int size, int line, const char *what)
 {
 	if (err && size > 0)
@@ -108,7 +152,7 @@ int DodFilm_ParseCast(DodFilmCast *cast, const char *text, char *err, int err_si
 	while (*p) {
 		const char *nl = strchr(p, '\n');
 		size_t n = nl ? (size_t)(nl - p) : strlen(p);
-		char tok[8][32];
+		char tok[10][32];
 		int ntok;
 		++lineno;
 		if (n >= sizeof(line))
@@ -121,8 +165,8 @@ int DodFilm_ParseCast(DodFilmCast *cast, const char *text, char *err, int err_si
 			if (c)
 				*c = '\0';
 		}
-		ntok = sscanf(line, "%31s %31s %31s %31s %31s %31s %31s %31s",
-			tok[0], tok[1], tok[2], tok[3], tok[4], tok[5], tok[6], tok[7]);
+		ntok = sscanf(line, "%31s %31s %31s %31s %31s %31s %31s %31s %31s %31s",
+			tok[0], tok[1], tok[2], tok[3], tok[4], tok[5], tok[6], tok[7], tok[8], tok[9]);
 		if (ntok <= 0)
 			continue;
 		if (!have_header) {
@@ -172,6 +216,38 @@ int DodFilm_ParseCast(DodFilmCast *cast, const char *text, char *err, int err_si
 			cur->key_count++;
 			continue;
 		}
+		if (!strcmp(tok[0], "fx")) {
+			DodFilmFx *f;
+			int kind;
+			if (ntok < 6)
+				return set_err(err, err_size, lineno, "fx needs t kind x y z");
+			if (cast->fx_count >= DOD_FILM_MAX_FX)
+				return set_err(err, err_size, lineno, "too many fx");
+			kind = DodFilm_FxFromName(tok[2]);
+			if (kind < 0)
+				return set_err(err, err_size, lineno, "unknown fx kind");
+			if (kind == DOD_FX_KIND_TRACER && ntok < 9)
+				return set_err(err, err_size, lineno, "tracer needs t tracer x y z x2 y2 z2");
+			f = &cast->fx[cast->fx_count++];
+			f->t = (float)atof(tok[1]);
+			f->kind = (DodFilmFxKind)kind;
+			f->origin[0] = (float)atof(tok[3]);
+			f->origin[1] = (float)atof(tok[4]);
+			f->origin[2] = (float)atof(tok[5]);
+			f->scale = 1.0f;
+			if (kind == DOD_FX_KIND_TRACER) {
+				f->end[0] = (float)atof(tok[6]);
+				f->end[1] = (float)atof(tok[7]);
+				f->end[2] = (float)atof(tok[8]);
+			} else {
+				memcpy(f->end, f->origin, sizeof(f->end));
+				if (ntok >= 7)
+					f->scale = (float)atof(tok[6]);
+				if (!(f->scale > 0.0f))
+					f->scale = 1.0f;
+			}
+			continue;
+		}
 		return set_err(err, err_size, lineno, "unknown directive");
 	}
 	if (!have_header)
@@ -185,6 +261,8 @@ int DodFilm_ParseCast(DodFilmCast *cast, const char *text, char *err, int err_si
 				return set_err(err, err_size, lineno, what);
 			}
 	}
+	if (cast->fx_count > 1)
+		qsort(cast->fx, (size_t)cast->fx_count, sizeof(cast->fx[0]), fx_cmp);
 	return cast->actor_count;
 }
 

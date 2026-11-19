@@ -58,6 +58,46 @@ static void test_errors(void)
 	}
 }
 
+static void test_fx(void)
+{
+	DodFilmCast cast;
+	char err[96];
+	int first, end;
+	const char *text =
+		"act 1\n"
+		"fx 2.5 water 10 20 30 2\n"
+		"actor a allies\nkey 0 0 0 0 - stand\n"
+		"fx 1 explosion 1 2 3\n"
+		"fx 1.5 tracer 0 0 0 100 0 0\n"
+		"fx 0 smoke 5 5 5\n";
+	assert(DodFilm_ParseCast(&cast, text, err, sizeof(err)) == 1);
+	assert(cast.fx_count == 4);
+	/* sorted by time */
+	assert(cast.fx[0].kind == DOD_FX_KIND_SMOKE && cast.fx[1].kind == DOD_FX_KIND_EXPLOSION);
+	assert(cast.fx[2].kind == DOD_FX_KIND_TRACER && near(cast.fx[2].end[0], 100, 1e-3f));
+	assert(cast.fx[3].kind == DOD_FX_KIND_WATER && near(cast.fx[3].scale, 2, 1e-3f));
+	assert(near(cast.fx[1].scale, 1, 1e-3f));
+	/* an fx at 0 fires on the first step past it; each fires once over a run of steps */
+	end = DodFilm_FxDue(&cast, -0.5f, 0.0f, &first);
+	assert(first == 0 && end == 1);
+	end = DodFilm_FxDue(&cast, 0.0f, 1.2f, &first);
+	assert(first == 1 && end == 2);
+	end = DodFilm_FxDue(&cast, 1.2f, 3.0f, &first);
+	assert(first == 2 && end == 4);
+	end = DodFilm_FxDue(&cast, 3.0f, 9.0f, &first);
+	assert(first == end);
+	assert(DodFilm_FxDue(&cast, 2.0f, 2.0f, &first) == 0);
+	/* errors */
+	assert(DodFilm_ParseCast(&cast, "act 1\nfx 1 nuke 0 0 0\n", err, sizeof(err)) < 0);
+	assert(strstr(err, "kind"));
+	assert(DodFilm_ParseCast(&cast, "act 1\nfx 1 tracer 0 0 0\n", err, sizeof(err)) < 0);
+	assert(strstr(err, "tracer"));
+	assert(DodFilm_ParseCast(&cast, "act 1\nfx 1 smoke 0 0\n", err, sizeof(err)) < 0);
+	/* fx only, no actors, is a valid cast */
+	assert(DodFilm_ParseCast(&cast, "act 1\nfx 1 smoke 0 0 0\n", err, sizeof(err)) == 0 && cast.fx_count == 1);
+	assert(DodFilm_FxFromName(DodFilm_FxName(DOD_FX_KIND_DIRT)) == DOD_FX_KIND_DIRT);
+}
+
 static void test_sample(void)
 {
 	DodFilmCast cast;
@@ -98,6 +138,7 @@ int main(void)
 	test_parse();
 	test_errors();
 	test_sample();
+	test_fx();
 	test_poses();
 	return 0;
 }
