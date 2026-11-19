@@ -1253,11 +1253,16 @@ static void DodGC_SpectatorThink( void )
 		int count, mode, pick;
 		if( i <= DOD_MAX_PLAYERS && pSpec && pSpec->IsPlayer() && !DodBots_IsBot( pSpec ) && !g_dod_joined[i] ) {
 			const char *aj = CVAR_GET_STRING( "dod_gc_autojoin" );
-			int aj_team = 0, aj_class = 0;
-			if( aj && aj[0] && sscanf( aj, "%d %d", &aj_team, &aj_class ) == 2
-				&& ( aj_team == DOD_TEAM_ALLIES || aj_team == DOD_TEAM_AXIS ) ) {
-				if( g_autojoin_seen[i] == 0.0f )
+			int aj_team = 0, aj_class = 0, aj_bots = -1;
+			const int aj_n = ( aj && aj[0] ) ? sscanf( aj, "%d %d %d", &aj_team, &aj_class, &aj_bots ) : 0;
+			if( aj_n >= 2 && ( aj_team == DOD_TEAM_ALLIES || aj_team == DOD_TEAM_AXIS ) ) {
+				if( g_autojoin_seen[i] == 0.0f ) {
 					g_autojoin_seen[i] = gpGlobals->time;
+					/* optional third number: the bot count, set here because a cfg line for dod_bots is overwritten when
+					 * the game registers the cvar (the bots join about 3 s after the human, after this point) */
+					if( aj_n >= 3 && aj_bots >= 0 )
+						CVAR_SET_FLOAT( "dod_bots", (float)aj_bots );
+				}
 				else if( gpGlobals->time - g_autojoin_seen[i] > 2.0f ) {
 					g_autojoin_seen[i] = 0.0f;
 					DodGC_HumanJoin( pSpec, (DodTeam)aj_team, (DodClass)aj_class );
