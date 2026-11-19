@@ -1281,8 +1281,10 @@ static BOOL PlanPath( CBasePlayer *pBot, DodBotState *state )
 				if( searches > DOD_BOT_PLAN_SEARCHES )
 					goto plan_failed;
 				g_nav.ignore_blocked = state->plan_ignore_goal == state->nav_id + 1;
+				g_nav.allow_partial = 1;
 				if( !Dod_NavSearchBegin( &g_nav, starts[i], goals[j], pBot->entindex(), gpGlobals->time ) )
 				{
+					g_nav.ignore_blocked = g_nav.allow_partial = 0;
 					state->plan_resume = searches - 1;	/* another bot's search is in flight: wait, the old path (if any) keeps being followed */
 					state->plan_resume_goal = state->nav_id;
 					state->path_replan = gpGlobals->time + 0.05f;
@@ -1290,6 +1292,7 @@ static BOOL PlanPath( CBasePlayer *pBot, DodBotState *state )
 				}
 				len = Dod_NavSearchStep( &g_nav, DOD_BOT_PLAN_NODE_BUDGET, gpGlobals->time, tmp, DOD_NAV_MAX_PATH );
 				g_nav.ignore_blocked = 0;
+				g_nav.allow_partial = 0;
 				if( len == 0 )
 				{
 					state->plan_resume = searches - 1;	/* carry on with this very search next frame */
