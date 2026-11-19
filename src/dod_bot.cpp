@@ -180,8 +180,9 @@ typedef struct DodBotState {
 	float next_unseen_log, last_fire;
 	/* one engagement: from sighting to losing the target for a second (see the log in RunBot) */
 	float eng_start, eng_dist0, eng_dist_min;
+	float group_wait_until;	/* attackers going to a point that needs several players hold back until the group is together */
 	int eng_frames, eng_fired, eng_why_far, eng_why_react, eng_why_aim, eng_why_pause, eng_why_reload, eng_why_noammo;
-	char eng_weapon[24];
+	char eng_weapon[16];
 	/* The view: yaw/pitch are the angles the bot looks along (and what v_angle and the body yaw are written from); the
 	 * rest of the code only says where it wants to look (want_*) and one eased step per frame (Dod_BotEase) turns
 	 * the view towards it, so nothing ever snaps. */
@@ -1085,6 +1086,39 @@ static void PickGoal( CBasePlayer *pBot, DodBotState *state )
 		state->goal_progress_time = now;
 		state->cell_n = 0;
 		state->steer_off = 0.0f;
+	}
+	if( kind == DOD_BOT_GOAL_ATTACK && state->role == DOD_ROLE_ATTACKER && info[i].need >= 2 && info[i].distance > 900.0f && my_team >= DOD_TEAM_ALLIES && my_team <= DOD_TEAM_AXIS )
+	{
+		/* a point that needs a group: the nearest bots do not walk in alone while the others are far behind; they wait (at most 20 s per target)
+		 * so the group arrives together instead of dying one by one on the way in */
+		static float wait_start[4];
+		static int wait_target[4] = { -1, -1, -1, -1 };
+		const Vector centre = views[i].center;
+		float far_mate = 0.0f;
+		int j;
+		for( j = 1; j <= gpGlobals->maxClients && j <= DOD_BOT_MAX_SLOTS; j++ )
+		{
+			CBasePlayer *pOther = PlayerAt( j );
+			DodBotState *other = BotState( j );
+			if( pOther && pOther != pBot && other && DodBots_IsBot( pOther ) && pOther->IsAlive() && TeamOf( pOther ) == my_team &&
+				other->has_goal && other->goal_id == id && other->goal_kind == DOD_BOT_GOAL_ATTACK )
+			{
+				const float d = ( pOther->pev->origin - centre ).Length2D();
+				if( d > far_mate )
+					far_mate = d;
+			}
+		}
+		if( wait_target[my_team] != id )
+		{
+			wait_target[my_team] = id;
+			wait_start[my_team] = now;
+		}
+		if( far_mate > info[i].distance + 700.0f && now - wait_start[my_team] < 20.0f )
+		{
+			if( now >= state->group_wait_until )
+				ALERT( at_console, "DoD bot %s waits for its group before point %d (%.0f units from it, the farthest mate %.0f)\n", STRING( pBot->pev->netname ), id, info[i].distance, far_mate );
+			state->group_wait_until = now + 1.0f;
+		}
 	}
 	state->goal = views[i].center;
 	state->goal_mins = views[i].mins;
@@ -2728,6 +2762,11 @@ static void RunBot( int index, CBasePlayer *pBot )
 	}
 
 	move = Dod_BotDecide( &in );
+	if( !fight && gpGlobals->time < state->group_wait_until && !state->nav_arrived )
+	{
+		move.forward = 0.0f;
+		move.side = 0.0f;
+	}
 	if( fight && !advance && !state->nav_arrived && !state->ladder_dir && enemy_distance > UsefulRange( pBot->m_pActiveItem ) - 100.0f )
 	{
 		move.forward = 1.0f;	/* an enemy beyond useful range and no route to follow: close the distance along the view, which is on the enemy */
