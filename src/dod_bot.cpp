@@ -178,6 +178,10 @@ typedef struct DodBotState {
 	float track_since, last_fight_time, react_until;
 	float burst_until, pause_until;
 	float next_unseen_log, last_fire;
+	/* one engagement: from sighting to losing the target for a second (see the log in RunBot) */
+	float eng_start, eng_dist0, eng_dist_min;
+	int eng_frames, eng_fired, eng_why_far, eng_why_react, eng_why_aim, eng_why_pause, eng_why_reload, eng_why_noammo;
+	char eng_weapon[24];
 	/* The view: yaw/pitch are the angles the bot looks along (and what v_angle and the body yaw are written from); the
 	 * rest of the code only says where it wants to look (want_*) and one eased step per frame (Dod_BotEase) turns
 	 * the view towards it, so nothing ever snaps. */
@@ -1467,10 +1471,69 @@ static BOOL NavTarget( CBasePlayer *pBot, DodBotState *state, Vector *target )
 						pn, state->path[state->path_idx], pn >= 0 ? Dod_NavEdgeKind( &g_nav, pn, state->path[state->path_idx] ) : -1, px, py, pz, nx, ny, nz,
 						origin.x, origin.y, origin.z, blocker ? STRING( blocker->v.classname ) : "none", blocker ? ENTINDEX( blocker ) : -1 );
 				}
+				{
+					/* the top stuck edges, so each cause can be named: edge, kind, blocker, count; printed every 60 s */
+					struct StuckEdge { int a, b, kind, count, ent; char cls[24]; };
+					static StuckEdge top[48];
+					static int ntop;
+					static float next_report;
+					const int fa = state->path_idx > 0 ? state->path[state->path_idx - 1] : -1;
+					const int fb = state->path[state->path_idx];
+					int k;
+					for( k = 0; k < ntop; k++ )
+						if( top[k].a == fa && top[k].b == fb )
+							break;
+					if( k == ntop && ntop < 48 )
+					{
+						top[k].a = fa; top[k].b = fb; top[k].count = 0;
+						top[k].kind = fa >= 0 ? Dod_NavEdgeKind( &g_nav, fa, fb ) : -1;
+						ntop++;
+					}
+					if( k < ntop )
+					{
+						top[k].count++;
+						top[k].ent = blocker ? ENTINDEX( blocker ) : -1;
+						strncpy( top[k].cls, blocker ? STRING( blocker->v.classname ) : "map", sizeof( top[k].cls ) - 1 );
+						top[k].cls[sizeof( top[k].cls ) - 1] = 0;
+					}
+					if( now >= next_report )
+					{
+						int shown;
+						next_report = now + 60.0f;
+						for( shown = 0; shown < 5; shown++ )
+						{
+							int best = -1, j;
+							for( j = 0; j < ntop; j++ )
+								if( top[j].count > 0 && ( best < 0 || top[j].count > top[best].count ) )
+									best = j;
+							if( best < 0 )
+								break;
+							ALERT( at_console, "DoD stuck top %d: edge %d -> %d (kind %d) blocker %s (ent %d) x%d\n", shown + 1, top[best].a, top[best].b, top[best].kind, top[best].cls, top[best].ent, top[best].count );
+							top[best].count = -top[best].count;
+						}
+						for( int j = 0; j < ntop; j++ )
+							if( top[j].count < 0 )
+								top[j].count = -top[j].count;
+					}
+				}
 				if( blocker )
 				{
 					if( FClassnameIs( blocker, "func_wall_toggle" ) )
 						BreachWall( pBot, blocker );
+					else if( FClassnameIs( blocker, "func_breakable" ) )
+					{
+						/* a breakable in the way is shot or knifed, then walked through; the edge stays usable */
+						static float next_hit[8];
+						const int slot = ENTINDEX( blocker ) & 7;
+						if( now >= next_hit[slot] && blocker->v.takedamage != DAMAGE_NO )
+						{
+							next_hit[slot] = now + 1.0f;
+							CBaseEntity *pb = CBaseEntity::Instance( blocker );
+							if( pb )
+								pb->TakeDamage( pBot->pev, pBot->pev, 60.0f, DMG_BULLET );
+							ALERT( at_console, "DoD bot %s breaks func_breakable ent %d (health %.0f)\n", STRING( pBot->pev->netname ), ENTINDEX( blocker ), blocker->v.health );
+						}
+					}
 					else
 						BlockEdgesAround( blocker, now );
 				}
@@ -2613,6 +2676,11 @@ static void RunBot( int index, CBasePlayer *pBot )
 	}
 
 	move = Dod_BotDecide( &in );
+	if( fight && !advance && !state->nav_arrived && !state->ladder_dir && enemy_distance > 1500.0f )
+	{
+		move.forward = 1.0f;	/* an enemy beyond useful range and no route to follow: close the distance along the view, which is on the enemy */
+		move.side = 0.0f;
+	}
 	if( advance )
 	{
 		move.forward = 1.0f;	/* the route, not the enemy, sets the way; the view stays on the enemy */
@@ -2700,6 +2768,29 @@ static void RunBot( int index, CBasePlayer *pBot )
 		const DodBotSkill sk = BotSkill();
 		const float now = gpGlobals->time;
 		const BOOL automatic = !in.semi_auto;
+		{
+			CBasePlayerItem *eit = pBot->m_pActiveItem;
+			CBasePlayerWeapon *ew = eit ? (CBasePlayerWeapon *)eit->GetWeaponPtr() : NULL;
+			if( state->eng_frames == 0 )
+			{
+				state->eng_start = now;
+				state->eng_dist0 = state->eng_dist_min = enemy_distance;
+				state->eng_fired = state->eng_why_far = state->eng_why_react = state->eng_why_aim = state->eng_why_pause = state->eng_why_reload = state->eng_why_noammo = 0;
+				strncpy( state->eng_weapon, eit ? STRING( eit->pev->classname ) : "none", sizeof( state->eng_weapon ) - 1 );
+				state->eng_weapon[sizeof( state->eng_weapon ) - 1] = 0;
+			}
+			state->eng_frames++;
+			if( enemy_distance < state->eng_dist_min )
+				state->eng_dist_min = enemy_distance;
+			if( !move.fire )
+			{
+				if( enemy_distance > DOD_BOT_MAX_FIRE_RANGE ) state->eng_why_far++;
+				else if( now < state->react_until ) state->eng_why_react++;
+				else if( state->behavior == DOD_ACT_RELOAD || ( ew && ew->m_iClip == 0 && ew->m_iPrimaryAmmoType >= 0 && pBot->m_rgAmmo[ew->m_iPrimaryAmmoType] > 0 ) ) state->eng_why_reload++;
+				else if( ew && ew->m_iClip == 0 ) state->eng_why_noammo++;
+				else state->eng_why_aim++;
+			}
+		}
 		if( now < state->react_until || enemy_distance > DOD_BOT_MAX_FIRE_RANGE )
 			move.fire = 0;	/* still taking the target in, or too far to bother */
 		else if( move.fire )
@@ -2729,6 +2820,7 @@ static void RunBot( int index, CBasePlayer *pBot )
 			const float off_pitch = fabsf( Dod_BotAngleDelta( state->pitch, PitchTo( eye, tc ) ) );
 			const float body = atanf( 16.0f / ( enemy_distance > 16.0f ? enemy_distance : 16.0f ) ) * 180.0f / (float)M_PI;
 			state->fire_frames++;
+			state->eng_fired++;
 			state->last_fire = now;
 			if( off_yaw < body && off_pitch < body * 2.0f )
 				state->hit_frames++;
@@ -2741,7 +2833,16 @@ static void RunBot( int index, CBasePlayer *pBot )
 		}
 	}
 	else
+	{
 		state->burst_until = 0.0f;
+		if( state->eng_frames && gpGlobals->time - state->last_fight_time > 1.0f )
+		{
+			ALERT( at_console, "DoD engagement %s: %s, first %.0f min %.0f units, %.1f s, %d frames, fired %d; not firing: out of range %d, reacting %d, reload %d, no ammo %d, aim/trigger %d\n",
+				STRING( pBot->pev->netname ), state->eng_weapon, state->eng_dist0, state->eng_dist_min, state->last_fight_time - state->eng_start,
+				state->eng_frames, state->eng_fired, state->eng_why_far, state->eng_why_react, state->eng_why_reload, state->eng_why_noammo, state->eng_why_aim );
+			state->eng_frames = 0;
+		}
+	}
 	if( state->stage_role == 1 )
 	{
 		/* test scenario: the watcher stays where it was put, looking where it was put until something draws its aim */
