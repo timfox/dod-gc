@@ -695,17 +695,27 @@ int Dod_NavLoad(DodNav *nav, const unsigned char *data, int len)
 		return 0;
 	nav->nodes = data + 20;
 	nav->edges = data + 20 + 7 * nav->node_count;
-	nav->first = (unsigned short *)malloc(sizeof(unsigned short) * (size_t)(nav->node_count + 1));
-	nav->g = (float *)malloc(sizeof(float) * (size_t)nav->node_count);
-	nav->f = (float *)malloc(sizeof(float) * (size_t)nav->node_count);
-	nav->parent = (short *)malloc(sizeof(short) * (size_t)nav->node_count);
-	nav->state = (unsigned char *)malloc((size_t)nav->node_count);
-	nav->heap = (unsigned short *)malloc(sizeof(unsigned short) * (size_t)nav->node_count);
-	nav->hpos = (short *)malloc(sizeof(short) * (size_t)nav->node_count);
-	nav->edge_blocked = (unsigned char *)calloc((size_t)(nav->edge_count > 0 ? nav->edge_count : 1), 1);
-	if (!nav->edge_blocked || !nav->first || !nav->g || !nav->f || !nav->parent || !nav->state || !nav->heap || !nav->hpos) {
-		Dod_NavFree(nav);
-		return 0;
+	{
+		/* One block for every per-map array (was eight heap blocks: on GameCube each costs a header and splits the free heap).
+		 * Floats first, then the 16-bit arrays, then bytes, so each is aligned. edge_blocked is a bit per edge. */
+		const size_t n = (size_t)nav->node_count;
+		const size_t bits = ((size_t)(nav->edge_count > 0 ? nav->edge_count : 1) + 7) / 8;
+		const size_t size = n * (2 * sizeof(float) + 3 * sizeof(short) + 1) + (n + 1) * sizeof(unsigned short) + bits;
+		unsigned char *b = (unsigned char *)malloc(size);
+		if (!b) {
+			memset(nav, 0, sizeof(*nav));
+			return 0;
+		}
+		nav->block = b;
+		nav->g = (float *)b; b += n * sizeof(float);
+		nav->f = (float *)b; b += n * sizeof(float);
+		nav->first = (unsigned short *)b; b += (n + 1) * sizeof(unsigned short);
+		nav->parent = (short *)b; b += n * sizeof(short);
+		nav->heap = (unsigned short *)b; b += n * sizeof(unsigned short);
+		nav->hpos = (short *)b; b += n * sizeof(short);
+		nav->state = b; b += n;
+		nav->edge_blocked = b;
+		memset(nav->edge_blocked, 0, bits);
 	}
 	for (i = 0; i < nav->node_count; ++i) {
 		nav->first[i] = (unsigned short)total;
@@ -729,14 +739,7 @@ void Dod_NavFree(DodNav *nav)
 {
 	if (!nav)
 		return;
-	free(nav->first);
-	free(nav->g);
-	free(nav->f);
-	free(nav->parent);
-	free(nav->state);
-	free(nav->heap);
-	free(nav->hpos);
-	free(nav->edge_blocked);
+	free(nav->block);
 	memset(nav, 0, sizeof(*nav));
 }
 
@@ -808,8 +811,8 @@ void Dod_NavSetEdgeBlocked(DodNav *nav, int edge, int blocked)
 {
 	if (!nav || !nav->edge_blocked || edge < 0 || edge >= nav->edge_count)
 		return;
-	if (nav->edge_blocked[edge] != (blocked != 0)) {
-		nav->edge_blocked[edge] = (unsigned char)(blocked != 0);
+	if (((nav->edge_blocked[edge >> 3] >> (edge & 7)) & 1) != (blocked != 0)) {
+		nav->edge_blocked[edge >> 3] ^= (unsigned char)(1 << (edge & 7));
 		nav->edge_blocked_count += blocked ? 1 : -1;
 	}
 }
@@ -818,7 +821,7 @@ int Dod_NavClearEdgeBlocks(DodNav *nav)
 {
 	const int was = nav ? nav->edge_blocked_count : 0;
 	if (nav && nav->edge_blocked && nav->edge_count > 0)
-		memset(nav->edge_blocked, 0, (size_t)nav->edge_count);
+		memset(nav->edge_blocked, 0, ((size_t)nav->edge_count + 7) / 8);
 	if (nav)
 		nav->edge_blocked_count = 0;
 	return was;
@@ -826,7 +829,7 @@ int Dod_NavClearEdgeBlocks(DodNav *nav)
 
 int Dod_NavEdgeBlocked(const DodNav *nav, int edge)
 {
-	return nav && nav->edge_blocked && edge >= 0 && edge < nav->edge_count && nav->edge_blocked[edge];
+	return nav && nav->edge_blocked && edge >= 0 && edge < nav->edge_count && ((nav->edge_blocked[edge >> 3] >> (edge & 7)) & 1);
 }
 
 void Dod_NavNodePos(const DodNav *nav, int node, float *x, float *y, float *z)
@@ -1112,7 +1115,7 @@ int Dod_NavSearchStep(DodNav *nav, int budget, float now, int *path, int max_pat
 			float cost, g;
 			if (nav->state[next] == 2)
 				continue;
-			if (nav->edge_blocked_count > 0 && nav->edge_blocked[e] && !nav->ignore_blocked)
+			if (nav->edge_blocked_count > 0 && ((nav->edge_blocked[e >> 3] >> (e & 7)) & 1) && !nav->ignore_blocked)
 				continue;
 			if (kind == DOD_NAV_JUMP) {
 				/* a jump link that climbs more than a jump (about 45 units, a crouch-jump 62) can never be taken: the bots stall under it */
