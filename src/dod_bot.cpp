@@ -80,6 +80,12 @@ int DodBots_MemoryBytes( void )
 	return g_bot_slots * (int)sizeof( DodBotState );
 }
 
+/* One-line diagnostics for the silent "no bot" paths (see the log, not the screen). */
+static void BotNote( const char *why, int a, int b )
+{
+	ALERT( at_console, "DoD bot: %s (%d, %d)\n", why, a, b );
+}
+
 static BOOL EnsureBotState( void )
 {
 	int slots = gpGlobals->maxClients + 1;
@@ -89,11 +95,15 @@ static BOOL EnsureBotState( void )
 		slots = DOD_BOT_MAX_SLOTS + 1;
 	if( slots * (int)sizeof( DodBotState ) > DOD_BOT_MEM_BUDGET )
 		slots = DOD_BOT_MEM_BUDGET / (int)sizeof( DodBotState );
-	if( slots < 2 )
+	if( slots < 2 ) {
+		BotNote( "no bot state: too few slots", slots, DOD_BOT_MEM_BUDGET );
 		return FALSE;
+	}
 	g_bot = (DodBotState *)calloc( slots, sizeof( DodBotState ) );
-	if( !g_bot )
+	if( !g_bot ) {
+		BotNote( "no bot state: out of memory", slots, (int)sizeof( DodBotState ) );
 		return FALSE;
+	}
 	g_bot_slots = slots;
 	ALERT( at_console, "DoD bots: state %d bytes (%d slots, budget %d)\n", DodBots_MemoryBytes(), slots, DOD_BOT_MEM_BUDGET );
 	return TRUE;
@@ -199,15 +209,19 @@ static void AddBot( int team_counts[4], int special_counts[4][DOD_CLASS_COUNT] )
 	if( !EnsureBotState() )
 		return;	/* out of memory or budget: no bot */
 	pEdict = ( *g_engfuncs.pfnCreateFakeClient )( name );
-	if( FNullEnt( pEdict ) )
+	if( FNullEnt( pEdict ) ) {
+		BotNote( "no free client slot", (int)gpGlobals->maxClients, 0 );
 		return;	/* no free client slot after all */
+	}
 	reject[0] = '\0';
 	ClientConnect( pEdict, name, "127.0.0.1", reject );
 	ClientPutInServer( pEdict );
 
 	pBot = (CBasePlayer *)CBaseEntity::Instance( pEdict );
-	if( !pBot )
+	if( !pBot ) {
+		BotNote( "no player entity for fake client", ENTINDEX( pEdict ), 0 );
 		return;
+	}
 	team = Dod_BotPickTeam( team_counts[DOD_TEAM_ALLIES], team_counts[DOD_TEAM_AXIS] );
 	player_class = Dod_BotPickClass( RANDOM_LONG( 0, 1000 ), special_counts[team] );
 	{
@@ -261,11 +275,25 @@ static void PlanBots( void )
 		g_first_human_time = 0.0f;
 		return;	/* no bots on an empty server */
 	}
+	{
+		static float next_note;
+		if( gpGlobals->time >= next_note ) {
+			next_note = gpGlobals->time + 20.0f;
+			BotNote( "plan: time x10, humans*100+bots", (int)( gpGlobals->time * 10.0f ), humans * 100 + bots );
+		}
+	}
 	target = Dod_BotTargetCount(
 		Dod_BotRequestedCount( (int)CVAR_GET_FLOAT( "dod_bots" ), NetworkUp(), CVAR_GET_FLOAT( "dod_bots_online" ) != 0.0f ),
 		gpGlobals->maxClients, humans, DOD_BOT_HARD_CAP );
 	if( bots == 0 && target == 0 )
 		FreeBotState();
+	{
+		static int last_target = -1;
+		if( target != last_target ) {
+			last_target = target;
+			BotNote( "target count (maxClients)", target, (int)gpGlobals->maxClients );
+		}
+	}
 	if( bots > target )
 		KickOneBot();
 	else if( bots < target && gpGlobals->time - g_first_human_time > 3.0f )
