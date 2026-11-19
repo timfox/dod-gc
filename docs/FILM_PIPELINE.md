@@ -20,6 +20,7 @@ film/episodes/<ep>.json ──plan──▶ out/film/<ep>/cine/*.cam + film-<map
 | `tools/film/shots.py` | Camera moves from a few numbers: `dolly` (along the walkable route between two points, from `data/waypoints/<map>.wpt`), `orbit`, `crane`, `still` (with optional zoom push), `pan`, and raw `keys`. |
 | `tools/film/film.py` | `plan`, `boards`, `animatic`, `assemble`. |
 | `tools/film/actors.py`, `src/dod_film.c`, `src/dod_film_actor.cpp` | Actors: soldiers placed and moving in a shot (below). |
+| `tools/film/voice.py` | Narration and ADR rendered with a local TTS model (Qwen3-TTS), effects, levels, and the dialogue mix (below). |
 | `tools/film/stamp.py` | Reads the engine's frame stamp off captured images. |
 | `scripts/film-capture.sh` | Plan, build a listen disc per map with `build-lean-iso.sh --film`, run Dolphin with frame dumping until the engine logs `FILM SESSION DONE`, then assemble. |
 | `film/episodes/` | Episodes. `ep01-omaha.json` is the sample: Omaha Beach on 6 June 1944, six shots on `dod_charlie`. |
@@ -105,6 +106,63 @@ bot, and a shot can have up to 12 actors.
 - Pose sequences are looked up by name in the retail model, best guess first; the game logs
   `FILM ACTOR <id> pose <pose>: sequence N (<name>)` so the first capture shows which ones it found.
 
+## Voice-over and ADR
+
+`tools/film/voice.py` renders an episode's narration and its ADR (callouts, radio, walla) with
+[Qwen3-TTS](https://github.com/QwenLM/Qwen3-TTS), run locally on a CUDA GPU. It was picked (November 2026) as
+the strongest open model that can *design* a voice from a written description: no reference recording, so
+no real person's voice is cloned, and each line takes a plain-language delivery ("shouting over gunfire,
+out of breath"). Weights and code are Apache 2.0. It also speaks German and French for the other side and
+for civilians. Chatterbox (MIT) is the runner-up but needs a reference recording for every voice;
+IndexTTS-2 has finer emotion control but its licence needs an agreement for commercial use.
+
+```json
+"narrator": "narrator",
+"voices": {
+  "narrator": {"design": "Male documentary narrator in his late fifties, deep warm baritone, ...",
+               "delivery": "Calm, grave and respectful; measured pace", "mode": "clone"},
+  "sgt":      {"design": "American man in his late twenties, gravelly baritone, ..."},
+  "de_obs":   {"design": "German man in his thirties, low steady voice", "language": "German"}
+},
+"shot": {"id": "s04_crossing", ...,
+  "narration": [{"text": "..."}],
+  "adr": [
+    {"voice": "sgt", "at": 0.6, "text": "Keep moving! Get to the shingle!",
+     "delivery": "Bellowing over machine-gun fire, out of breath", "fx": "field", "gain": -8, "pan": 0.2},
+    {"walla": true, "at": 4, "dur": 9, "voices": ["pvt_a", "pvt_b"], "lines": ["Medic!", "Keep going!"],
+     "delivery": "Desperate shout across open sand, far away", "fx": "distant", "gain": -19},
+    {"voice": "de_obs", "at": 6.6, "text": "Da unten!", "subtitle": "Down there!", "fx": "distant"}
+  ]}
+```
+
+- **Voices** are descriptions: age, register, accent, role. Keep them generic and never name or describe a
+  real person. `mode: clone` (the default for narration) designs the voice once into `voice/cast/<voice>.wav`
+  and reads every line in it with the Base model, so a narrator stays the same man for the whole film.
+  `mode: design` (the default for ADR) designs every line, so delivery can change line to line; lines of one
+  voice share a seed so the timbre mostly holds. `take: 2` on a line tries another seed.
+- **ADR** lines sit at `at` seconds into their shot. `fx`: `dry`, `field` (shouted in the open), `distant`,
+  `muffled` (ringing ears), `radio` (narrow band, overdrive, hiss and squelch) or `megaphone`. `gain` is dB
+  in the mix, `pan` -1 to 1. Only lines with a `subtitle` get one (use it for translations); narration is
+  always subtitled.
+- **Walla** spreads its `lines` through `dur`, cycling the `voices`, each at its own place and level.
+- Lines are named like the narration script (`s04_crossing_01`, `s04_crossing_adr01`,
+  `s04_crossing_walla02_03`) and land in `out/film/<ep>/voice/`. `plan`, `animatic` and `assemble` use a
+  rendered line automatically, at its real length, unless the line names its own `audio` (a recorded take
+  always wins). Narration ducks the music bed hard and ADR a little; ADR ducks the bed lightly.
+
+```
+pip install -U qwen-tts               # once, in a venv with a CUDA build of torch (about 8 GB of VRAM)
+tools/film/voice.py lines  film/episodes/ep01-omaha.json      # every line, voice and prompt
+tools/film/voice.py cast   film/episodes/ep01-omaha.json      # audition each voice
+tools/film/voice.py render film/episodes/ep01-omaha.json      # cached: re-renders only what changed
+tools/film/voice.py render film/episodes/ep01-omaha.json --only 's04_*' --force
+tools/film/voice.py mix    film/episodes/ep01-omaha.json      # dialogue and music on the film's clock
+tools/film/film.py animatic film/episodes/ep01-omaha.json     # the animatic, now with voices
+```
+
+`--backend placeholder` renders speech-shaped noise of the right length instead, to check timing and the
+mix with no GPU. The models download from Hugging Face on first use (about 9 GB for both).
+
 ## Making an episode
 
 1. **Board it.** Write the sequence and run `film.py boards` to check framing shot by shot. Then `tools/film/film.py animatic film/episodes/<ep>.json`. The
@@ -142,6 +200,7 @@ releasing anything outside the project.
   Cube or run in Dolphin yet. First capture should check the stamp reads back (`assembly-report.txt`) and
   that the camera shows on the CapFaces/WorldDL route (`GC_RenderNewGameWorldFrames`).
 - Done since: actors (props on keyed paths, previs and boards from the same samples as the game).
-- Next: check the actors' sequences and floor placement on the first capture; recorded narration, a music bed, game
+- Done since: voice-over and ADR rendered with Qwen3-TTS (above).
+- Next: check the actors' sequences and floor placement on the first capture; a music bed, game
   ambience captured per shot, and more maps (`dod_avalanche`, `dod_flash` have waypoints today; other maps
   need `tools/gen_waypoints.py` run against their BSP).

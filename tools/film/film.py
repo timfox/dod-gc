@@ -21,7 +21,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from tools.film import actors, campath, shots, stamp  # noqa: E402
+from tools.film import actors, campath, shots, stamp, voice  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
 W, H = 1920, 1080
@@ -56,21 +56,42 @@ def load_episode(path):
 LINE_GAP = 0.6       # pause between narration lines that have no "at" of their own
 
 
-def narration_lines(seg):
-    """Narration with times: a line's "at" (seconds into the segment) or right after the line before it."""
+def _rendered(voice_dir, line_id):
+    """A line tools/film/voice.py rendered, and its real length."""
+    p = Path(voice_dir) / f"{line_id}.wav" if voice_dir else None
+    if p and p.exists():
+        return str(p.resolve()), voice.wav_duration(p)
+    return None, None
+
+
+def narration_lines(seg, voice_dir=None):
+    """Narration with times: a line's "at" (seconds into the segment) or right after the line before it.
+    A line with no "audio" of its own uses the WAV voice.py rendered for it, and that WAV's length."""
     out, t = [], 0.8
-    for n in seg.get("narration", []):
-        dur = n.get("dur") or max(1.6, len(n["text"].split()) / WORDS_PER_SEC + 0.4)
+    for k, n in enumerate(seg.get("narration", [])):
+        audio, real = (n.get("audio"), None) if n.get("audio") else _rendered(voice_dir, f"{seg.get('id')}_{k + 1:02d}")
+        dur = n.get("dur") or real or max(1.6, len(n["text"].split()) / WORDS_PER_SEC + 0.4)
         at = float(n["at"]) if "at" in n else t
         if out and at < out[-1]["at"] + out[-1]["dur"]:
             print(f"warning: {seg.get('id')}: \"{n['text'][:40]}...\" starts before the line before it ends",
                   file=sys.stderr)
-        out.append({"at": round(at, 2), "dur": round(dur, 2), "text": n["text"], "audio": n.get("audio")})
+        out.append({"at": round(at, 2), "dur": round(dur, 2), "text": n["text"], "audio": audio})
         t = at + dur + LINE_GAP
     return out
 
 
-def build_timeline(ep, root=ROOT):
+def adr_lines(seg, voice_dir=None):
+    """Dialogue, callouts and walla placed in the segment, with the rendered WAV where there is one."""
+    out = []
+    for a in voice.expand_adr(seg):
+        audio, real = _rendered(voice_dir, a["id"])
+        out.append({"id": a["id"], "at": round(a["at"], 2), "dur": round(real or voice.estimate(a), 2),
+                    "text": a["text"], "subtitle": a.get("subtitle"), "audio": audio, "gain": a["gain"],
+                    "pan": a["pan"]})
+    return out
+
+
+def build_timeline(ep, root=ROOT, voice_dir=None):
     """Resolve every shot's camera path and lay the sequence on one clock."""
     fps = int(ep.get("fps", 30))
     graphs, anchors = {}, ep.get("anchors", {})
@@ -98,13 +119,18 @@ def build_timeline(ep, root=ROOT):
         ids.add(seg["id"])
         src = item.get("shot") or item.get("card")
         seg["start"] = round(t, 3)
-        seg["narration"] = narration_lines(src)
+        seg["narration"] = narration_lines(src, voice_dir)
+        seg["adr"] = adr_lines(src, voice_dir)
         seg["lower_third"] = src.get("lower_third")
         seg["chapter"] = src.get("chapter")
         for n in seg["narration"]:
             if n["at"] + n["dur"] > seg["dur"] + 0.05:
                 print(f"warning: {seg['id']}: narration \"{n['text'][:40]}...\" runs {n['at'] + n['dur'] - seg['dur']:.1f}s"
                       " past the end of the segment", file=sys.stderr)
+        for a in seg["adr"]:
+            if a["at"] + a["dur"] > seg["dur"] + 0.05:
+                print(f"warning: {seg['id']}: {a['id']} \"{a['text'][:40]}\" runs"
+                      f" {a['at'] + a['dur'] - seg['dur']:.1f}s past the end of the segment", file=sys.stderr)
         segs.append(seg)
         t += seg["dur"]
     return {"fps": fps, "segments": segs, "duration": round(t, 3), "graphs": graphs}
@@ -156,12 +182,11 @@ def write_plan(ep, timeline, out):
         (cine / f"cast-{mapname}.txt").write_text("".join(f"{t}\n" for t in sides))
 
     # subtitles, chapters, narration script
-    srt, n = [], 1
+    cues = []
     for s in timeline["segments"]:
-        for line in s["narration"]:
-            a = s["start"] + line["at"]
-            srt.append(f"{n}\n{_tc(a)} --> {_tc(a + line['dur'])}\n{line['text']}\n")
-            n += 1
+        cues += [(s["start"] + ln["at"], ln["dur"], ln["text"]) for ln in s["narration"]]
+        cues += [(s["start"] + a["at"], a["dur"], a["subtitle"]) for a in s["adr"] if a.get("subtitle")]
+    srt = [f"{n}\n{_tc(a)} --> {_tc(a + d)}\n{text}\n" for n, (a, d, text) in enumerate(sorted(cues), 1)]
     (out / "subtitles.srt").write_text("\n".join(srt))
 
     meta = [";FFMETADATA1", f"title={ep['title']}"]
@@ -182,6 +207,9 @@ def write_plan(ep, timeline, out):
             script.append(f"_{s['shot' if s['kind'] == 'shot' else 'card']['note']}_")
         for k, line in enumerate(s["narration"]):
             script.append(f"- `{_tc(s['start'] + line['at'], '.')}` **{s['id']}_{k + 1:02d}.wav** ({line['dur']:.1f} s): {line['text']}")
+        for a in s["adr"]:
+            script.append(f"  - ADR `{_tc(s['start'] + a['at'], '.')}` **{a['id']}.wav** ({a['dur']:.1f} s): _{a['text']}_"
+                          + (f" ({a['subtitle']})" if a.get("subtitle") else ""))
         script.append("")
     (out / "narration-script.md").write_text("\n".join(script))
 
@@ -371,44 +399,82 @@ def shot_clip(seg, frames, fps, aspect, grade, work, src_size):
 
 
 def build_audio(ep, timeline, plan_dir, work):
-    """Narration WAVs at their times, over an optional music bed that ducks under the voice."""
+    """Narration and ADR at their times over an optional music bed. The bed ducks under narration and,
+    less, under ADR; ADR ducks a little under narration so the voice-over always reads."""
     dur = timeline["duration"]
-    inputs, labels = [], []
+    inputs, nar, adr = [], [], []
+
+    def add(path, at, chain, bucket, what):
+        p = Path(path)
+        p = p if p.is_absolute() else (plan_dir / p)
+        if not p.exists():
+            print(f"warning: {what} audio missing: {p}", file=sys.stderr)
+            return
+        ms = int(round(at * 1000))
+        i = inputs.count("-i")
+        inputs.extend(["-i", str(p)])
+        bucket.append(f"[{i}:a]aresample=48000,{chain},adelay={ms}|{ms}[{'n' if bucket is nar else 'a'}{len(bucket)}]")
+
     for s in timeline["segments"]:
         for line in s["narration"]:
             if line.get("audio"):
-                p = Path(line["audio"])
-                p = p if p.is_absolute() else (plan_dir / p)
-                if not p.exists():
-                    print(f"warning: narration audio missing: {p}", file=sys.stderr)
-                    continue
-                ms = int((s["start"] + line["at"]) * 1000)
-                inputs += ["-i", str(p)]
-                labels.append(f"[{len(labels)}:a]aresample=48000,adelay={ms}|{ms}[n{len(labels)}]")
+                add(line["audio"], s["start"] + line["at"], "pan=stereo|c0=c0|c1=c0", nar, "narration")
+        for a in s.get("adr", []):
+            if a.get("audio"):
+                g = 10 ** (a["gain"] / 20)
+                left, right = g * min(1.0, 1 - a["pan"]), g * min(1.0, 1 + a["pan"])
+                add(a["audio"], s["start"] + a["at"], f"pan=stereo|c0={left:.3f}*c0|c1={right:.3f}*c0", adr, "ADR")
     music = ep.get("music")
     out = work / "audio.wav"
     base = ["ffmpeg", "-v", "error", "-y"]
-    if not labels and not music:
+    if not nar and not adr and not music:
         run(base + ["-f", "lavfi", "-t", f"{dur:.3f}", "-i", "anullsrc=r=48000:cl=stereo", str(out)])
         return out
-    fc = list(labels)
-    nvoice = len(labels)
-    if nvoice:
-        fc.append("".join(f"[n{i}]" for i in range(nvoice)) + f"amix=inputs={nvoice}:normalize=0,apad[voice]")
+    fc = nar + adr
+
+    def bus(labels, prefix, name):
+        if labels:
+            fc.append("".join(f"[{prefix}{i}]" for i in range(len(labels)))
+                      + f"amix=inputs={len(labels)}:normalize=0,apad[{name}]")
+            return name
+        return None
+
+    voice_bus, adr_bus = bus(nar, "n", "voice"), bus(adr, "a", "adr")
     if music:
         mp = Path(music["file"]) if Path(music["file"]).is_absolute() else plan_dir / music["file"]
+        mi = inputs.count("-i")
         inputs += ["-stream_loop", "-1", "-i", str(mp)]
-        mi = nvoice
         fc.append(f"[{mi}:a]aresample=48000,volume={music.get('gain', 0.35)},"
                   f"afade=t=out:st={max(0, dur - 4):.2f}:d=4[bed]")
-        if nvoice:
-            fc.append("[voice]asplit[v1][v2]")
-            fc.append("[bed][v2]sidechaincompress=threshold=0.03:ratio=8:attack=40:release=600[duck]")
-            fc.append("[duck][v1]amix=inputs=2:normalize=0[mix]")
+    # every bus the bed and ADR key off has to be split once per use
+    keys = {"voice": (["adr"] if adr_bus else []) + (["bed"] if music else []),
+            "adr": ["bed"] if music else []}
+    for name, uses in (("voice", keys["voice"]), ("adr", keys["adr"])):
+        if (voice_bus if name == "voice" else adr_bus) and uses:
+            fc.append(f"[{name}]asplit={len(uses) + 1}[{name}_m]" + "".join(f"[{name}_k{u}]" for u in uses))
+        elif (voice_bus if name == "voice" else adr_bus):
+            fc.append(f"[{name}]anull[{name}_m]")
+    final = []
+    if adr_bus:
+        if voice_bus:
+            fc.append("[adr_m][voice_kadr]sidechaincompress=threshold=0.05:ratio=3:attack=30:release=400[adr_d]")
+            final.append("[adr_d]")
         else:
-            fc.append("[bed]anull[mix]")
+            final.append("[adr_m]")
+    if voice_bus:
+        final.append("[voice_m]")
+    if music:
+        bed = "bed"
+        for name in ("voice", "adr"):
+            if name in keys and "bed" in keys[name] and (voice_bus if name == "voice" else adr_bus):
+                ratio = 8 if name == "voice" else 3
+                fc.append(f"[{bed}][{name}_kbed]sidechaincompress=threshold=0.03:ratio={ratio}:attack=40:release=600[{bed}_{name}]")
+                bed = f"{bed}_{name}"
+        final.append(f"[{bed}]")
+    if len(final) > 1:
+        fc.append("".join(final) + f"amix=inputs={len(final)}:normalize=0[mix]")
     else:
-        fc.append("[voice]anull[mix]")
+        fc.append(f"{final[0]}anull[mix]")
     run(base + inputs + ["-filter_complex", ";".join(fc), "-map", "[mix]", "-t", f"{dur:.3f}", "-ac", "2", str(out)])
     return out
 
@@ -583,7 +649,7 @@ def main(argv=None):
 
     ep = load_episode(args.episode)
     out = Path(args.out) if args.out else ROOT / "out" / "film" / ep["id"]
-    timeline = build_timeline(ep)
+    timeline = build_timeline(ep, voice_dir=out / "voice")
     plan = write_plan(ep, timeline, out)
     print(f"plan: {len(plan['segments'])} segments, {plan['duration']:.1f} s, sessions "
           + ", ".join(f"{m} ({len(v)} shots)" for m, v in plan["sessions"].items()) + f" -> {out}")
