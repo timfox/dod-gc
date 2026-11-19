@@ -605,7 +605,7 @@
           "type": "still",
           "eye": "bluff_w_eye",
           "target": "beach_mid",
-          "height": 40,
+          "height": 110,
           "duration": 10,
           "lens": 50,
           "lens_end": 65
