@@ -425,6 +425,7 @@ def assemble(ep, timeline, plan_dir, captures, out_path, burn_subs=False):
             runs = runs[-len(group):]
         for seg, r in zip(group, runs):
             frames, missing = frame_list(r, seg["frames"])
+            frames = frames[:int(round(seg["dur"] * fps))]  # the last key's frame is the next segment's first
             dups = len(r) - len({f for f, _ in r})
             report.append(f"{seg['id']}: {seg['frames']} frames, {len(r)} dumped, {dups} duplicate(s) dropped,"
                           f" {missing} missed and filled")
@@ -447,7 +448,8 @@ def assemble(ep, timeline, plan_dir, captures, out_path, burn_subs=False):
     cmd = ["ffmpeg", "-v", "error", "-y", "-i", str(video), "-i", str(audio), "-i", str(plan_dir / "chapters.txt")]
     has_subs = srt.exists() and srt.stat().st_size > 0
     if burn_subs and has_subs:
-        style = "FontName=DejaVu Serif,FontSize=20,PrimaryColour=&H00F0F0F0,OutlineColour=&H80000000,BorderStyle=1,Outline=1.2,Shadow=0,MarginV=40"
+        # libass sizes in a 288-line space: about 37 px type at 1080, sitting low (in the bar when letterboxed)
+        style = "FontName=DejaVu Serif,FontSize=10,PrimaryColour=&H00E8ECF0,OutlineColour=&H90000000,BorderStyle=1,Outline=0.8,Shadow=0,MarginV=10,MarginL=40,MarginR=40"
         cmd += ["-vf", f"subtitles={srt}:force_style='{style}'", *_video_args(fps)]
     else:
         cmd += ["-c:v", "copy"]
@@ -490,14 +492,14 @@ class TopDown:
         return (self.size[0] / 2 + (p[0] - self.cx) * self.scale, self.size[1] / 2 - (p[1] - self.cy) * self.scale)
 
 
-def preview_session(timeline, mapname, group, out_dir, fps, size=(960, 720)):
+def preview_session(timeline, mapname, group, out_dir, fps, aspect=16 / 9, size=(960, 720)):
     """Frames for one map, laid out like a capture session: preroll (unstamped) then each shot, stamped."""
     from PIL import Image, ImageDraw
     out_dir.mkdir(parents=True, exist_ok=True)
     for p in out_dir.glob("*.png"):
         p.unlink()
     W4, H4 = size
-    band = (int((H4 - W4 * 9 / 16) / 2), int((H4 + W4 * 9 / 16) / 2))  # the 16:9 safe band
+    band = (int((H4 - W4 / aspect) / 2) + 6, int((H4 + W4 / aspect) / 2) - 6)  # what survives the letterbox crop
     graph = timeline["graphs"][mapname]
     top = TopDown(graph, (int((band[1] - band[0]) * 1.05), band[1] - band[0] - 24))
     f_big, f_small, f_mono = _font(FONT_SERIF_B, 26), _font(FONT_SANS, 17), _font("/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf", 15)
@@ -535,7 +537,7 @@ def preview_session(timeline, mapname, group, out_dir, fps, size=(960, 720)):
                 y += 24
             y += 10
             note = seg["shot"].get("note", "")
-            for ln in _wrap(d, note, f_small, W4 - px0 - 16)[:8]:
+            for ln in _wrap(d, note, f_small, W4 - px0 - 16)[:5]:
                 d.text((px0, y), ln, font=f_small, fill=(170, 166, 156))
                 y += 22
             d.text((px0, band[1] - 34), "PREVIS · waypoint map, not game render", font=f_small, fill=(196, 170, 120))
@@ -572,7 +574,8 @@ def main(argv=None):
     if args.command == "animatic":
         captures = out / "previs"
         for mapname, group in sessions(timeline).items():
-            n = preview_session(timeline, mapname, group, captures / mapname, timeline["fps"])
+            n = preview_session(timeline, mapname, group, captures / mapname, timeline["fps"],
+                                ASPECTS[ep.get("aspect", "16:9")])
             print(f"previs {mapname}: {n} frames")
         dest = Path(args.output) if args.output else out / f"{ep['id']}-animatic.mp4"
     else:
