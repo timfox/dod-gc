@@ -33,6 +33,11 @@ static cvar_t dod_spec_auto = { "dod_spec_auto", "1", FCVAR_SERVER };
  * seconds after connecting, with the steps the menus take, so an automated run (no pad) gets a playable human and a
  * view model. team 1 Allies / 2 Axis, class 1 rifleman .. 6 (DodClass). */
 static cvar_t dod_gc_autojoin = { "dod_gc_autojoin", "", FCVAR_SERVER };
+/* dod_gc_autotele "<x> <y> <z>" (test only, off when empty): a few seconds after the human has joined, park them there in
+ * noclip, so a packet-size or view test can look from a chosen open spot instead of the team spawn. */
+static cvar_t dod_gc_autotele = { "dod_gc_autotele", "", FCVAR_SERVER };
+static float g_autotele_seen[DOD_MAX_PLAYERS + 1];
+static BOOL g_autotele_done[DOD_MAX_PLAYERS + 1];
 static float g_autojoin_seen[DOD_MAX_PLAYERS + 1];
 static BOOL g_autojoin_spec_done[DOD_MAX_PLAYERS + 1];
 /* Team body models (models/player/<name>/<name>.mdl, split onto the disc as
@@ -528,6 +533,7 @@ CHalfLifeDoD::CHalfLifeDoD()
 		Dod_CvarRegisterKeep( &dod_spectate );
 		Dod_CvarRegisterKeep( &dod_spec_auto );
 		Dod_CvarRegisterKeep( &dod_gc_autojoin );
+		Dod_CvarRegisterKeep( &dod_gc_autotele );
 		Dod_CvarRegisterKeep( &dod_paras );
 		for( int k = 0; k < DOD_LIMIT_CVARS; k++ ) {
 			g_limit_cvar_storage[k].name = g_limit_cvars[k].name;
@@ -583,6 +589,8 @@ CHalfLifeDoD::CHalfLifeDoD()
 	g_spec_next_think = 0.0f;
 	memset( g_spec_join_pending, 0, sizeof( g_spec_join_pending ) );
 	memset( g_autojoin_seen, 0, sizeof( g_autojoin_seen ) );
+	memset( g_autotele_seen, 0, sizeof( g_autotele_seen ) );
+	memset( g_autotele_done, 0, sizeof( g_autotele_done ) );
 	memset( g_autojoin_spec_done, 0, sizeof( g_autojoin_spec_done ) );
 }
 
@@ -1321,6 +1329,23 @@ static void DodGC_SpectatorThink( void )
 				else if( gpGlobals->time - g_autojoin_seen[i] > 2.0f ) {
 					g_autojoin_seen[i] = 0.0f;
 					DodGC_HumanJoin( pSpec, (DodTeam)aj_team, (DodClass)aj_class );
+				}
+			}
+		}
+		if( i <= DOD_MAX_PLAYERS && pSpec && pSpec->IsPlayer() && !DodBots_IsBot( pSpec ) && g_dod_joined[i] && !pSpec->IsObserver() ) {
+			const char *at = CVAR_GET_STRING( "dod_gc_autotele" );
+			float tx, ty, tz;
+			if( at && at[0] && sscanf( at, "%f %f %f", &tx, &ty, &tz ) == 3 ) {
+				if( g_autotele_seen[i] == 0.0f )
+					g_autotele_seen[i] = gpGlobals->time;
+				else if( gpGlobals->time - g_autotele_seen[i] > 6.0f ) {
+					pSpec->pev->movetype = MOVETYPE_NOCLIP;
+					pSpec->pev->velocity = Vector( 0, 0, 0 );
+					if( !g_autotele_done[i] ) {
+						g_autotele_done[i] = TRUE;
+						UTIL_SetOrigin( pSpec->pev, Vector( tx, ty, tz ) );
+						ALERT( at_console, "dod_gc_autotele: human parked at %.0f %.0f %.0f\n", tx, ty, tz );
+					}
 				}
 			}
 		}
