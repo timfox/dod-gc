@@ -182,17 +182,37 @@
           "size": "MS",
           "angle": "Low, at the waterline",
           "action": "Handheld at knee height in the shallows. Figures wade toward the beach obstacles ahead.",
-          "figures": [
-            "wave_l",
-            "wave_c",
-            "wave_r"
-          ],
           "sound": "Water around the lens, shouting off screen",
           "sea": true
         },
         "narration": [
           {
             "text": "Omaha, about eight kilometres of sand beneath steep bluffs, was assigned to the United States 1st and 29th Infantry Divisions."
+          }
+        ],
+        "actors": [
+          {
+            "id": "wade",
+            "team": "allies",
+            "class": "rifleman",
+            "squad": {
+              "count": 3,
+              "spacing": 70
+            },
+            "path": [
+              {
+                "at": [
+                  -380,
+                  -2880
+                ],
+                "pose": "walk"
+              },
+              {
+                "at": "obstacles",
+                "pose": "crouch",
+                "hold": 2
+              }
+            ]
           }
         ]
       }
@@ -217,15 +237,51 @@
           "size": "WS",
           "angle": "Eye level, tracking",
           "action": "Tracking forward across the open sand behind the advance, the bluffs never getting closer fast enough.",
-          "figures": [
-            "beach_mid",
-            "obstacles"
-          ],
           "sound": "Footfalls in wet sand, MG fire distant"
         },
         "narration": [
           {
             "text": "The first assault waves came ashore at around half past six in the morning, into heavy fire."
+          }
+        ],
+        "actors": [
+          {
+            "id": "run",
+            "team": "allies",
+            "class": "assault",
+            "squad": {
+              "count": 4,
+              "spacing": 64
+            },
+            "path": [
+              {
+                "at": [
+                  -330,
+                  -2560
+                ],
+                "pose": "run"
+              },
+              {
+                "at": "shingle",
+                "route": true,
+                "pose": "crouch"
+              }
+            ]
+          },
+          {
+            "id": "fallen",
+            "team": "allies",
+            "class": "rifleman",
+            "path": [
+              {
+                "at": [
+                  -250,
+                  -2380
+                ],
+                "pose": "fallen",
+                "yaw": 120
+              }
+            ]
           }
         ]
       }
@@ -255,6 +311,33 @@
           {
             "text": "From the bluffs, German positions overlooked the whole length of the beach."
           }
+        ],
+        "actors": [
+          {
+            "id": "far",
+            "team": "allies",
+            "class": "rifleman",
+            "squad": {
+              "count": 3,
+              "spacing": 80
+            },
+            "path": [
+              {
+                "at": [
+                  -500,
+                  -2300
+                ],
+                "pose": "run"
+              },
+              {
+                "at": [
+                  -300,
+                  -1300
+                ],
+                "pose": "crouch"
+              }
+            ]
+          }
         ]
       }
     },
@@ -278,14 +361,74 @@
           "size": "MS",
           "angle": "Ground level, dutch tilt",
           "action": "Pinned at the shingle bank, horizon tipped. The bluff fills the top of frame and does not move.",
-          "sound": "Ringing ears; muffled fire",
-          "figures": [
-            "crest"
-          ]
+          "sound": "Ringing ears; muffled fire"
         },
         "narration": [
           {
             "text": "Rough seas, currents and smoke pushed many landing craft away from their planned sectors, and much of the supporting armour never reached the shore."
+          }
+        ],
+        "actors": [
+          {
+            "id": "pin_l",
+            "team": "allies",
+            "class": "rifleman",
+            "path": [
+              {
+                "at": [
+                  -20,
+                  420,
+                  60
+                ],
+                "pose": "crouch",
+                "look": "draw_top"
+              }
+            ]
+          },
+          {
+            "id": "pin_r",
+            "team": "allies",
+            "class": "support",
+            "path": [
+              {
+                "at": [
+                  180,
+                  380,
+                  70
+                ],
+                "pose": "prone",
+                "look": "draw_top"
+              }
+            ]
+          },
+          {
+            "id": "lead",
+            "team": "allies",
+            "class": "rifleman",
+            "path": [
+              {
+                "at": [
+                  90,
+                  500,
+                  90
+                ],
+                "pose": "crouch",
+                "look": "draw_top"
+              },
+              {
+                "t": 5,
+                "pose": "crouch_walk"
+              },
+              {
+                "at": [
+                  250,
+                  780,
+                  280
+                ],
+                "pose": "crouch",
+                "look": "crest"
+              }
+            ]
           }
         ]
       }
@@ -310,10 +453,6 @@
           "size": "WS",
           "angle": "Eye level, climbing",
           "action": "Handheld climb off the beach up the draw, the slope rising in frame.",
-          "figures": [
-            "crest_l",
-            "crest_r"
-          ],
           "sound": "Breathing, boots on scree"
         },
         "narration": [
@@ -322,7 +461,52 @@
           }
         ],
         "chapter": "Up the bluffs",
-        "lower_third": "The bluffs\nPaths and valleys led off the beach"
+        "lower_third": "The bluffs\nPaths and valleys led off the beach",
+        "actors": [
+          {
+            "id": "climb",
+            "team": "allies",
+            "class": "rifleman",
+            "speed": 95,
+            "squad": {
+              "count": 2,
+              "spacing": 60
+            },
+            "path": [
+              {
+                "at": [
+                  260,
+                  -120,
+                  20
+                ],
+                "pose": "crouch_walk"
+              },
+              {
+                "at": [
+                  224,
+                  480,
+                  82
+                ]
+              },
+              {
+                "at": [
+                  250,
+                  780,
+                  280
+                ]
+              },
+              {
+                "at": [
+                  150,
+                  920,
+                  330
+                ],
+                "pose": "crouch",
+                "look": "draw_top"
+              }
+            ]
+          }
+        ]
       }
     },
     {
@@ -350,15 +534,43 @@
           "size": "MS",
           "angle": "Low angle, looking up",
           "action": "From the ground, the camera rises with the figures as they top the crest against the sky.",
-          "figures": [
-            "crest_l",
-            "crest_r"
-          ],
           "sound": "Wind returns; the fire thins"
         },
         "narration": [
           {
             "text": "One by one, the defences above the beach were taken."
+          }
+        ],
+        "actors": [
+          {
+            "id": "top",
+            "team": "allies",
+            "class": "assault",
+            "squad": {
+              "count": 2,
+              "spacing": 80
+            },
+            "path": [
+              {
+                "at": [
+                  300,
+                  620
+                ],
+                "pose": "crouch_walk"
+              },
+              {
+                "at": "crest",
+                "pose": "run"
+              },
+              {
+                "at": [
+                  230,
+                  1000
+                ],
+                "pose": "stand",
+                "look": "draw_top"
+              }
+            ]
           }
         ]
       }

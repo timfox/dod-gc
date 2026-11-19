@@ -18,7 +18,8 @@ film/episodes/<ep>.json ──plan──▶ out/film/<ep>/cine/*.cam + film-<map
 | xash3d-gc `engine/client/cl_cine.c`, `cine_path.c` | `cine_play <shot>`: keyframed camera owns the view, HUD and weapon hidden, game time locked to `cine_fps`, frame-number stamp. See xash3d-gc `docs/CINEMATIC_CAMERA.md`. |
 | `tools/film/campath.py` | The `.cam` format and its sampling, mirrored from the engine so previs matches the real move. |
 | `tools/film/shots.py` | Camera moves from a few numbers: `dolly` (along the walkable route between two points, from `data/waypoints/<map>.wpt`), `orbit`, `crane`, `still` (with optional zoom push), `pan`, and raw `keys`. |
-| `tools/film/film.py` | `plan`, `animatic`, `assemble`. |
+| `tools/film/film.py` | `plan`, `boards`, `animatic`, `assemble`. |
+| `tools/film/actors.py`, `src/dod_film.c`, `src/dod_film_actor.cpp` | Actors: soldiers placed and moving in a shot (below). |
 | `tools/film/stamp.py` | Reads the engine's frame stamp off captured images. |
 | `scripts/film-capture.sh` | Plan, build a listen disc per map with `build-lean-iso.sh --film`, run Dolphin with frame dumping until the engine logs `FILM SESSION DONE`, then assemble. |
 | `film/episodes/` | Episodes. `ep01-omaha.json` is the sample: Omaha Beach on 6 June 1944, six shots on `dod_charlie`. |
@@ -75,6 +76,35 @@ engine flies: a pencil-style view projected from the map's waypoints, an A and B
 arrow or zoom frame, an overhead inset, and the slate (size, angle, lens, move, duration, action, VO, SFX).
 It also writes `shot-list.md`. Since the boards and the capture share a path, the film matches the boards.
 
+## Actors
+
+A shot's `actors` puts soldiers in it. Each is a prop wearing its side's player model (the uniform and the
+gun come from the class), not a bot, so it needs no client slot: the GameCube listen server has room for one
+bot, and a shot can have up to 12 actors.
+
+```json
+"actors": [
+  {"id": "run", "team": "allies", "class": "assault", "squad": {"count": 4, "spacing": 64},
+   "path": [{"at": [-330, -2560], "pose": "run"}, {"at": "shingle", "route": true, "pose": "crouch"}]},
+  {"id": "lead", "team": "allies", "path": [{"at": [40, 330, 40], "pose": "crouch", "look": "draw_top"},
+                                            {"t": 5, "pose": "crouch_walk"}, {"at": [250, 780, 280]}]}
+]
+```
+
+- A stop has `at` (any camera point), a `pose` (`stand walk run crouch crouch_walk prone crawl aim crouch_aim
+  fallen`), and either a `t` or nothing, in which case the actor gets there at its pose's pace (`speed`
+  overrides). `hold` waits at the stop; `route: true` walks the waypoint graph; `yaw` or `look` sets the facing,
+  otherwise the actor faces the way it moves. The leg to a stop moves in the previous stop's pose.
+- `squad` repeats an actor in a loose file with a short stagger; `offset` shifts one actor's whole path.
+- Give `[x, y, z]` where the waypoints are sparse or stacked: the game puts the feet on the floor under each
+  point with a trace, but previs and boards use the z you give.
+- `plan` writes `cine/<shot>.act` (format in `src/dod_film.h`) and `cine/cast-<map>.txt` (the sides to
+  precache), and each shot's alias runs `film_cast <shot> <preroll>` before `cine_play`, or `film_cast_clear`
+  for a shot with nobody in it. Boards draw the actors where they are at each panel (crouched and prone ones
+  low) and the animatic shows them as dots.
+- Pose sequences are looked up by name in the retail model, best guess first; the game logs
+  `FILM ACTOR <id> pose <pose>: sequence N (<name>)` so the first capture shows which ones it found.
+
 ## Making an episode
 
 1. **Board it.** Write the sequence and run `film.py boards` to check framing shot by shot. Then `tools/film/film.py animatic film/episodes/<ep>.json`. The
@@ -111,6 +141,7 @@ releasing anything outside the project.
 - Needs a run on the capture machine: the engine change has host tests but has not been built for the
   Cube or run in Dolphin yet. First capture should check the stamp reads back (`assembly-report.txt`) and
   that the camera shows on the CapFaces/WorldDL route (`GC_RenderNewGameWorldFrames`).
-- Next: actors (scripted bot moves and TAS pad scripts per shot), recorded narration, a music bed, game
+- Done since: actors (props on keyed paths, previs and boards from the same samples as the game).
+- Next: check the actors' sequences and floor placement on the first capture; recorded narration, a music bed, game
   ambience captured per shot, and more maps (`dod_avalanche`, `dod_flash` have waypoints today; other maps
   need `tools/gen_waypoints.py` run against their BSP).

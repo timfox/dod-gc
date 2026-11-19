@@ -230,8 +230,12 @@ if [[ -n "$FILM" ]]; then
 	[[ -f "$film_cfg" ]] || { echo "error: $film_cfg missing: the plan has no shots on $LISTEN" >&2; exit 2; }
 	mkdir -p "$LEAN/cine"
 	cp -f "$FILM"/cine/*.cam "$LEAN/cine/"
+	# actors: each shot's cast, and the sides whose player models this map precaches for them
+	cp -f "$FILM"/cine/*.act "$LEAN/cine/" 2>/dev/null || true
+	cast_list="$FILM/cine/cast-$(echo "$LISTEN" | tr '[:upper:]' '[:lower:]').txt"
+	[[ -f "$cast_list" ]] && cp -f "$cast_list" "$LEAN/cine/cast.txt"
 	{ echo "$FILM_BEGIN"; cat "$film_cfg"; echo "$FILM_END"; } >> "$LEAN/listenserver.cfg"
-	echo "==> film: $(ls "$LEAN/cine" | wc -l) camera path(s), session $(basename "$film_cfg")"
+	echo "==> film: $(ls "$LEAN/cine"/*.cam | wc -l) camera path(s), $(ls "$LEAN/cine"/*.act 2>/dev/null | wc -l) cast(s), session $(basename "$film_cfg")"
 fi
 
 # What this disc was built from: the short form goes on the disc (the engine prints it in the boot
