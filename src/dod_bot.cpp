@@ -1564,6 +1564,14 @@ static BOOL NavTarget( CBasePlayer *pBot, DodBotState *state, Vector *target )
  * cover, join a teammate, go to / hold the objective. Cost per bot: one scan of the players, two traces, one
  * search over a few hundred integers. */
 #define DOD_BOT_MAX_FIRE_RANGE 2000.0f
+/* beyond this the bot's shots are wasted: submachine guns and the BAR spray, rifles and MGs reach */
+static float UsefulRange( CBasePlayerItem *it )
+{
+	const char *c = it ? STRING( it->pev->classname ) : "";
+	if( strstr( c, "stg44" ) || strstr( c, "mp40" ) || strstr( c, "thompson" ) || strstr( c, "grease" ) || strstr( c, "bar" ) || strstr( c, "mp44" ) || strstr( c, "sten" ) || strstr( c, "carbine" ) )
+		return 900.0f;
+	return DOD_BOT_MAX_FIRE_RANGE;
+}
 #define DOD_BOT_THINK_PERIOD 0.5f
 #define DOD_BOT_LOW_HEALTH 35.0f
 #define DOD_BOT_HURT_MEMORY 12.0f	/* seconds after a hit that low health keeps a bot in cover; nobody heals in DoD, so it must not last for ever */
@@ -2596,10 +2604,12 @@ static void RunBot( int index, CBasePlayer *pBot )
 		in.target_distance = enemy_distance;
 		if( enemy->entindex() != state->last_tgt || now - state->last_fight_time > 1.0f )
 		{
+			const BOOL again = enemy->entindex() == state->last_tgt && now - state->last_fight_time < 6.0f && state->last_fight_time > 0.0f;
 			/* a new target: a moment to take it in before the first shot, and aim from scratch */
 			state->last_tgt = enemy->entindex();
 			state->track_since = now;
-			state->react_until = now + Dod_BotReactionDelay( &sk, RANDOM_FLOAT( 0.0f, 1.0f ) );
+			/* an enemy seen again within a few seconds is not a surprise: a short delay, not a fresh reaction */
+			state->react_until = now + ( again ? 0.08f : Dod_BotReactionDelay( &sk, RANDOM_FLOAT( 0.0f, 1.0f ) ) );
 			state->next_noise = 0.0f;
 			ALERT( at_console, "DoD bot %s: sees an enemy at %.0f units, reacts in %.0f ms\n", STRING( pBot->pev->netname ), enemy_distance,
 				( state->react_until - now ) * 1000.0f );
@@ -2676,7 +2686,7 @@ static void RunBot( int index, CBasePlayer *pBot )
 	}
 
 	move = Dod_BotDecide( &in );
-	if( fight && !advance && !state->nav_arrived && !state->ladder_dir && enemy_distance > 1500.0f )
+	if( fight && !advance && !state->nav_arrived && !state->ladder_dir && enemy_distance > UsefulRange( pBot->m_pActiveItem ) - 100.0f )
 	{
 		move.forward = 1.0f;	/* an enemy beyond useful range and no route to follow: close the distance along the view, which is on the enemy */
 		move.side = 0.0f;
@@ -2784,14 +2794,14 @@ static void RunBot( int index, CBasePlayer *pBot )
 				state->eng_dist_min = enemy_distance;
 			if( !move.fire )
 			{
-				if( enemy_distance > DOD_BOT_MAX_FIRE_RANGE ) state->eng_why_far++;
+				if( enemy_distance > UsefulRange( eit ) ) state->eng_why_far++;
 				else if( now < state->react_until ) state->eng_why_react++;
 				else if( state->behavior == DOD_ACT_RELOAD || ( ew && ew->m_iClip == 0 && ew->m_iPrimaryAmmoType >= 0 && pBot->m_rgAmmo[ew->m_iPrimaryAmmoType] > 0 ) ) state->eng_why_reload++;
 				else if( ew && ew->m_iClip == 0 ) state->eng_why_noammo++;
 				else state->eng_why_aim++;
 			}
 		}
-		if( now < state->react_until || enemy_distance > DOD_BOT_MAX_FIRE_RANGE )
+		if( now < state->react_until || enemy_distance > UsefulRange( pBot->m_pActiveItem ) )
 			move.fire = 0;	/* still taking the target in, or too far to bother */
 		else if( move.fire )
 		{
