@@ -9,6 +9,7 @@
 #ifndef DODGC_DOD_BOTS_H
 #define DODGC_DOD_BOTS_H
 
+#include <stddef.h>
 #include "dod_game.h"
 
 #ifdef __cplusplus
