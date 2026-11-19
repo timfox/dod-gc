@@ -399,14 +399,35 @@ BOOL DodBots_IsBot( CBasePlayer *pPlayer )
 	return FALSE;
 }
 
+/* A value set before the game registers a cvar (from gamecube.cfg, or by code that runs earlier) lives in a
+ * temporary engine cvar, and registering the real one throws that away and starts from the built-in default.
+ * That is why "dod_bots 8" in the cfg still gave 7 bots. Carry the earlier value across the registration. */
+void Dod_CvarRegisterKeep( cvar_t *cv )
+{
+	char keep[128];
+	const char *was = CVAR_GET_STRING( cv->name );
+	keep[0] = 0;
+	if( was && was[0] )
+	{
+		strncpy( keep, was, sizeof( keep ) - 1 );
+		keep[sizeof( keep ) - 1] = 0;
+	}
+	CVAR_REGISTER( cv );
+	if( keep[0] && strcmp( keep, cv->string ) )
+	{
+		CVAR_SET_STRING( cv->name, keep );
+		ALERT( at_console, "DoD cvar %s keeps its earlier value \"%s\"\n", cv->name, keep );
+	}
+}
+
 void DodBots_Init( void )
 {
 	if( !g_registered )
 	{
-		CVAR_REGISTER( &dod_bots );
-		CVAR_REGISTER( &dod_bot_skill );
-		CVAR_REGISTER( &dod_bot_stage );
-		CVAR_REGISTER( &dod_bots_online );
+		Dod_CvarRegisterKeep( &dod_bots );
+		Dod_CvarRegisterKeep( &dod_bot_skill );
+		Dod_CvarRegisterKeep( &dod_bot_stage );
+		Dod_CvarRegisterKeep( &dod_bots_online );
 		g_registered = TRUE;
 	}
 	FreeBotState();
