@@ -2,6 +2,7 @@
 """Film pipeline: episode spec -> camera paths -> capture -> finished film.
 
     tools/film/film.py plan     film/episodes/ep01.json            # .cam paths, session cfgs, timeline, script
+    tools/film/film.py boards   film/episodes/ep01.json            # storyboard sheets drawn from the camera paths
     tools/film/film.py animatic film/episodes/ep01.json            # previs frames from the waypoint map, then assemble
     tools/film/film.py assemble film/episodes/ep01.json [--captures DIR] [--burn-subs]
 
@@ -555,7 +556,7 @@ def preview_session(timeline, mapname, group, out_dir, fps, aspect=16 / 9, size=
 # --- CLI -----------------------------------------------------------------------------------------------
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("command", choices=("plan", "animatic", "assemble"))
+    ap.add_argument("command", choices=("plan", "boards", "animatic", "assemble"))
     ap.add_argument("episode")
     ap.add_argument("--out", help="work directory (default out/film/<episode id>)")
     ap.add_argument("--captures", help="captured frames, one folder per map (default <out>/captures)")
@@ -570,6 +571,12 @@ def main(argv=None):
     print(f"plan: {len(plan['segments'])} segments, {plan['duration']:.1f} s, sessions "
           + ", ".join(f"{m} ({len(v)} shots)" for m, v in plan["sessions"].items()) + f" -> {out}")
     if args.command == "plan":
+        return 0
+    if args.command == "boards":
+        from tools.film import board
+        pages = board.render_sheets(ep, timeline, out, ep.get("anchors", {}))
+        (out / "shot-list.md").write_text(board.shot_list(ep, timeline))
+        print("\n".join(f"storyboard: {p}" for p in pages))
         return 0
     if args.command == "animatic":
         captures = out / "previs"

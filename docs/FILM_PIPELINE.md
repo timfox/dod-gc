@@ -50,9 +50,34 @@ film/episodes/<ep>.json ──plan──▶ out/film/<ep>/cine/*.cam + film-<map
   WAV name to record it as.
 - Shot ids become console arguments: lowercase letters, digits, `_`.
 
+## Film grammar and storyboards
+
+A shot's `camera` takes film language on top of its move, and a `board` block for the slate:
+
+```json
+"camera": {"type": "still", "eye": "shingle", "target": "draw_top", "height": 4, "duration": 13,
+           "lens": 40, "dutch": -8, "handheld": 0.4, "seed": 6},
+"board":  {"no": "6", "size": "MS", "angle": "Ground level, dutch tilt", "action": "...",
+           "sound": "Ringing ears; muffled fire", "figures": ["crest"], "sea": true}
+```
+
+- `lens` / `lens_end`: focal length in mm on a 36 mm wide sensor (24 mm wide, 50 mm normal, 85 mm tight);
+  a still with `lens_end` is a zoom push or pull.
+- `dutch`: roll in degrees, or `[start, end]` to roll during the shot.
+- `handheld`: operator shake, 0.2 steadied to 1.0 running; slow drift, not jitter, and the same every
+  capture for a given `seed`.
+- Low and high angles come from `height` and where the camera looks; `crane`, `dolly`, `orbit`, `pan`
+  and `still` are the moves.
+- `figures`: stand-ins drawn on the boards where people should be in frame (bots on the capture).
+
+`tools/film/film.py boards <ep>.json` draws numbered storyboard sheets from the same camera paths the
+engine flies: a pencil-style view projected from the map's waypoints, an A and B panel for moves, a move
+arrow or zoom frame, an overhead inset, and the slate (size, angle, lens, move, duration, action, VO, SFX).
+It also writes `shot-list.md`. Since the boards and the capture share a path, the film matches the boards.
+
 ## Making an episode
 
-1. **Block it out.** Write the sequence, then `tools/film/film.py animatic film/episodes/<ep>.json`. The
+1. **Board it.** Write the sequence and run `film.py boards` to check framing shot by shot. Then `tools/film/film.py animatic film/episodes/<ep>.json`. The
    animatic draws each shot's camera on a top-down map of the waypoints with the timing, cards, lower thirds
    and burned subtitles, so pacing and narration can be judged before anything is captured. It needs no game
    assets and runs anywhere.
