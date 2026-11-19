@@ -64,6 +64,9 @@ static int g_spec_last_target[DOD_SPEC_SLOTS + 1];
 /* Eye of the player the spectator was following, so free-fly starts there and not inside the map. */
 static Vector g_spec_eye[DOD_SPEC_SLOTS + 1];
 static BOOL g_spec_eye_valid[DOD_SPEC_SLOTS + 1];
+/* Last free-fly position known to be in the open: the camera never moves into the world. */
+static Vector g_spec_good[DOD_SPEC_SLOTS + 1];
+static BOOL g_spec_good_valid[DOD_SPEC_SLOTS + 1];
 static float g_spec_next_think;
 /* dod_spectate 1: InitHUD asks for the join, SpectatorThink makes it. The first
  * InitHUD runs inside CBasePlayer::Spawn, whose tail (game_playerspawn, the kit,
@@ -1258,7 +1261,25 @@ static void DodGC_SpectatorThink( void )
 				/* Just switched to free-fly: start at the followed player's eye. */
 				UTIL_SetOrigin( pSpec->pev, g_spec_eye[slot] );
 				g_spec_eye_valid[slot] = FALSE;
+				g_spec_good_valid[slot] = FALSE;
 			}
+			if( mode == DOD_SPEC_ROAMING ) {
+				/* Free-fly clips against the world here, where the real map is traced: a
+				 * move that hits a surface (or starts inside one) is undone. */
+				TraceResult tr;
+				if( g_spec_good_valid[slot] ) {
+					UTIL_TraceLine( g_spec_good[slot], pSpec->pev->origin, ignore_monsters, NULL, &tr );
+					if( tr.flFraction < 1.0f || tr.fStartSolid || tr.fAllSolid ) {
+						UTIL_SetOrigin( pSpec->pev, g_spec_good[slot] );
+						pSpec->pev->velocity = g_vecZero;
+					} else
+						g_spec_good[slot] = pSpec->pev->origin;
+				} else {
+					g_spec_good[slot] = pSpec->pev->origin;
+					g_spec_good_valid[slot] = TRUE;
+				}
+			} else
+				g_spec_good_valid[slot] = FALSE;
 		}
 		if( !tick || !DodGC_SpecCandidates( pSpec, list, DOD_MAX_PLAYERS, &count ) )
 			continue;
