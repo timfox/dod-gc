@@ -773,8 +773,7 @@ static CBasePlayer *Perceive( CBasePlayer *pBot, DodBotState *state, float *dist
 				{
 					const float hp[3] = { heard->pev->origin.x, heard->pev->origin.y, heard->pev->origin.z };
 					state->next_report = now + 1.5f;
-					state->intel_checked = now;
-					Dod_IntelReport( &g_intel, my_team, hp, DOD_INTEL_HEARD, now, 5.0f );
+					Dod_IntelReport( &g_intel, my_team, hp, DOD_INTEL_HEARD, pBot->entindex(), now, 5.0f );
 				}
 			}
 		}
@@ -1350,7 +1349,7 @@ static void FightRef( CBasePlayer *pBot, DodTeam team, float ref[3] )
 	DodGCObjectiveView views[DOD_BOT_MAX_OBJECTIVES];
 	float placed, best = 1e9f;
 	int count, i, found = 0;
-	if( Dod_IntelPick( &g_intel, team, from, gpGlobals->time, 0.0f, 1e9f, ref, &placed ) )
+	if( Dod_IntelPick( &g_intel, team, from, 0, -1.0f, gpGlobals->time, 0.0f, 1e9f, ref, &placed ) )
 		return;
 	count = DodGC_ListObjectives( views, DOD_BOT_MAX_OBJECTIVES );
 	for( i = 0; i < count; i++ )
@@ -1485,8 +1484,7 @@ static void BotThink( CBasePlayer *pBot, DodBotState *state, CBasePlayer *enemy 
 			/* a call-out to the team: where an enemy was just seen */
 			const float ep[3] = { enemy->pev->origin.x, enemy->pev->origin.y, enemy->pev->origin.z };
 			state->next_report = now + 1.0f;
-			state->intel_checked = now;
-			Dod_IntelReport( &g_intel, team, ep, DOD_INTEL_SEEN, now, 6.0f );
+			Dod_IntelReport( &g_intel, team, ep, DOD_INTEL_SEEN, pBot->entindex(), now, 8.0f );
 		}
 	}
 	if( ( enemy != NULL ) != ( ( state->ws & DOD_WS_ENEMY_VISIBLE ) != 0 ) )
@@ -1503,8 +1501,8 @@ static void BotThink( CBasePlayer *pBot, DodBotState *state, CBasePlayer *enemy 
 		/* nothing known of its own: answer a mate's call-out (or a mate's death), if this bot is the sort to go and look */
 		const float from[3] = { pBot->pev->origin.x, pBot->pev->origin.y, pBot->pev->origin.z };
 		float pos[3], placed = 0.0f;
-		const int kind = Dod_IntelPick( &g_intel, team, from, now, 300.0f, 2400.0f, pos, &placed );
-		if( kind && placed > state->intel_checked )
+		const int kind = Dod_IntelPick( &g_intel, team, from, pBot->entindex(), state->intel_checked, now, 300.0f, 2400.0f, pos, &placed );
+		if( kind )
 		{
 			const float d = ( Vector( pos[0], pos[1], pos[2] ) - pBot->pev->origin ).Length();
 			state->intel_checked = placed;	/* one decision per report, not one per think */
@@ -2146,7 +2144,7 @@ static void RunBot( int index, CBasePlayer *pBot )
 	{
 		/* a mate died here: the team now believes the enemy is near (the killer is not named, so it is a weak lead) */
 		const float dp[3] = { pBot->pev->origin.x, pBot->pev->origin.y, pBot->pev->origin.z };
-		Dod_IntelReport( &g_intel, TeamOf( pBot ), dp, DOD_INTEL_DEATH, gpGlobals->time, 20.0f );
+		Dod_IntelReport( &g_intel, TeamOf( pBot ), dp, DOD_INTEL_DEATH, pBot->entindex(), gpGlobals->time, 20.0f );
 	}
 	state->was_alive = pBot->IsAlive();
 	if( !pBot->IsAlive() )

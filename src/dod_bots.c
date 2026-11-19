@@ -1222,7 +1222,7 @@ void Dod_IntelReset(DodTeamIntel *intel)
 		memset(intel, 0, sizeof(*intel));
 }
 
-void Dod_IntelReport(DodTeamIntel *intel, DodTeam team, const float pos[3], int kind, float now, float ttl)
+void Dod_IntelReport(DodTeamIntel *intel, DodTeam team, const float pos[3], int kind, int by, float now, float ttl)
 {
 	const int side = intel_side(team);
 	DodIntelEntry *e, *slot = NULL;
@@ -1234,6 +1234,7 @@ void Dod_IntelReport(DodTeamIntel *intel, DodTeam team, const float pos[3], int 
 		if (e[i].kind && now < e[i].until && dist3(e[i].pos, pos) < DOD_INTEL_MERGE_RADIUS) {
 			memcpy(e[i].pos, pos, sizeof(e[i].pos));
 			e[i].placed = now;
+			e[i].by = by;
 			if (now + ttl > e[i].until)
 				e[i].until = now + ttl;
 			if (kind > e[i].kind)
@@ -1253,9 +1254,10 @@ void Dod_IntelReport(DodTeamIntel *intel, DodTeam team, const float pos[3], int 
 	slot->placed = now;
 	slot->until = now + ttl;
 	slot->kind = kind;
+	slot->by = by;
 }
 
-int Dod_IntelPick(const DodTeamIntel *intel, DodTeam team, const float from[3], float now, float min_dist, float max_dist, float out_pos[3], float *out_placed)
+int Dod_IntelPick(const DodTeamIntel *intel, DodTeam team, const float from[3], int self, float after, float now, float min_dist, float max_dist, float out_pos[3], float *out_placed)
 {
 	const int side = intel_side(team);
 	const DodIntelEntry *e, *best = NULL;
@@ -1268,6 +1270,8 @@ int Dod_IntelPick(const DodTeamIntel *intel, DodTeam team, const float from[3], 
 		float d, age, score;
 		if (!e[i].kind || now >= e[i].until)
 			continue;
+		if (e[i].by == self || e[i].placed <= after)
+			continue;	/* its own call-out, or one it has already decided about */
 		d = dist3(e[i].pos, from);
 		if (d < min_dist || d > max_dist)
 			continue;

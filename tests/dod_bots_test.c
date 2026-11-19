@@ -815,33 +815,40 @@ static void test_intel(void)
 	int i, n;
 
 	Dod_IntelReset(&in);
-	assert(Dod_IntelPick(&in, DOD_TEAM_ALLIES, from, 0.0f, 0.0f, 3000.0f, out, &placed) == 0);
-	Dod_IntelReport(&in, DOD_TEAM_ALLIES, a, DOD_INTEL_HEARD, 1.0f, 5.0f);
-	Dod_IntelReport(&in, DOD_TEAM_ALLIES, b, DOD_INTEL_SEEN, 2.0f, 5.0f);	/* merges: newer position, stronger kind */
-	assert(Dod_IntelPick(&in, DOD_TEAM_ALLIES, from, 2.5f, 0.0f, 3000.0f, out, &placed) == DOD_INTEL_SEEN);
+	assert(Dod_IntelPick(&in, DOD_TEAM_ALLIES, from, 0, -1.0f, 0.0f, 0.0f, 3000.0f, out, &placed) == 0);
+	Dod_IntelReport(&in, DOD_TEAM_ALLIES, a, DOD_INTEL_HEARD, 1, 1.0f, 5.0f);
+	Dod_IntelReport(&in, DOD_TEAM_ALLIES, b, DOD_INTEL_SEEN, 1, 2.0f, 5.0f);	/* merges: newer position, stronger kind */
+	assert(Dod_IntelPick(&in, DOD_TEAM_ALLIES, from, 0, -1.0f, 2.5f, 0.0f, 3000.0f, out, &placed) == DOD_INTEL_SEEN);
 	assert(out[0] == 1100.0f && placed == 2.0f);
-	assert(Dod_IntelPick(&in, DOD_TEAM_AXIS, from, 2.5f, 0.0f, 3000.0f, out, &placed) == 0);	/* the other team does not see it */
-	assert(Dod_IntelPick(&in, DOD_TEAM_ALLIES, from, 8.0f, 0.0f, 3000.0f, out, &placed) == 0);	/* faded */
-	assert(Dod_IntelPick(&in, DOD_TEAM_ALLIES, from, 2.5f, 1500.0f, 3000.0f, out, &placed) == 0);	/* already there / too far */
+	assert(Dod_IntelPick(&in, DOD_TEAM_AXIS, from, 0, -1.0f, 2.5f, 0.0f, 3000.0f, out, &placed) == 0);	/* the other team does not see it */
+	assert(Dod_IntelPick(&in, DOD_TEAM_ALLIES, from, 0, -1.0f, 8.0f, 0.0f, 3000.0f, out, &placed) == 0);	/* faded */
+	assert(Dod_IntelPick(&in, DOD_TEAM_ALLIES, from, 0, -1.0f, 2.5f, 1500.0f, 3000.0f, out, &placed) == 0);	/* already there / too far */
 	/* a fresh sighting beats an old distant death; the nearer wins ties of kind */
-	Dod_IntelReport(&in, DOD_TEAM_ALLIES, c, DOD_INTEL_DEATH, 2.0f, 30.0f);
-	assert(Dod_IntelPick(&in, DOD_TEAM_ALLIES, from, 2.5f, 0.0f, 3000.0f, out, &placed) == DOD_INTEL_SEEN);
+	Dod_IntelReport(&in, DOD_TEAM_ALLIES, c, DOD_INTEL_DEATH, 1, 2.0f, 30.0f);
+	assert(Dod_IntelPick(&in, DOD_TEAM_ALLIES, from, 0, -1.0f, 2.5f, 0.0f, 3000.0f, out, &placed) == DOD_INTEL_SEEN);
 	Dod_IntelClearNear(&in, DOD_TEAM_ALLIES, b, 300.0f);
-	assert(Dod_IntelPick(&in, DOD_TEAM_ALLIES, from, 2.5f, 0.0f, 3000.0f, out, &placed) == DOD_INTEL_DEATH);
+	assert(Dod_IntelPick(&in, DOD_TEAM_ALLIES, from, 0, -1.0f, 2.5f, 0.0f, 3000.0f, out, &placed) == DOD_INTEL_DEATH);
+	/* nobody answers their own call-out, and a report already decided about is not offered twice; an older
+	 * report from a mate is still offered after the bot's own later one (this is what kept call-outs silent) */
+	assert(Dod_IntelPick(&in, DOD_TEAM_ALLIES, from, 1, -1.0f, 2.5f, 0.0f, 3000.0f, out, &placed) == 0);
+	assert(Dod_IntelPick(&in, DOD_TEAM_ALLIES, from, 2, 2.0f, 2.5f, 0.0f, 3000.0f, out, &placed) == 0);
+	Dod_IntelReport(&in, DOD_TEAM_ALLIES, a, DOD_INTEL_HEARD, 2, 3.0f, 5.0f);
+	assert(Dod_IntelPick(&in, DOD_TEAM_ALLIES, from, 2, -1.0f, 3.5f, 0.0f, 3000.0f, out, &placed) == DOD_INTEL_DEATH);
+	assert(Dod_IntelPick(&in, DOD_TEAM_ALLIES, from, 3, 2.5f, 3.5f, 0.0f, 3000.0f, out, &placed) == DOD_INTEL_HEARD);
 	/* more contacts than slots: the oldest is replaced, nothing overflows */
 	for (i = 0; i < 20; ++i) {
 		float p[3];
 		p[0] = (float)i * 1000.0f; p[1] = 5000.0f; p[2] = 0.0f;
-		Dod_IntelReport(&in, DOD_TEAM_AXIS, p, DOD_INTEL_SEEN, (float)i, 100.0f);
+		Dod_IntelReport(&in, DOD_TEAM_AXIS, p, DOD_INTEL_SEEN, 1, (float)i, 100.0f);
 	}
 	n = 0;
 	for (i = 0; i < DOD_INTEL_SLOTS; ++i)
 		n += in.team[1][i].kind != 0;
 	assert(n == DOD_INTEL_SLOTS);
 	/* bad input is ignored */
-	Dod_IntelReport(&in, DOD_TEAM_SPECTATOR, a, DOD_INTEL_SEEN, 0.0f, 5.0f);
-	Dod_IntelReport(&in, DOD_TEAM_ALLIES, a, 0, 0.0f, 5.0f);
-	Dod_IntelReport(NULL, DOD_TEAM_ALLIES, a, DOD_INTEL_SEEN, 0.0f, 5.0f);
+	Dod_IntelReport(&in, DOD_TEAM_SPECTATOR, a, DOD_INTEL_SEEN, 1, 0.0f, 5.0f);
+	Dod_IntelReport(&in, DOD_TEAM_ALLIES, a, 0, 1, 0.0f, 5.0f);
+	Dod_IntelReport(NULL, DOD_TEAM_ALLIES, a, DOD_INTEL_SEEN, 1, 0.0f, 5.0f);
 }
 
 static void test_aggression(void)
