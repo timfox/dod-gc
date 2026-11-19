@@ -27,10 +27,10 @@
 extern "C" {
 #endif
 
-#define DOD_FILM_MAX_ACTORS 24
+#define DOD_FILM_MAX_ACTORS 64	/* the camera player plus 64 actors stays well under the 460-edict cap */
 #define DOD_FILM_MAX_KEYS 16
 #define DOD_FILM_NAME 32
-#define DOD_FILM_MAX_FX 128
+#define DOD_FILM_MAX_FX 192
 #define DOD_FILM_YAW_TRAVEL 1000.0f	/* yaw "-": face the direction of travel */
 /* Set in an actor's pev->iuser4. The GameCube engine draws studio props on its lean listen
  * route through a model allowlist that leaves out player bodies; this tag admits the actors
