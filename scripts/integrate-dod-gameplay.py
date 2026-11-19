@@ -169,20 +169,70 @@ def integrate_gc_hud(client: Path) -> None:
 		'\t\t\t\tmenu_x = gHUD.DrawHudStringReverse( menu_x, y, 0, menubuf, draw_r, draw_g, draw_b );\n'
 		'\t\t\telse menu_x = gHUD.DrawHudString( menu_x, y, 320, menubuf, draw_r, draw_g, draw_b );', 1)
 	# The team/class menu used to sit on the world: draw it on a retail-palette panel (ViewportBG 55 43 29, ClassMenuLight
-	# 175 127 1 border), below the objective flags (their row ends at y ~17 in the 320x240 HUD space).
+	# 175 127 1 border) laid out by dod_hud_geom.h: inside the 5% safe area, under the objective row, above the status
+	# panel, as wide as its widest line. Text is clipped to the screen (it was clipped at x 320).
+	menu_text = menu_text.replace('static int menu_r, menu_g, menu_b, menu_x, menu_ralign;\n',
+		'static int menu_r, menu_g, menu_b, menu_x, menu_ralign;\nstatic int g_iGCMenuLeft = 20, g_iGCMenuBottom = 1 << 20;\n', 1)
 	menu_text = menu_text.replace(
 		'\tmenu_r\t\t= 255;\n\tmenu_g\t\t= 255;\n\tmenu_b\t\t= 255;\n',
-		'\tif( y < 40 ) y = 40;\n'
 		'\t{\n'
-		'\t\tconst int pw = 210, ph = ( nlc + 1 ) * nFontHeight + 12;\n'
-		'\t\tgEngfuncs.pfnFillRGBABlend( 8, y - 6, pw, ph, 55, 43, 29, 235 );\n'
-		'\t\tgEngfuncs.pfnFillRGBABlend( 8, y - 6, pw, 1, 175, 127, 1, 255 );\n'
-		'\t\tgEngfuncs.pfnFillRGBABlend( 8, y - 6 + ph - 1, pw, 1, 175, 127, 1, 255 );\n'
-		'\t\tgEngfuncs.pfnFillRGBABlend( 8, y - 6, 1, ph, 175, 127, 1, 255 );\n'
-		'\t\tgEngfuncs.pfnFillRGBABlend( 8 + pw - 1, y - 6, 1, ph, 175, 127, 1, 255 );\n'
+		'\t\tconst float gsx = ScreenWidth / 640.0f, gsy = ScreenHeight / 480.0f;\n'
+		'\t\tconst int glh = (int)( nFontHeight / gsy + 0.5f );\n'
+		'\t\tint lines = nlc, tw = 0, n = 0, k;\n'
+		'\t\tchar lb[80];\n'
+		'\t\tconst char *q = g_szMenuString;\n'
+		'\t\tDodRect pr;\n'
+		'\t\tint px, py, pw, ph;\n'
+		'\t\tif( lines > Dod_HudModalRows( glh )) lines = Dod_HudModalRows( glh );\n'
+		'\t\tfor( ;; q++ )\n'
+		'\t\t{\n'
+		'\t\t\tif( *q == \'\\\\\' && q[1] ) { q++; continue; }\n'
+		'\t\t\tif( *q == \'\\n\' || *q == 0 )\n'
+		'\t\t\t{\n'
+		'\t\t\t\tlb[n] = 0;\n'
+		'\t\t\t\tk = gHUD.DrawHudStringLen( lb );\n'
+		'\t\t\t\tif( k > tw ) tw = k;\n'
+		'\t\t\t\tn = 0;\n'
+		'\t\t\t\tif( *q == 0 ) break;\n'
+		'\t\t\t}\n'
+		'\t\t\telse if( n < (int)sizeof( lb ) - 1 ) lb[n++] = *q;\n'
+		'\t\t}\n'
+		'\t\tpr = Dod_HudMenuPanel( lines, (int)( tw / gsx + 0.5f ), glh );\n'
+		'\t\tpx = (int)( pr.x * gsx + 0.5f ); py = (int)( pr.y * gsy + 0.5f );\n'
+		'\t\tpw = (int)( pr.w * gsx + 0.5f ); ph = (int)( pr.h * gsy + 0.5f );\n'
+		'\t\tgEngfuncs.pfnFillRGBABlend( px, py, pw, ph, 55, 43, 29, 235 );\n'
+		'\t\tgEngfuncs.pfnFillRGBABlend( px, py, pw, 1, 175, 127, 1, 255 );\n'
+		'\t\tgEngfuncs.pfnFillRGBABlend( px, py + ph - 1, pw, 1, 175, 127, 1, 255 );\n'
+		'\t\tgEngfuncs.pfnFillRGBABlend( px, py, 1, ph, 175, 127, 1, 255 );\n'
+		'\t\tgEngfuncs.pfnFillRGBABlend( px + pw - 1, py, 1, ph, 175, 127, 1, 255 );\n'
+		'\t\ty = py + (int)( DOD_HUD_PANEL_PAD * gsy + 0.5f );\n'
+		'\t\tg_iGCMenuLeft = px + (int)( DOD_HUD_PANEL_PAD * gsx + 0.5f );\n'
+		'\t\tg_iGCMenuBottom = py + ph - (int)( DOD_HUD_PANEL_PAD * gsy + 0.5f );\n'
 		'\t}\n'
 		'\tmenu_r\t\t= 255;\n\tmenu_g\t\t= 255;\n\tmenu_b\t\t= 255;\n', 1)
+	menu_text = menu_text.replace('\tmenu_x\t\t= 20;\n', '\tmenu_x\t\t= g_iGCMenuLeft;\n', 1)
+	menu_text = menu_text.replace('\t\t\tmenu_x \t\t= 20;\n', '\t\t\tmenu_x \t\t= g_iGCMenuLeft;\n', 1)
+	menu_text = menu_text.replace('menu_x = gHUD.DrawHudString( menu_x, y, 320, menubuf,', 'menu_x = gHUD.DrawHudString( menu_x, y, ScreenWidth, menubuf,')
+	menu_text = menu_text.replace(
+		'\t\t\tif( menu_ralign )\n\t\t\t\t// IMPORTANT',
+		'\t\t\tif( y + nFontHeight > g_iGCMenuBottom )\n\t\t\t\t;\t// a line that no longer fits the panel is not drawn\n\t\t\telse if( menu_ralign )\n\t\t\t\t// IMPORTANT', 1)
 	menu_cpp.write_text(menu_text)
+
+	# Chat lines and the chat prompt inside the safe area (dod_hud_geom.h): lines bottom-anchored above the status panel,
+	# hidden while a modal panel or the prompt is up, the prompt above the on-screen keyboard.
+	say = client / "saytext.cpp"
+	replace_once(say, "#define MAX_LINE_WIDTH  ( ScreenWidth - 40 )\n#define LINE_START  10\n",
+		"#define MAX_LINE_WIDTH  ( ScreenWidth - ScreenWidth / 20 )\n#define LINE_START  ( ScreenWidth / 20 )\n")
+	replace_once(say,
+		"\tif( ScreenHeight >= 480 )\n\t\tY_START = ScreenHeight - 60;\n\telse\n\t\tY_START = ScreenHeight - 45;\n"
+		"\tY_START -= ( line_height * ( MAX_LINES + 1 ) );\n",
+		"\tY_START = (int)( Dod_HudModalBottom() * ( ScreenHeight / 480.0f )) - line_height * MAX_LINES;\n")
+	replace_once(say, "\tif ( !m_HUD_saytext->value )\n\t\treturn 1;\n",
+		"\tif ( !m_HUD_saytext->value || gHUD.m_Dod.Modal( ))\n\t\treturn 1;\n")
+	spec = client / "vgui_SpectatorPanel.cpp"
+	replace_once(spec, "extern \"C\" void DLLEXPORT HUD_ChatInputPosition( int *x, int *y )\n{\n",
+		"extern \"C\" void DLLEXPORT HUD_ChatInputPosition( int *x, int *y )\n{\n"
+		"#if XASH_GAMECUBE\n\tDodHud_ChatInputPosition( x, y );\n\treturn;\n#endif\n")
 
 
 def integrate_weapons(dlls: Path) -> None:
@@ -426,13 +476,14 @@ def integrate_grenades(dlls: Path) -> None:
 DOD_DLL_SOURCES = (
 	"dod_game.c", "dod_game.h", "dod_runtime.cpp", "dod_runtime.h",
 	"dod_grenade.cpp", "dod_grenade.h", "dod_weapons.c", "dod_weapons.h",
-	"dod_weapon.cpp", "dod_weapon.h", "dod_viewanims.h", "dod_viewsounds.h", "dod_hud.h", "dod_hud_retail.h",
+	"dod_weapon.cpp", "dod_weapon.h", "dod_viewanims.h", "dod_viewsounds.h", "dod_hud.h", "dod_hud_retail.h", "dod_hud_geom.h",
 	"dod_bots.c", "dod_bots.h", "dod_bot.cpp", "dod_bot.h",
 )
 # Client HUD sources, copied into cl_dll/ (dod_hud.h is shared with the DLL).
 DOD_CLIENT_SOURCES = (
 	("dod_hud.h", "dod_hud.h"),
 	("dod_hud_retail.h", "dod_hud_retail.h"),
+	("dod_hud_geom.h", "dod_hud_geom.h"),
 	("client/hud_dod.h", "hud_dod.h"),
 	("client/hud_dod.cpp", "hud_dod.cpp"),
 	("client/dod_cam.h", "dod_cam.h"),
