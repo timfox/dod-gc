@@ -307,6 +307,7 @@ typedef struct DodNav {
 	int avoid_team;				/* the team whose routes are being planned, or 0 */
 	unsigned char *edge_blocked;		/* per edge: a solid toggle wall (func_wall_toggle) stops the walk along it right now; A* skips it */
 	int edge_blocked_count;
+	float max_jump_rise;	/* a jump link that climbs more than this is never searched (default 56) */
 } DodNav;
 
 /* Parse a .wpt image into a zeroed or freed DodNav. The data must stay alive while the DodNav is used.

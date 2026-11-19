@@ -685,6 +685,7 @@ int Dod_NavLoad(DodNav *nav, const unsigned char *data, int len)
 	if (!nav)
 		return 0;
 	memset(nav, 0, sizeof(*nav));
+	nav->max_jump_rise = 56.0f;
 	if (!data || len < 20 || memcmp(data, "DWPT", 4) != 0 || nav_be16(data + 4) != 2)
 		return 0;
 	nav->bsp_size = ((unsigned)data[8] << 24) | ((unsigned)data[9] << 16) | ((unsigned)data[10] << 8) | data[11];
@@ -1092,7 +1093,7 @@ int Dod_NavPath(DodNav *nav, int from, int to, int *path, int max_path)
 				float ax, ay, az, bx, by, bz;
 				Dod_NavNodePos(nav, cur, &ax, &ay, &az);
 				Dod_NavNodePos(nav, next, &bx, &by, &bz);
-				if (bz - az > 56.0f)
+				if (bz - az > nav->max_jump_rise)
 					continue;
 			}
 			cost = nav_dist(nav, cur, next) + 1.0f;

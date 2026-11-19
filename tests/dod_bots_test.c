@@ -369,6 +369,8 @@ static void test_nav(void)
 
 	assert(len == 73);
 	assert(Dod_NavLoad(&nav, buf, len));
+	assert(nav.max_jump_rise == 56.0f);
+	nav.max_jump_rise = 1000.0f;	/* the toy jump climbs 200 units; the rise limit has its own test below */
 	assert(nav.node_count == 5 && nav.edge_count == 9 && nav.bsp_size == 123456u);
 	Dod_NavNodePos(&nav, 3, &x, &y, &z);
 	assert(x == 100.0f && y == 0.0f && z == 200.0f);
@@ -413,6 +415,10 @@ static void test_nav(void)
 		count = Dod_NavPath(&nav, 0, 4, path, DOD_NAV_MAX_PATH);
 		assert(count == 4 && path[2] == 2);
 	}
+
+	nav.max_jump_rise = 56.0f;
+	assert(Dod_NavPath(&nav, 0, 4, path, DOD_NAV_MAX_PATH) == 4 && path[2] == 3);	/* the 200-unit jump is ignored: ladder instead */
+	nav.max_jump_rise = 1000.0f;
 
 	/* a penalized edge is avoided while the penalty lasts: 0 -> 4 has to take the ladder when the jump is stuck */
 	Dod_NavSetTime(&nav, 10.0f);
@@ -527,6 +533,7 @@ static void test_nav_real(void)
 	assert(buf && fread(buf, 1, (size_t)len, fh) == (size_t)len);
 	fclose(fh);
 	assert(Dod_NavLoad(&nav, buf, (int)len));
+	nav.max_jump_rise = 100000.0f;	/* the reference search below takes every edge */
 	n = nav.node_count;
 	{
 		float *dist = (float *)malloc(sizeof(float) * (size_t)n);
