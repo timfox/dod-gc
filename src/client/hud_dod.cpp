@@ -40,7 +40,10 @@ void CHudDod::InitState( void )
 	m_fSheetTried = 0;
 	m_fDrawLogged = 0;
 	m_szLoggedWeapon[0] = 0;
-	m_pCvar = gEngfuncs.pfnRegisterVariable( "cl_dodhud", "1", FCVAR_ARCHIVE );
+	/* A `set cl_dodhud 0` from a config that ran before the HUD came up must survive: reuse the cvar when it exists. */
+	m_pCvar = gEngfuncs.pfnGetCvarPointer( "cl_dodhud" );
+	if( !m_pCvar )
+		m_pCvar = gEngfuncs.pfnRegisterVariable( "cl_dodhud", "1", FCVAR_ARCHIVE );
 	HOOK_MESSAGE( DodHud );
 	HOOK_MESSAGE( DodBoard );
 	HOOK_MESSAGE( DodVoice );
