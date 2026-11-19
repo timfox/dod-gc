@@ -169,7 +169,8 @@ def write_plan(ep, timeline, out):
     # one listenserver.cfg block per map: play its shots in order, each chained from the last one's end
     for mapname, group in sessions(timeline).items():
         lines = [f"// film {ep['id']}: {len(group)} shot(s) on {mapname} (tools/film/film.py plan)",
-                 f"cine_fps {fps}", "cine_hud 0", "cine_viewmodel 0", "cine_stamp 1", "gc_hud_off 1"]
+                 f"cine_fps {fps}", "cine_hud 0", "cine_viewmodel 0", "cine_stamp 1", "gc_hud_off 1",
+                 "osk_enable 0"]  # the GameCube on-screen keyboard otherwise pops up mid-session
         lines += ep.get("server_cmds", {}).get(mapname, [])
         for i, s in enumerate(group):
             nxt = f"film_{i + 1}" if i + 1 < len(group) else "film_end"
