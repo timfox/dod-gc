@@ -202,6 +202,7 @@ typedef struct DodRetailInput {
 	int max_clip;		/* retail: the WeaponList max clip; <= 0 (HL WeaponList has none): the table's */
 	int safe_left, safe_top, safe_right, safe_bottom;	/* title-safe margins in layout pixels every corner block keeps clear (0: retail) */
 	int text_h;		/* height of the "x NN" text in the client font (0: retail's 1.5 font heights) */
+	int hide_objectives;	/* a team/class menu is up: no timer or flag row (spectators' row sits lower, under the menu panel) */
 	int hide_bottom;	/* a modal panel (the on-screen keyboard) covers the bottom: no status panel, no ammo */
 	int text_w;		/* width of the widest "x NN" spare count in the client font, layout pixels (0: retail's 45) */
 	int num_points;		/* capture points on the objective bar */
@@ -317,7 +318,7 @@ static inline int Dod_RetailHudLayoutText(const DodRetailInput *in, DodRetailDra
 	}
 
 	/* Objective timer (CObjectiveIcons::Draw): top-left plate, MM:SS. */
-	if (in->seconds_left >= 0) {
+	if (in->seconds_left >= 0 && !in->hide_objectives) {
 		const int t = in->seconds_left;
 		const int minutes = dod_retail_clamp(t / 60, 0, 99), seconds = t % 60;
 		const int plate_y = in->spectating ? (int)(in->screen_h / 480.0f * 54.0f + 0.5f) : 2 + st;
@@ -331,7 +332,7 @@ static inline int Dod_RetailHudLayoutText(const DodRetailInput *in, DodRetailDra
 
 	/* Objective icons (CObjectiveIcons::Draw): one 32x32 flag per area,
 	 * 34 apart, right of the timer plate (x 82) or from x 10 without it. */
-	if (in->num_points > 0) {
+	if (in->num_points > 0 && !in->hide_objectives) {
 		const int count = in->num_points < DOD_RETAIL_MAX_POINTS ? in->num_points : DOD_RETAIL_MAX_POINTS;
 		const int icon_y = in->spectating ? (int)(2.0f * (54.0f * in->screen_h / 480.0f) + 0.5f)
 			: (int)(2.0f * in->screen_h / 480.0f + 0.5f) + st;

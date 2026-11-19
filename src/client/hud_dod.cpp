@@ -444,6 +444,7 @@ int CHudDod::DrawRetail( float flTime )
 	in.text_h = (int)( ( gHUD.m_scrinfo.iCharHeight > 0 ? gHUD.m_scrinfo.iCharHeight : 12 ) / sy + 0.5f );
 	Modal();
 	in.hide_bottom = m_fChatting;
+	in.hide_objectives = gHUD.m_Menu.m_fMenuDisplayed;
 	in.health = gHUD.m_Health.m_iHealth;
 	in.stamina = m_fHaveState ? (float)m_state.stamina : 100.0f;
 	in.spectating = g_iUser1 != 0;

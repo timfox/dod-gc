@@ -283,8 +283,30 @@ static void test_corners_title_safe(void)
 	assert(maxy <= 480 - 24);
 }
 
+static void test_menu_hides_objectives(void)
+{
+	DodRetailInput in = base();
+	DodRetailDraw d[DOD_RETAIL_MAX_DRAWS];
+	int n, i, objective = 0;
+
+	in.spectating = 1;	/* the observer picking a side: its objective row sits at y 54..140 */
+	in.seconds_left = 90;
+	in.num_points = 5;
+	in.hide_objectives = 1;
+	n = Dod_RetailHudLayout(&in, d, DOD_RETAIL_MAX_DRAWS);
+	for (i = 0; i < n; i++)
+		if (d[i].cell.sheet == DOD_SHEET_OBJ_NEUTRAL || d[i].cell.sheet == DOD_SHEET_OBJ_ALLIES
+			|| d[i].cell.sheet == DOD_SHEET_OBJ_AXIS || (d[i].y < 100 && d[i].x < 120))
+			objective++;
+	assert(objective == 0);
+	in.hide_objectives = 0;
+	n = Dod_RetailHudLayout(&in, d, DOD_RETAIL_MAX_DRAWS);
+	assert(n >= 6);	/* timer plate, digits, flags are back */
+}
+
 int main(void)
 {
+	test_menu_hides_objectives();
 	test_corners_title_safe();
 	test_ammo_title_safe();
 	test_panel_full_health();
