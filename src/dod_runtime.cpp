@@ -430,8 +430,14 @@ static void DodGC_ApplyClass( CBasePlayer *pPlayer, DodClass player_class )
 			DodBots_SetGranting( FALSE );
 			return;
 		}
-		pPlayer->GiveNamedItem( "weapon_crowbar" );
-		if( sidearm ) {
+		/* A bot gets only its primary weapon (Dod_KitPlan lean): every weapon is an edict and a bot never
+		 * switches, throws or drops. The primary comes last either way, so it is the best weapon and is
+		 * the active item at spawn. */
+		DodKitPlan kit;
+		Dod_KitPlan( team, player_class, DodBots_IsBot( pPlayer ) ? 1 : 0, &kit );
+		if( kit.crowbar )
+			pPlayer->GiveNamedItem( "weapon_crowbar" );
+		if( sidearm && kit.sidearm ) {
 			pPlayer->GiveNamedItem( sidearm->classname );
 			pPlayer->GiveAmmo( sidearm->reserve, sidearm->ammo, sidearm->ammo_max );
 		}
@@ -440,7 +446,7 @@ static void DodGC_ApplyClass( CBasePlayer *pPlayer, DodClass player_class )
 			pPlayer->GiveNamedItem( weapon->classname );
 			pPlayer->GiveAmmo( weapon->reserve, weapon->ammo, weapon->ammo_max );
 		}
-		if( Dod_GetLoadout( team, player_class, &load ) && load.grenades > 0 ) {
+		if( kit.grenade && Dod_GetLoadout( team, player_class, &load ) && load.grenades > 0 ) {
 			/* The weapon spawns with one grenade; top up to the loadout. */
 			pPlayer->GiveNamedItem( "weapon_handgrenade" );
 			if( load.grenades > 1 && Dod_GetGrenade( team, &grenade ) )

@@ -211,6 +211,23 @@ typedef struct DodLoadout {
 
 int Dod_GetLoadout(DodTeam team, DodClass player_class, DodLoadout *out);
 
+/* Which weapon entities a spawn creates. Every weapon is an edict (CBasePlayerItem) beside the
+ * player's body, and the table has 460 of them, so a bot only gets what it uses: its AI fires and
+ * reloads the active weapon and never switches, throws or drops (src/dod_bot.cpp reads only
+ * m_pActiveItem). lean = 1 is that kit: the primary weapon alone, made the active item. The crowbar,
+ * sidearm and grenade are created on demand through the same grant path if bot code ever needs
+ * them. Humans (lean = 0) keep the full stock kit. Returns the number of weapon entities, 0 when
+ * the class has no weapon. */
+typedef struct DodKitPlan {
+	int crowbar;
+	int sidearm;
+	int primary;
+	int grenade;
+	int entities;
+} DodKitPlan;
+
+int Dod_KitPlan(DodTeam team, DodClass player_class, int lean, DodKitPlan *out);
+
 /* Hand grenades. Allies throw the Mk2 pineapple, Axis the stick grenade; values
  * are approximate DoD 1.3. radius follows the HL1 RadiusDamage rule (2.5 x
  * damage) so the falloff below matches what the game DLL really applies. */
