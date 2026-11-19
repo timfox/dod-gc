@@ -10,18 +10,20 @@ static const char *const pose_names[DOD_POSE_COUNT] = {
 	"stand", "walk", "run", "crouch", "crouch_walk", "prone", "crawl", "aim", "crouch_aim", "fallen",
 };
 
-/* Candidates, best first. HL player models name their gait sequences idle, walk, run,
- * crouch_idle, crouchrun; DoD adds prone and aiming sequences. */
-static const char *const seq_stand[] = { "idle", "standing", "ref_aim_garand", 0 };
-static const char *const seq_walk[] = { "walk", "walking", "run", 0 };
-static const char *const seq_run[] = { "run", "running", "walk", 0 };
-static const char *const seq_crouch[] = { "crouch_idle", "crouch", "crouching", "idle", 0 };
-static const char *const seq_crouch_walk[] = { "crouchrun", "crouch_walk", "crouchwalk", "crouch_idle", 0 };
-static const char *const seq_prone[] = { "prone_idle", "prone", "proneidle", "crouch_idle", 0 };
-static const char *const seq_crawl[] = { "prone_forward", "prone_walk", "crawl", "prone_idle", "crouchrun", 0 };
-static const char *const seq_aim[] = { "ref_aim_garand", "ref_aim_k98", "ref_aim_mp40", "idle", 0 };
-static const char *const seq_crouch_aim[] = { "crouch_aim_garand", "crouch_aim_k98", "crouch_aim_mp40", "crouch_idle", 0 };
-static const char *const seq_fallen[] = { "death_simple", "death_backwards", "die_simple", "die_backwards", 0 };
+/* Candidates, best first. The retail DoD player models (all five, and player.mdl) share one 345-sequence
+ * table: dod_walk 10, dod_jog 11, dod_sprint 12, dod_crawl 13 (DoD's crouched walk), dod_crouch_idle 14,
+ * prone_idle 15, prone_forward 16 (the prone crawl), die_* 19-29, stand/crouch_rifle_aim 112/113.
+ * HL names follow as fallbacks for other models. */
+static const char *const seq_stand[] = { "dod_idle1", "look_idle", "idle", "standing", 0 };
+static const char *const seq_walk[] = { "dod_walk", "walk", "walking", 0 };
+static const char *const seq_run[] = { "dod_jog", "dod_sprint", "run", "running", "walk", 0 };
+static const char *const seq_crouch[] = { "dod_crouch_idle", "crouch_idle", "crouch", 0 };
+static const char *const seq_crouch_walk[] = { "dod_crawl", "crouchrun", "crouch_walk", "dod_crouch_idle", 0 };
+static const char *const seq_prone[] = { "prone_idle", "prone", 0 };
+static const char *const seq_crawl[] = { "prone_forward", "prone_walk", "crawl", "prone_idle", 0 };
+static const char *const seq_aim[] = { "stand_rifle_aim", "ref_aim_garand", "dod_idle1", "idle", 0 };
+static const char *const seq_crouch_aim[] = { "crouch_rifle_aim", "crouch_aim_garand", "dod_crouch_idle", 0 };
+static const char *const seq_fallen[] = { "die_simple", "die_forwards", "death_simple", 0 };
 
 static const char *const *const pose_seqs[DOD_POSE_COUNT] = {
 	seq_stand, seq_walk, seq_run, seq_crouch, seq_crouch_walk, seq_prone, seq_crawl, seq_aim, seq_crouch_aim, seq_fallen,
