@@ -1238,13 +1238,13 @@ static BOOL NodeVisible( CBasePlayer *pBot, int node )
 /* Planning is the one expensive thing a bot does (a search over the whole graph), so it is rationed: at most
  * DOD_BOT_PLAN_SEARCHES searches per plan, and only one bot plans in a given server frame. */
 #define DOD_BOT_PLAN_SEARCHES 4	/* per plan attempt, over as many server frames as it takes */
-#define DOD_BOT_PLAN_SEARCHES_PER_CALL 1	/* per server frame: one graph search lands on a frame, not four (a spike of 24 ms with 4 bots) */
+#define DOD_BOT_PLAN_NODE_BUDGET 200	/* nodes one plan call expands (about 1 ms on the GameCube); a search carries over to the next frame and only one runs at a time */
 static float g_plan_stamp = -1.0f;
 
 static BOOL PlanPath( CBasePlayer *pBot, DodBotState *state )
 {
 	PhaseTimer timer( DOD_PH_PLAN );
-	int starts[6], goals[4], tmp[DOD_NAV_MAX_PATH], ns, ng, i, j, k, pass, len, searches = 0, done_now = 0;
+	int starts[6], goals[4], tmp[DOD_NAV_MAX_PATH], ns, ng, i, j, k, pass, len, searches = 0;
 	const int skip = state->plan_resume_goal == state->nav_id ? state->plan_resume : 0;
 	const Vector origin = pBot->pev->origin;
 	if( gpGlobals->time <= g_plan_stamp )
@@ -1283,16 +1283,28 @@ static BOOL PlanPath( CBasePlayer *pBot, DodBotState *state )
 					state->plan_resume = 0;
 					return FALSE;
 				}
-				if( done_now++ >= DOD_BOT_PLAN_SEARCHES_PER_CALL )
+				if( !Dod_NavSearchBegin( &g_nav, starts[i], goals[j], pBot->entindex(), gpGlobals->time ) )
 				{
-					state->plan_resume = searches - 1;
+					state->plan_resume = searches - 1;	/* another bot's search is in flight: wait, the old path (if any) keeps being followed */
 					state->plan_resume_goal = state->nav_id;
-					state->path_replan = gpGlobals->time + 0.05f;	/* carry on with the next candidate next frame */
+					state->path_replan = gpGlobals->time + 0.05f;
 					return FALSE;
 				}
-				len = Dod_NavPath( &g_nav, starts[i], goals[j], tmp, DOD_NAV_MAX_PATH );
-				if( len <= 0 )
-					continue;
+				len = Dod_NavSearchStep( &g_nav, DOD_BOT_PLAN_NODE_BUDGET, gpGlobals->time, tmp, DOD_NAV_MAX_PATH );
+				if( len == 0 )
+				{
+					state->plan_resume = searches - 1;	/* carry on with this very search next frame */
+					state->plan_resume_goal = state->nav_id;
+					state->path_replan = gpGlobals->time + 0.03f;
+					return FALSE;
+				}
+				if( len < 0 )
+				{
+					state->plan_resume = searches;	/* no route from this start to this goal: the next candidate on the next frame, not this one */
+					state->plan_resume_goal = state->nav_id;
+					state->path_replan = gpGlobals->time + 0.03f;
+					return FALSE;
+				}
 				for( k = 0; k < len; k++ )
 					state->path[k] = (short)tmp[k];
 				state->path_len = len;

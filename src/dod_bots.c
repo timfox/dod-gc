@@ -1053,11 +1053,17 @@ static int nav_edge_hazard(const DodNav *nav, int team, int a, int b)
 	return 0;
 }
 
-int Dod_NavPath(DodNav *nav, int from, int to, int *path, int max_path)
+int Dod_NavSearchBegin(DodNav *nav, int from, int to, int owner, float now)
 {
-	int i, e, count, n, open = 0;
-	if (!nav || !path || from < 0 || to < 0 || from >= nav->node_count || to >= nav->node_count || max_path < 1)
+	int i;
+	if (!nav || from < 0 || to < 0 || from >= nav->node_count || to >= nav->node_count)
 		return 0;
+	if (nav->search_active) {
+		if (nav->search_owner == owner && nav->search_from == from && nav->search_to == to)
+			return 1;
+		if (nav->search_owner != owner && now - nav->search_stamp < 1.0f)
+			return 0;	/* someone else is mid-search */
+	}
 	for (i = 0; i < nav->node_count; ++i) {
 		nav->state[i] = 0;
 		nav->parent[i] = -1;
@@ -1067,11 +1073,31 @@ int Dod_NavPath(DodNav *nav, int from, int to, int *path, int max_path)
 	nav->state[from] = 1;
 	nav->heap[0] = (unsigned short)from;
 	nav->hpos[from] = 0;
-	open = 1;
+	nav->search_open = 1;
+	nav->search_active = 1;
+	nav->search_from = from;
+	nav->search_to = to;
+	nav->search_owner = owner;
+	nav->search_stamp = now;
+	return 1;
+}
+
+int Dod_NavSearchStep(DodNav *nav, int budget, float now, int *path, int max_path)
+{
+	const int from = nav ? nav->search_from : 0, to = nav ? nav->search_to : 0;
+	int e, count, n, i, open;
+	if (!nav || !path || !nav->search_active || max_path < 1)
+		return -1;
+	nav->search_stamp = now;
+	open = nav->search_open;
 	while (open > 0) {
 		const int cur = nav->heap[0];
 		if (cur == to)
 			break;
+		if (budget-- <= 0) {
+			nav->search_open = open;
+			return 0;
+		}
 		/* pop the best open node */
 		--open;
 		if (open > 0) {
@@ -1124,12 +1150,13 @@ int Dod_NavPath(DodNav *nav, int from, int to, int *path, int max_path)
 			}
 		}
 	}
+	nav->search_active = 0;
 	if (open <= 0)
-		return 0;
+		return -1;
 	count = 0;
 	for (n = to; n >= 0; n = nav->parent[n]) {
 		if (++count > max_path)
-			return 0;
+			return -1;
 		if (n == from)
 			break;
 	}
@@ -1137,6 +1164,17 @@ int Dod_NavPath(DodNav *nav, int from, int to, int *path, int max_path)
 	for (n = to; i > 0; n = nav->parent[n])
 		path[--i] = n;
 	return count;
+}
+
+
+int Dod_NavPath(DodNav *nav, int from, int to, int *path, int max_path)
+{
+	int r;
+	if (!path || max_path < 1 || !Dod_NavSearchBegin(nav, from, to, -2, 1e9f))
+		return 0;
+	nav->search_owner = -2;
+	r = Dod_NavSearchStep(nav, 1 << 30, 1e9f, path, max_path);
+	return r > 0 ? r : 0;
 }
 
 int Dod_SpecSanitizeMode(int mode)

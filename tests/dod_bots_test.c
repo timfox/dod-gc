@@ -420,6 +420,22 @@ static void test_nav(void)
 	assert(Dod_NavPath(&nav, 0, 4, path, DOD_NAV_MAX_PATH) == 4 && path[2] == 3);	/* the 200-unit jump is ignored: ladder instead */
 	nav.max_jump_rise = 1000.0f;
 
+	{
+		/* the same search in slices of 1 node: the same path; a second owner is refused while the first is mid-search */
+		int sp[DOD_NAV_MAX_PATH], r = 0, steps = 0, ref[DOD_NAV_MAX_PATH], rl = Dod_NavPath(&nav, 0, 4, ref, DOD_NAV_MAX_PATH);
+		assert(Dod_NavSearchBegin(&nav, 0, 4, 7, 5.0f) == 1);
+		assert(Dod_NavSearchBegin(&nav, 0, 3, 8, 5.2f) == 0);
+		assert(Dod_NavSearchBegin(&nav, 0, 4, 7, 5.3f) == 1);
+		while ((r = Dod_NavSearchStep(&nav, 1, 5.3f, sp, DOD_NAV_MAX_PATH)) == 0 && steps < 100)
+			steps++;
+		assert(steps > 1 && r == rl && memcmp(sp, ref, sizeof(int) * (size_t)rl) == 0);
+		assert(Dod_NavSearchBegin(&nav, 0, 3, 8, 5.4f) == 1);	/* free again */
+		Dod_NavSearchStep(&nav, 1000, 5.4f, sp, DOD_NAV_MAX_PATH);
+		assert(Dod_NavSearchBegin(&nav, 0, 3, 9, 5.5f) == 1);
+		assert(Dod_NavSearchBegin(&nav, 0, 4, 10, 5.6f) == 0 && Dod_NavSearchBegin(&nav, 0, 4, 10, 7.0f) == 1);	/* a stale search is taken over */
+		Dod_NavSearchStep(&nav, 1000, 7.0f, sp, DOD_NAV_MAX_PATH);
+	}
+
 	/* a penalized edge is avoided while the penalty lasts: 0 -> 4 has to take the ladder when the jump is stuck */
 	Dod_NavSetTime(&nav, 10.0f);
 	Dod_NavPenalize(&nav, 2, 4, 40.0f);
