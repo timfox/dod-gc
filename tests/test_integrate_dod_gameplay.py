@@ -625,3 +625,26 @@ class RetailSoundsTest(unittest.TestCase):
 			self.assertEqual(pm.read_text(), once)
 			for want in ("#define STEP_WOOD", "pl_gravel1.wav", "pl_snow4.wav", "pl_wood2.wav", "return STEP_GRAVEL;"):
 				self.assertIn(want, once)
+
+
+class FilmActorVisibilityTest(unittest.TestCase):
+	CLIENT = ('\tif( ent != host )\n\t{\n\t\tif( !ENGINE_CHECK_VISIBILITY( (const struct edict_s *)ent, pSet ) )\n\t\t{\n'
+		'\t\t\t// env_sky is visible always\n\t\t\tif( !FClassnameIs( ent, "env_sky" ) )\n\t\t\t{\n\t\t\t\treturn 0;\n\t\t\t}\n\t\t}\n\t}\n')
+
+	def test_film_actors_skip_the_pvs_check_once(self):
+		with tempfile.TemporaryDirectory() as directory:
+			dlls = Path(directory)
+			(dlls / "client.cpp").write_text(self.CLIENT)
+			INTEGRATOR.integrate_film_actors(dlls)
+			first = (dlls / "client.cpp").read_text()
+			INTEGRATOR.integrate_film_actors(dlls)
+			self.assertEqual((dlls / "client.cpp").read_text(), first, "must be idempotent")
+			self.assertEqual(first.count('!FClassnameIs( ent, "film_actor" )'), 1)
+			self.assertIn('!FClassnameIs( ent, "env_sky" ) && !FClassnameIs( ent, "film_actor" )', first)
+
+	def test_missing_anchor_fails_loudly(self):
+		with tempfile.TemporaryDirectory() as directory:
+			dlls = Path(directory)
+			(dlls / "client.cpp").write_text("int unrelated;\n")
+			with self.assertRaises(SystemExit):
+				INTEGRATOR.integrate_film_actors(dlls)
