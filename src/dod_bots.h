@@ -307,6 +307,7 @@ typedef struct DodNav {
 	int avoid_team;				/* the team whose routes are being planned, or 0 */
 	unsigned char *edge_blocked;		/* per edge: a solid toggle wall (func_wall_toggle) stops the walk along it right now; A* skips it */
 	int edge_blocked_count;
+	int ignore_blocked;	/* plan through blocked edges too (a bot that finds no other route walks up to the wall and breaches it) */
 	/* a search in flight (resumable, see Dod_NavSearchBegin): one at a time, shared by all bots */
 	int search_active, search_from, search_to, search_open, search_owner;
 	float search_stamp;
