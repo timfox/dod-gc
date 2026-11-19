@@ -68,6 +68,48 @@ int DodFilm_PoseLoops(DodFilmPose pose)
 	return pose != DOD_POSE_FALLEN;
 }
 
+static const char *const fx_names[DOD_FX_KIND_COUNT] = {
+	"explosion", "water", "dirt", "smoke", "tracer",
+};
+
+const char *DodFilm_FxName(DodFilmFxKind kind)
+{
+	return kind >= 0 && kind < DOD_FX_KIND_COUNT ? fx_names[kind] : "?";
+}
+
+int DodFilm_FxFromName(const char *name)
+{
+	int i;
+	for (i = 0; i < DOD_FX_KIND_COUNT; ++i)
+		if (!strcmp(name, fx_names[i]))
+			return i;
+	return -1;
+}
+
+static int fx_cmp(const void *a, const void *b)
+{
+	float ta = ((const DodFilmFx *)a)->t, tb = ((const DodFilmFx *)b)->t;
+	return ta < tb ? -1 : ta > tb ? 1 : 0;
+}
+
+int DodFilm_FxDue(const DodFilmCast *cast, float t0, float t1, int *first)
+{
+	int i = 0, j;
+	if (!cast || t1 <= t0) {
+		if (first)
+			*first = 0;
+		return 0;
+	}
+	while (i < cast->fx_count && cast->fx[i].t <= t0)
+		++i;
+	j = i;
+	while (j < cast->fx_count && cast->fx[j].t <= t1)
+		++j;
+	if (first)
+		*first = i;
+	return j;
+}
+
 static int set_err(char *err, int size, int line, const char *what)
 {
 	if (err && size > 0)
@@ -110,7 +152,7 @@ int DodFilm_ParseCast(DodFilmCast *cast, const char *text, char *err, int err_si
 	while (*p) {
 		const char *nl = strchr(p, '\n');
 		size_t n = nl ? (size_t)(nl - p) : strlen(p);
-		char tok[8][32];
+		char tok[10][32];
 		int ntok;
 		++lineno;
 		if (n >= sizeof(line))
@@ -123,8 +165,8 @@ int DodFilm_ParseCast(DodFilmCast *cast, const char *text, char *err, int err_si
 			if (c)
 				*c = '\0';
 		}
-		ntok = sscanf(line, "%31s %31s %31s %31s %31s %31s %31s %31s",
-			tok[0], tok[1], tok[2], tok[3], tok[4], tok[5], tok[6], tok[7]);
+		ntok = sscanf(line, "%31s %31s %31s %31s %31s %31s %31s %31s %31s %31s",
+			tok[0], tok[1], tok[2], tok[3], tok[4], tok[5], tok[6], tok[7], tok[8], tok[9]);
 		if (ntok <= 0)
 			continue;
 		if (!have_header) {
@@ -174,6 +216,38 @@ int DodFilm_ParseCast(DodFilmCast *cast, const char *text, char *err, int err_si
 			cur->key_count++;
 			continue;
 		}
+		if (!strcmp(tok[0], "fx")) {
+			DodFilmFx *f;
+			int kind;
+			if (ntok < 6)
+				return set_err(err, err_size, lineno, "fx needs t kind x y z");
+			if (cast->fx_count >= DOD_FILM_MAX_FX)
+				return set_err(err, err_size, lineno, "too many fx");
+			kind = DodFilm_FxFromName(tok[2]);
+			if (kind < 0)
+				return set_err(err, err_size, lineno, "unknown fx kind");
+			if (kind == DOD_FX_KIND_TRACER && ntok < 9)
+				return set_err(err, err_size, lineno, "tracer needs t tracer x y z x2 y2 z2");
+			f = &cast->fx[cast->fx_count++];
+			f->t = (float)atof(tok[1]);
+			f->kind = (DodFilmFxKind)kind;
+			f->origin[0] = (float)atof(tok[3]);
+			f->origin[1] = (float)atof(tok[4]);
+			f->origin[2] = (float)atof(tok[5]);
+			f->scale = 1.0f;
+			if (kind == DOD_FX_KIND_TRACER) {
+				f->end[0] = (float)atof(tok[6]);
+				f->end[1] = (float)atof(tok[7]);
+				f->end[2] = (float)atof(tok[8]);
+			} else {
+				memcpy(f->end, f->origin, sizeof(f->end));
+				if (ntok >= 7)
+					f->scale = (float)atof(tok[6]);
+				if (!(f->scale > 0.0f))
+					f->scale = 1.0f;
+			}
+			continue;
+		}
 		return set_err(err, err_size, lineno, "unknown directive");
 	}
 	if (!have_header)
@@ -187,6 +261,8 @@ int DodFilm_ParseCast(DodFilmCast *cast, const char *text, char *err, int err_si
 				return set_err(err, err_size, lineno, what);
 			}
 	}
+	if (cast->fx_count > 1)
+		qsort(cast->fx, (size_t)cast->fx_count, sizeof(cast->fx[0]), fx_cmp);
 	return cast->actor_count;
 }
 
