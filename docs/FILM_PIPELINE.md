@@ -21,6 +21,7 @@ film/episodes/<ep>.json ──plan──▶ out/film/<ep>/cine/*.cam + film-<map
 | `tools/film/film.py` | `plan`, `boards`, `animatic`, `assemble`. |
 | `tools/film/actors.py`, `src/dod_film.c`, `src/dod_film_actor.cpp` | Actors: soldiers placed and moving in a shot (below). |
 | `tools/film/voice.py` | Narration and ADR rendered with a local TTS model (Qwen3-TTS), effects, levels, and the dialogue mix (below). |
+| `tools/film/foley.py` | Foley: the game's own sounds placed under each shot (below). |
 | `tools/film/stamp.py` | Reads the engine's frame stamp off captured images. |
 | `scripts/film-capture.sh` | Plan, build a listen disc per map with `build-lean-iso.sh --film`, run Dolphin with frame dumping until the engine logs `FILM SESSION DONE`, then assemble. |
 | `film/episodes/` | Episodes. `ep01-omaha.json` is the sample: Omaha Beach on 6 June 1944, six shots on `dod_charlie`. |
@@ -32,7 +33,8 @@ film/episodes/<ep>.json ──plan──▶ out/film/<ep>/cine/*.cam + film-<map
   "id": "ep01-omaha", "title": "...", "fps": 30,
   "aspect": "2.39",            // 16:9, 1.85 or 2.39 (letterboxed in a 1920x1080 frame)
   "grade": "archival",         // clean, archival (muted, warm, grain, vignette) or monochrome
-  "music": {"file": "music/bed.wav", "gain": 0.35},          // optional; ducks under narration
+  "music": {"file": "social-media/music/Mournful March.mp3",  // optional; ducks under narration and ADR
+            "gain": 0.3, "start": 0.5, "fade_in": 3, "fade_out": 6},  // file: absolute, next to the plan, or in the repo
   "anchors": {"dod_charlie": {"shingle": [0, -384], "sea": [-352, -3420, -250]}},
   "server_cmds": {"dod_charlie": ["dod_bots 8"]},             // console lines before the shots
   "sequence": [
@@ -163,6 +165,43 @@ tools/film/film.py animatic film/episodes/ep01-omaha.json     # the animatic, no
 `--backend placeholder` renders speech-shaped noise of the right length instead, to check timing and the
 mix with no GPU. The models download from Hugging Face on first use (about 9 GB for both).
 
+## Foley from the game
+
+`tools/film/foley.py` lays the game's own sounds under a shot: surf and wind beds, MG and rifle fire,
+explosions, footsteps. A shot's `foley` list names sounds by their path under the game's sound folders
+(`weapons/mg42_shoot.wav`), found in the episode's `foley_dirs` (default `content/dod/sound`, then
+`content/valve/sound`, the retail files on the capture machine; never committed).
+
+```json
+"foley": [
+  {"sound": "ambience/waves.wav", "loop": true, "gain": -16, "fade": 1.5},
+  {"sound": ["weapons/mg42_shoot.wav", "weapons/30cal_shoot.wav"], "at": 1, "dur": 10,
+   "every": [1.2, 3.0], "gain": -20, "pan": [-0.6, 0.6], "fx": "distant"},
+  {"sound": "weapons/explode3.wav", "at": 6.5, "gain": -12, "fx": "distant", "rate": 0.8}
+]
+```
+
+`loop` makes a bed for `dur` (default: the rest of the shot); `every: [min, max]` repeats hits at random
+spacing, each picking a sound from the list, a level near `gain` and a place in `pan`'s range; `fx` takes the
+voice effects; `rate` below 1 slows and deepens a sound. Cues are seeded, so a re-assemble sounds the same.
+The foley track ducks under narration and leaves the music alone. A missing sound is a warning.
+## Clearance: no camera through the map
+
+The engine camera has no collision, so `film.py check <ep>.json` (and every `plan`, which the capture script
+runs first) tests each shot against the map's BSP, sampled every 4 units along the path:
+
+- **inside the world**: the eye in solid in hull 0, the geometry that is drawn;
+- **too close to a surface**: drawn geometry within 16 units across or 18 up and down of the eye, where the
+  near plane and a wide lens start cutting into it. Only what is drawn counts: invisible player-clip brushes
+  (dod_charlie has them over the sea and along the shingle) do not stop a camera;
+- **through a soldier**: the eye inside an actor's body at that moment.
+
+Solid brush entities (`func_wall`, `func_breakable`, doors ...) count, at their spawn positions. `plan` stops
+with the shot, time and position of each problem; previews (`boards`, `animatic`) only warn. The BSP is found
+in `$FILM_BSP_DIR`, `content/dod/maps` or `content/valve/maps`, or passed as `--bsp dod_charlie=PATH`. Where
+there is none (the retail maps are not in the repo) shots are checked against the soldiers only, and `plan`
+says so.
+
 ## Making an episode
 
 1. **Board it.** Write the sequence and run `film.py boards` to check framing shot by shot. Then `tools/film/film.py animatic film/episodes/<ep>.json`. The
@@ -172,7 +211,8 @@ mix with no GPU. The models download from Hugging Face on first use (about 9 GB 
 2. **Refine moves in game (optional).** On a desktop or Dolphin session, noclip to a spot and run
    `cine_mark <t>`; each call appends a key for the current view to `cine/marks.cam`. Paste keys into a
    shot as `{"type": "keys", "keys": [[t, x, y, z, pitch, yaw, roll, fov, "smooth"], ...]}`.
-3. **Capture.** `scripts/film-capture.sh film/episodes/<ep>.json`. Each map boots once and plays its shots
+3. **Capture.** `scripts/film-capture.sh film/episodes/<ep>.json`. It stops before building anything if a
+   camera path clips (above). Each map boots once and plays its shots
    back to back (each shot's end runs the next one). Locked game time means a slow emulator makes the
    capture longer, not the film choppier, so `FILM_IR=3` (1920x1440) is fine. Captures land in
    `out/film/<ep>/captures/<map>/`.
@@ -188,6 +228,12 @@ These films are about real events in which real people died. Narration states on
 support, with numbers given as estimates where the sources do. Each episode lists its `sources`, opens with
 a note that the scenes are game recreations and not archive footage, and closes with a dedication. No
 gore beyond what the game shows, no glorification, no invented personal stories presented as real.
+
+Each episode keeps a fact check beside it (`film/episodes/<ep>.factcheck.md`): every spoken line, card and
+lower third with the source that supports it, and what changed. Re-check it whenever narration changes.
+
+Music beds come from `social-media/music` (Tim's own tracks, made with Suno, kept out of git); check the
+plan's commercial-use terms before publishing.
 
 Footage uses Valve's Day of Defeat assets from a legally owned copy; check the publishing terms before
 releasing anything outside the project.

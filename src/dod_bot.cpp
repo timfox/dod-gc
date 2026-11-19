@@ -106,13 +106,13 @@ static cvar_t dod_bots_online = { "dod_bots_online", "0", FCVAR_SERVER };
 static cvar_t dod_bot_stage = { "dod_bot_stage", "0", FCVAR_SERVER };
 
 /* The most bots ever; the free slots are the real limit. */
-#define DOD_BOT_HARD_CAP 12
+#define DOD_BOT_HARD_CAP 12	/* measured 2026-11-19 on charlie: a bot costs about 8 KB heap, 3 edicts, 0.07 ms think */
 
 /* Free edicts that must remain before another bot is added (see PlanBots). */
 #define DOD_BOT_EDICT_RESERVE 22
 
 #if defined( __GAMECUBE__ )
-#define DOD_BOT_MAX_SLOTS 10	/* bot state slots; the engine's slot count (XASH_GC_DEFAULT_SLOTS, 3 by default) is the real limit */
+#define DOD_BOT_MAX_SLOTS 16	/* bot state slots; the engine's slot count (XASH_GC_DEFAULT_SLOTS, 3 by default) is the real limit */
 #else
 #define DOD_BOT_MAX_SLOTS 32
 #endif
@@ -204,7 +204,7 @@ typedef struct DodBotState {
  * map change and when the last bot leaves; if the heap cannot give it, no bot
  * is added rather than failing later. */
 #if defined( __GAMECUBE__ )
-#define DOD_BOT_MEM_BUDGET 8192
+#define DOD_BOT_MEM_BUDGET 11560	/* 17 slots of 680 bytes; only maxClients + 1 are allocated */
 #else
 #define DOD_BOT_MEM_BUDGET 8192
 #endif
@@ -640,23 +640,8 @@ static void PlanBots( void )
 			BotNote( "plan: time x10, humans*100+bots", (int)( gpGlobals->time * 10.0f ), humans * 100 + bots );
 		}
 	}
-	/* The test harness (dod_gc_autojoin "team class bots") names a bot count: the cvar set from the join path has
-	 * not been seen to stick on the GameCube listen route (the PlanBots log read 7 after "1 1 8"), so apply it
-	 * here, where the count is decided. */
-	int requested_bots = (int)CVAR_GET_FLOAT( "dod_bots" );
-	{
-		const char *aj = CVAR_GET_STRING( "dod_gc_autojoin" );
-		int aj_team = -1, aj_class = 0, aj_bots = -1;
-		if( aj && aj[0] && sscanf( aj, "%d %d %d", &aj_team, &aj_class, &aj_bots ) >= 3 && aj_bots >= 0 )
-		{
-			static int logged;
-			if( !logged++ )
-				BotNote( "autojoin bot count overrides dod_bots (cvar, autojoin)", requested_bots, aj_bots );
-			requested_bots = aj_bots;
-		}
-	}
 	target = Dod_BotTargetCount(
-		Dod_BotRequestedCount( requested_bots, NetworkUp(), CVAR_GET_FLOAT( "dod_bots_online" ) != 0.0f ),
+		Dod_BotRequestedCount( (int)CVAR_GET_FLOAT( "dod_bots" ), NetworkUp(), CVAR_GET_FLOAT( "dod_bots_online" ) != 0.0f ),
 		gpGlobals->maxClients, humans, DOD_BOT_HARD_CAP );
 	if( bots == 0 && target == 0 )
 		FreeBotState();

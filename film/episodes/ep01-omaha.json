@@ -5,10 +5,18 @@
   "fps": 30,
   "aspect": "2.39",
   "grade": "archival",
+  "music": {
+    "file": "social-media/music/Mournful March.mp3",
+    "gain": 0.3,
+    "start": 0.5,
+    "fade_in": 3,
+    "fade_out": 6
+  },
   "sources": [
-    "U.S. Army Center of Military History, Omaha Beachhead (6 June-13 June 1944), American Forces in Action series (1945), CMH Pub 100-11",
+    "U.S. Army Center of Military History, Omaha Beachhead (6 June-13 June 1944), American Forces in Action series (1945), CMH Pub 100-11, chapters 2, 4 and 5",
     "American Battle Monuments Commission, Normandy American Cemetery (abmc.gov)",
-    "The National WWII Museum, New Orleans: D-Day and the Normandy campaign overview (nationalww2museum.org)"
+    "The National WWII Museum, New Orleans: D-Day and the Normandy campaign overview (nationalww2museum.org)",
+    "Encyclopaedia Britannica, Omaha Beach (britannica.com)"
   ],
   "anchors": {
     "dod_charlie": {
@@ -174,7 +182,27 @@
           }
         ],
         "chapter": "The landing",
-        "lower_third": "Omaha Beach\nNormandy \u00b7 6 June 1944"
+        "lower_third": "Omaha Beach\nNormandy \u00b7 6 June 1944",
+        "foley": [
+          {
+            "sound": "ambience/waves.wav",
+            "loop": true,
+            "gain": -13,
+            "fade": 2
+          },
+          {
+            "sound": "ambience/air.wav",
+            "loop": true,
+            "gain": -24,
+            "fade": 3
+          },
+          {
+            "sound": "ambience/artyboom.wav",
+            "at": 5,
+            "gain": -22,
+            "fx": "distant"
+          }
+        ]
       }
     },
     {
@@ -201,6 +229,32 @@
         "narration": [
           {
             "text": "Allied troops would land on five beaches, code-named Utah, Omaha, Gold, Juno and Sword."
+          }
+        ],
+        "foley": [
+          {
+            "sound": "ambience/waves.wav",
+            "loop": true,
+            "gain": -16,
+            "fade": 1
+          },
+          {
+            "sound": "ambience/windy.wav",
+            "loop": true,
+            "gain": -20,
+            "fade": 1
+          },
+          {
+            "sound": "ambience/flyby.wav",
+            "at": 1.5,
+            "gain": -24,
+            "fx": "distant"
+          },
+          {
+            "sound": "ambience/artyboom.wav",
+            "at": 5.5,
+            "gain": -21,
+            "fx": "distant"
           }
         ]
       }
@@ -229,7 +283,7 @@
         },
         "narration": [
           {
-            "text": "Omaha, about eight kilometres of sand beneath steep bluffs, was assigned to the United States 1st and 29th Infantry Divisions."
+            "text": "Omaha, about six and a half kilometres of sand beneath steep bluffs, was assigned to the United States 1st and 29th Infantry Divisions."
           }
         ],
         "actors": [
@@ -289,6 +343,72 @@
             "gain": -7,
             "pan": -0.25
           }
+        ],
+        "foley": [
+          {
+            "sound": "ambience/waves.wav",
+            "loop": true,
+            "gain": -10,
+            "fade": 0.5
+          },
+          {
+            "sound": [
+              "player/pl_wade1.wav",
+              "player/pl_wade2.wav",
+              "player/pl_wade3.wav",
+              "player/pl_wade4.wav"
+            ],
+            "at": 0.3,
+            "every": [
+              0.9,
+              1.6
+            ],
+            "gain": -17,
+            "pan": [
+              -0.4,
+              0.4
+            ]
+          },
+          {
+            "sound": [
+              "weapons/hit_water1.wav",
+              "weapons/hit_water2.wav"
+            ],
+            "at": 1,
+            "every": [
+              1.4,
+              3
+            ],
+            "gain": -19,
+            "pan": [
+              -0.7,
+              0.7
+            ]
+          },
+          {
+            "sound": [
+              "weapons/mg42_shoot.wav",
+              "weapons/mg34_shoot.wav"
+            ],
+            "at": 0.5,
+            "every": [
+              1.6,
+              3.2
+            ],
+            "gain": -21,
+            "pan": [
+              0.2,
+              0.7
+            ],
+            "fx": "distant"
+          },
+          {
+            "sound": "weapons/explodewater.wav",
+            "at": 7.2,
+            "gain": -15,
+            "pan": -0.4,
+            "fx": "distant"
+          }
         ]
       }
     },
@@ -298,8 +418,14 @@
         "map": "dod_charlie",
         "camera": {
           "type": "dolly",
-          "start": "waterline",
-          "end": "shingle",
+          "start": [
+            -60,
+            -3168
+          ],
+          "end": [
+            0,
+            -1700
+          ],
           "height": 30,
           "duration": 16,
           "lens": 32,
@@ -351,7 +477,7 @@
               {
                 "at": [
                   -250,
-                  -2380
+                  -2480
                 ],
                 "pose": "fallen",
                 "yaw": 120
@@ -398,6 +524,75 @@
             "fx": "field",
             "gain": -9,
             "pan": -0.35
+          }
+        ],
+        "foley": [
+          {
+            "sound": "ambience/waves.wav",
+            "loop": true,
+            "gain": -20,
+            "fade": 1
+          },
+          {
+            "sound": [
+              "weapons/mg42_shoot.wav",
+              "weapons/mg34_shoot.wav"
+            ],
+            "at": 0.2,
+            "every": [
+              1.0,
+              2.4
+            ],
+            "gain": -18,
+            "pan": [
+              -0.6,
+              0.6
+            ],
+            "fx": "distant"
+          },
+          {
+            "sound": [
+              "weapons/garand_shoot.wav",
+              "weapons/bar_shoot.wav"
+            ],
+            "at": 2,
+            "every": [
+              2,
+              4
+            ],
+            "gain": -24,
+            "pan": [
+              -0.7,
+              0.7
+            ],
+            "fx": "distant"
+          },
+          {
+            "sound": [
+              "player/pl_dirt1.wav",
+              "player/pl_dirt2.wav",
+              "player/pl_dirt3.wav",
+              "player/pl_dirt4.wav"
+            ],
+            "at": 0.2,
+            "dur": 11,
+            "every": [
+              0.33,
+              0.45
+            ],
+            "gain": -22,
+            "pan": [
+              -0.15,
+              0.15
+            ]
+          },
+          {
+            "sound": "weapons/mortar_hit1.wav",
+            "at": 9.5,
+            "gain": -15,
+            "pan": 0.35,
+            "fx": "distant",
+            "rate": 0.9
           }
         ]
       }
@@ -466,6 +661,35 @@
             "gain": -14,
             "pan": 0.3
           }
+        ],
+        "foley": [
+          {
+            "sound": "ambience/windy.wav",
+            "loop": true,
+            "gain": -15,
+            "fade": 1
+          },
+          {
+            "sound": "weapons/mg42_shoot.wav",
+            "at": 1.5,
+            "dur": 7,
+            "every": [
+              2.2,
+              3.8
+            ],
+            "gain": -17,
+            "pan": [
+              -0.2,
+              0.2
+            ],
+            "fx": "field"
+          },
+          {
+            "sound": "ambience/artyboom.wav",
+            "at": 6,
+            "gain": -24,
+            "fx": "distant"
+          }
         ]
       }
     },
@@ -475,7 +699,10 @@
         "map": "dod_charlie",
         "camera": {
           "type": "still",
-          "eye": "shingle",
+          "eye": [
+            0,
+            -504
+          ],
           "target": "draw_top",
           "height": 4,
           "duration": 13,
@@ -493,7 +720,7 @@
         },
         "narration": [
           {
-            "text": "Rough seas, currents and smoke pushed many landing craft away from their planned sectors, and much of the supporting armour never reached the shore."
+            "text": "Rough seas and currents pushed many landing craft off course. Of twenty-nine swimming tanks launched offshore, twenty-seven sank."
           }
         ],
         "actors": [
@@ -577,6 +804,39 @@
             "gain": -8,
             "pan": -0.2
           }
+        ],
+        "foley": [
+          {
+            "sound": "ambience/waves.wav",
+            "loop": true,
+            "gain": -24,
+            "fx": "muffled",
+            "fade": 1
+          },
+          {
+            "sound": [
+              "weapons/mg42_shoot.wav",
+              "weapons/mg34_shoot.wav"
+            ],
+            "at": 0.5,
+            "every": [
+              1.2,
+              2.6
+            ],
+            "gain": -17,
+            "pan": [
+              -0.5,
+              0.5
+            ],
+            "fx": "muffled"
+          },
+          {
+            "sound": "weapons/explode4.wav",
+            "at": 4,
+            "gain": -13,
+            "fx": "muffled",
+            "rate": 0.85
+          }
         ]
       }
     },
@@ -586,8 +846,14 @@
         "map": "dod_charlie",
         "camera": {
           "type": "dolly",
-          "start": "shingle",
-          "end": "crest",
+          "start": [
+            224,
+            100
+          ],
+          "end": [
+            224,
+            700
+          ],
           "height": 36,
           "duration": 15,
           "lens": 28,
@@ -604,7 +870,7 @@
         },
         "narration": [
           {
-            "text": "By mid-morning, small groups, often led by junior officers and sergeants, had begun to work their way up the bluffs between the strongpoints."
+            "text": "From around eight in the morning, small groups, often led by junior officers and sergeants, began to work their way up the bluffs between the strongpoints."
           }
         ],
         "chapter": "Up the bluffs",
@@ -664,6 +930,55 @@
             "gain": -9,
             "pan": 0.15
           }
+        ],
+        "foley": [
+          {
+            "sound": "ambience/windy.wav",
+            "loop": true,
+            "gain": -22,
+            "fade": 1
+          },
+          {
+            "sound": [
+              "player/pl_gravel1.wav",
+              "player/pl_gravel2.wav",
+              "player/pl_gravel3.wav",
+              "player/pl_gravel4.wav"
+            ],
+            "at": 0.3,
+            "every": [
+              0.55,
+              0.85
+            ],
+            "gain": -19,
+            "pan": [
+              -0.2,
+              0.2
+            ]
+          },
+          {
+            "sound": [
+              "weapons/mg42_shoot.wav",
+              "weapons/mg34_shoot.wav"
+            ],
+            "at": 1,
+            "every": [
+              3,
+              5
+            ],
+            "gain": -26,
+            "pan": [
+              -0.7,
+              0.7
+            ],
+            "fx": "distant"
+          },
+          {
+            "sound": "ambience/nebwerfdist.wav",
+            "at": 8.5,
+            "gain": -24,
+            "fx": "distant"
+          }
         ]
       }
     },
@@ -696,7 +1011,7 @@
         },
         "narration": [
           {
-            "text": "One by one, the defences above the beach were taken."
+            "text": "Through the day, the strongpoints above the beach began to fall."
           }
         ],
         "actors": [
@@ -740,6 +1055,31 @@
             "gain": -10,
             "pan": 0.25
           }
+        ],
+        "foley": [
+          {
+            "sound": "ambience/windy.wav",
+            "loop": true,
+            "gain": -15,
+            "fade": 1
+          },
+          {
+            "sound": [
+              "weapons/mg42_shoot.wav",
+              "weapons/mg34_shoot.wav"
+            ],
+            "at": 1.5,
+            "every": [
+              3,
+              4.5
+            ],
+            "gain": -28,
+            "pan": [
+              -0.8,
+              0.8
+            ],
+            "fx": "distant"
+          }
         ]
       }
     },
@@ -750,9 +1090,9 @@
         "camera": {
           "type": "orbit",
           "center": "draw_top",
-          "radius": 1100,
+          "radius": 1200,
           "height": 220,
-          "start_deg": 20,
+          "start_deg": 35,
           "end_deg": 95,
           "duration": 15,
           "lens": 28
@@ -766,13 +1106,28 @@
         },
         "narration": [
           {
-            "text": "By nightfall the Americans held a beachhead only about two kilometres deep."
+            "text": "By nightfall they held a strip at most two and a half kilometres deep."
           },
           {
-            "text": "It had cost them an estimated two thousand four hundred casualties, the heaviest of any D-Day beach."
+            "text": "Around three thousand men were killed, wounded or missing, more than on any other D-Day beach."
           }
         ],
-        "chapter": "Nightfall"
+        "chapter": "Nightfall",
+        "foley": [
+          {
+            "sound": "ambience/windy.wav",
+            "loop": true,
+            "gain": -19,
+            "fade": 2
+          },
+          {
+            "sound": "ambience/artyboom.wav",
+            "at": 7,
+            "gain": -25,
+            "fx": "distant",
+            "rate": 0.9
+          }
+        ]
       }
     },
     {
@@ -802,6 +1157,14 @@
           },
           {
             "text": "More than nine thousand Americans are buried there."
+          }
+        ],
+        "foley": [
+          {
+            "sound": "ambience/waves.wav",
+            "loop": true,
+            "gain": -14,
+            "fade": 3
           }
         ]
       }
