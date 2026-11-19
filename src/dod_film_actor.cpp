@@ -15,9 +15,11 @@
 #include "util.h"
 #include "cbase.h"
 #include "gamerules.h"
+#include "weapons.h"
 #include "dod_runtime.h"
 #include "dod_game.h"
 #include "dod_film.h"
+#include "dod_weapons.h"
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -36,6 +38,7 @@ static CDodFilmActor *g_film_ents[DOD_FILM_MAX_ACTORS];
 static int g_film_seq[DOD_FILM_MAX_ACTORS][DOD_POSE_COUNT];	/* looked-up sequence + 1, 0 unknown */
 static float g_film_start;
 static float g_film_last;
+static float g_film_fx_clock;	/* the shot time fx have been fired up to */
 static char g_film_shot[32];
 static int g_film_commands_added;
 static int g_film_precached[4];	/* by DodTeam */
@@ -95,6 +98,35 @@ static float DodFilm_OriginZ( const float *origin, int pose )
 	return origin[2] - 36.0f + DodFilm_PoseHeight( (DodFilmPose)pose );
 }
 
+/* Per-actor variety from the actor's slot: a start phase in the cycle (0..256) and a
+ * stride factor (0.92..1.08). Fixed per slot, so a re-render of a shot is identical. */
+static unsigned DodFilm_ActorHash( int i )
+{
+	unsigned h = (unsigned)( i + 1 ) * 2654435761u;
+	h ^= h >> 15;
+	h *= 2246822519u;
+	h ^= h >> 13;
+	return h;
+}
+
+static float DodFilm_ActorPhase( int i )
+{
+	return (float)( DodFilm_ActorHash( i ) & 255u );
+}
+
+static float DodFilm_ActorStride( int i )
+{
+	return 0.92f + 0.16f * (float)( ( DodFilm_ActorHash( i ) >> 8 ) & 255u ) / 255.0f;
+}
+
+/* The third-person weapon the actor's class carries (p_*.mdl), or NULL. */
+static const char *DodFilm_WeaponModel( int team, int player_class )
+{
+	DodClass cls = player_class > DOD_CLASS_NONE ? (DodClass)player_class : DOD_CLASS_RIFLEMAN;
+	const DodWeaponDef *def = Dod_ClassWeaponDef( (DodTeam)team, cls );
+	return def && def->player_model && def->player_model[0] ? def->player_model : NULL;
+}
+
 static void DodFilm_Place( int i, float t, float dt )
 {
 	CDodFilmActor *ent = g_film_ents[i];
@@ -109,12 +141,15 @@ static void DodFilm_Place( int i, float t, float dt )
 		ent->pev->sequence = DodFilm_Sequence( ent, s.pose );
 		ent->ResetSequenceInfo();
 		ent->m_pose = s.pose;
-		ent->m_phase = 0.0f;
+		/* A looping pose starts at the actor's own point in the cycle, so a squad that
+		 * starts walking together does not step in lockstep. One-shot poses start at 0. */
+		ent->m_phase = DodFilm_PoseLoops( s.pose ) ? DodFilm_ActorPhase( i ) : 0.0f;
 	}
-	/* Walk cycles run at the speed the actor covers ground, so the feet do not slide much. */
-	float rate = 1.0f;
+	/* Walk cycles run at the speed the actor covers ground, so the feet do not slide much,
+	 * give or take the actor's own stride (a few percent), so the cycles drift apart. */
+	float rate = DodFilm_ActorStride( i );
 	if( s.moving && ent->m_flGroundSpeed > 1.0f ) {
-		rate = s.speed / ent->m_flGroundSpeed;
+		rate *= s.speed / ent->m_flGroundSpeed;
 		rate = rate < 0.5f ? 0.5f : ( rate > 2.0f ? 2.0f : rate );
 	}
 	if( t >= 0.0f )
@@ -126,6 +161,117 @@ static void DodFilm_Place( int i, float t, float dt )
 	ent->pev->frame = ent->m_phase;
 	ent->pev->framerate = 0.0f;	/* the frame is set here every server frame */
 	ent->pev->animtime = gpGlobals->time;
+}
+
+static int DodFilm_Byte( float v )
+{
+	return v < 1.0f ? 1 : ( v > 255.0f ? 255 : (int)v );
+}
+
+static void DodFilm_Streaks( const Vector &o, float up, int color, int count, int speed )
+{
+	MESSAGE_BEGIN( MSG_BROADCAST, SVC_TEMPENTITY );
+		WRITE_BYTE( TE_STREAK_SPLASH );
+		WRITE_COORD( o.x );
+		WRITE_COORD( o.y );
+		WRITE_COORD( o.z );
+		WRITE_COORD( 0.0f );
+		WRITE_COORD( 0.0f );
+		WRITE_COORD( up );
+		WRITE_BYTE( color );
+		WRITE_SHORT( count );
+		WRITE_SHORT( speed );
+		WRITE_SHORT( speed / 2 );
+	MESSAGE_END();
+}
+
+static void DodFilm_Smoke( const Vector &o, float scale, int framerate )
+{
+	MESSAGE_BEGIN( MSG_BROADCAST, SVC_TEMPENTITY );
+		WRITE_BYTE( TE_SMOKE );
+		WRITE_COORD( o.x );
+		WRITE_COORD( o.y );
+		WRITE_COORD( o.z );
+		WRITE_SHORT( g_sModelIndexSmoke );
+		WRITE_BYTE( DodFilm_Byte( scale ) );
+		WRITE_BYTE( framerate );
+	MESSAGE_END();
+}
+
+/* One effect. Broadcast, not by PVS or PAS: the camera is often far from the player.
+ * The sound is left to the film's own mix (TE_EXPLFLAG_NOSOUND). */
+static void DodFilm_FireFx( const DodFilmFx *f )
+{
+	Vector o( f->origin[0], f->origin[1], f->origin[2] );
+	float s = f->scale;
+	/* A burst, a spout or a puff sits on the ground under its point: the plan's heights
+	 * come from the nearest waypoint, which on a slope or a bluff can be well off. Water
+	 * keeps its height (a trace goes through water to the bottom). */
+	if( f->kind == DOD_FX_KIND_EXPLOSION || f->kind == DOD_FX_KIND_DIRT || f->kind == DOD_FX_KIND_SMOKE ) {
+		TraceResult tr;
+		UTIL_TraceLine( o + Vector( 0, 0, 512 ), o - Vector( 0, 0, 512 ), ignore_monsters, NULL, &tr );
+		if( !tr.fStartSolid && !tr.fAllSolid && tr.flFraction < 1.0f )
+			o.z = tr.vecEndPos.z;
+	}
+	switch( f->kind ) {
+	case DOD_FX_KIND_EXPLOSION:
+		MESSAGE_BEGIN( MSG_BROADCAST, SVC_TEMPENTITY );
+			WRITE_BYTE( TE_EXPLOSION );
+			WRITE_COORD( o.x );
+			WRITE_COORD( o.y );
+			WRITE_COORD( o.z + 24.0f * s );
+			WRITE_SHORT( g_sModelIndexFireball );
+			WRITE_BYTE( DodFilm_Byte( 30.0f * s ) );	/* scale * 10, a grenade's */
+			WRITE_BYTE( 15 );
+			WRITE_BYTE( TE_EXPLFLAG_NOSOUND );
+		MESSAGE_END();
+		DodFilm_Streaks( o, 1.0f, 5, (int)( 24 * s ), (int)( 220 * s ) );
+		DodFilm_Smoke( o + Vector( 0, 0, 40.0f * s ), 40.0f * s, 8 );
+		break;
+	case DOD_FX_KIND_WATER:
+		/* a tall white column: two showers of white streaks and a spray puff */
+		DodFilm_Streaks( o, 1.0f, 0, (int)( 40 * s ), (int)( 420 * s ) );
+		DodFilm_Streaks( o, 1.0f, 0, (int)( 24 * s ), (int)( 220 * s ) );
+		MESSAGE_BEGIN( MSG_BROADCAST, SVC_TEMPENTITY );
+			WRITE_BYTE( TE_SPRITE );
+			WRITE_COORD( o.x );
+			WRITE_COORD( o.y );
+			WRITE_COORD( o.z + 48.0f * s );
+			WRITE_SHORT( g_sModelIndexSmoke );
+			WRITE_BYTE( DodFilm_Byte( 30.0f * s ) );
+			WRITE_BYTE( 200 );
+		MESSAGE_END();
+		break;
+	case DOD_FX_KIND_DIRT:
+		DodFilm_Streaks( o, 1.0f, 4, (int)( 20 * s ), (int)( 260 * s ) );
+		DodFilm_Smoke( o + Vector( 0, 0, 16.0f * s ), 18.0f * s, 12 );
+		break;
+	case DOD_FX_KIND_SMOKE:
+		DodFilm_Smoke( o, 30.0f * s, 6 );
+		break;
+	case DOD_FX_KIND_TRACER:
+		MESSAGE_BEGIN( MSG_BROADCAST, SVC_TEMPENTITY );
+			WRITE_BYTE( TE_TRACER );
+			WRITE_COORD( o.x );
+			WRITE_COORD( o.y );
+			WRITE_COORD( o.z );
+			WRITE_COORD( f->end[0] );
+			WRITE_COORD( f->end[1] );
+			WRITE_COORD( f->end[2] );
+		MESSAGE_END();
+		break;
+	default:
+		break;
+	}
+}
+
+static void DodFilm_RunFx( float t )
+{
+	int first, end = DodFilm_FxDue( &g_film_cast, g_film_fx_clock, t, &first );
+	for( int i = first; i < end; i++ )
+		DodFilm_FireFx( &g_film_cast.fx[i] );
+	if( t > g_film_fx_clock )
+		g_film_fx_clock = t;
 }
 
 static void DodFilm_CastCommand( void )
@@ -144,17 +290,20 @@ static void DodFilm_CastCommand( void )
 		ALERT( at_console, "FILM CAST %s: no %s, no actors\n", g_film_shot, path );
 		return;
 	}
-	/* LOAD_FILE_FOR_ME null-terminates, but the parser should not trust that */
-	char *copy = (char *)malloc( (size_t)length + 1 );
-	if( copy ) {
-		memcpy( copy, text, (size_t)length );
-		copy[length] = '\0';
-	}
-	FREE_FILE( text );
-	if( !copy )
+	/* LOAD_FILE_FOR_ME null-terminates, but the parser should not trust that. A static
+	 * buffer, not the heap: a failed allocation used to drop the whole cast silently. */
+	static char copy[32768];
+	if( length <= 0 || length >= (int)sizeof( copy ) ) {
+		ALERT( at_console, "FILM CAST %s: %s is %d bytes (the limit is %d), no actors\n", g_film_shot, path,
+			length, (int)sizeof( copy ) - 1 );
+		FREE_FILE( text );
 		return;
+	}
+	memcpy( copy, text, (size_t)length );
+	copy[length] = '\0';
+	FREE_FILE( text );
+	ALERT( at_console, "FILM CAST %s: read %s, %d bytes\n", g_film_shot, path, length );
 	int count = DodFilm_ParseCast( &g_film_cast, copy, err, sizeof( err ) );
-	free( copy );
 	if( count < 0 ) {
 		ALERT( at_console, "FILM CAST %s: %s: %s\n", g_film_shot, path, err );
 		memset( &g_film_cast, 0, sizeof( g_film_cast ) );
@@ -163,6 +312,9 @@ static void DodFilm_CastCommand( void )
 	float preroll = CMD_ARGC() > 2 ? (float)atof( CMD_ARGV( 2 ) ) : 0.0f;
 	g_film_start = gpGlobals->time + ( preroll > 0.0f ? preroll : 0.0f );
 	g_film_last = gpGlobals->time;
+	g_film_fx_clock = gpGlobals->time - g_film_start;	/* minus the preroll: an fx at 0 fires on the first frame */
+	if( g_film_fx_clock >= 0.0f )
+		g_film_fx_clock = -0.001f;
 	int placed = 0;
 	for( int i = 0; i < g_film_cast.actor_count; i++ ) {
 		const DodFilmActor *a = &g_film_cast.actors[i];
@@ -187,6 +339,10 @@ static void DodFilm_CastCommand( void )
 		const char *body = DodGC_BodyModelForTeam( (DodTeam)a->team );
 		DodClass cls = a->player_class > DOD_CLASS_NONE ? (DodClass)a->player_class : DOD_CLASS_RIFLEMAN;
 		ent->pev->body = Dod_PlayerBodyValue( body, cls, i + 1 );
+		/* The engine draws weaponmodel on the actor's hand bones, as it does for a player. */
+		const char *gun = DodFilm_WeaponModel( a->team, cls );
+		if( gun )
+			ent->pev->weaponmodel = MAKE_STRING( gun );
 		ent->m_actor = i;
 		ent->m_pose = -1;
 		ent->m_phase = 0.0f;
@@ -194,8 +350,8 @@ static void DodFilm_CastCommand( void )
 		DodFilm_Place( i, gpGlobals->time - g_film_start, 0.0f );
 		placed++;
 	}
-	ALERT( at_console, "FILM CAST %s: %d of %d actor(s), clock starts in %.2f s\n", g_film_shot, placed,
-		g_film_cast.actor_count, g_film_start - gpGlobals->time );
+	ALERT( at_console, "FILM CAST %s: %d of %d actor(s), %d fx, clock starts in %.2f s\n", g_film_shot, placed,
+		g_film_cast.actor_count, g_film_cast.fx_count, g_film_start - gpGlobals->time );
 }
 
 static void DodFilm_ClearCommand( void )
@@ -229,6 +385,11 @@ void DodFilm_Init( void )
 		if( !model[0] )
 			continue;
 		PRECACHE_MODEL( (char *)STRING( ALLOC_STRING( model ) ) );
+		for( int c = DOD_CLASS_NONE + 1; c < DOD_CLASS_COUNT; c++ ) {
+			const char *gun = DodFilm_WeaponModel( team, c );
+			if( gun )
+				PRECACHE_MODEL( (char *)gun );
+		}
 		g_film_precached[team] = 1;
 		ALERT( at_console, "FILM: precached %s for actors\n", model );
 	}
@@ -237,7 +398,7 @@ void DodFilm_Init( void )
 
 void DodFilm_Think( void )
 {
-	if( !g_film_cast.actor_count )
+	if( !g_film_cast.actor_count && !g_film_cast.fx_count )
 		return;
 	float dt = gpGlobals->time - g_film_last;
 	g_film_last = gpGlobals->time;
@@ -245,4 +406,5 @@ void DodFilm_Think( void )
 		dt = 0.0f;
 	for( int i = 0; i < g_film_cast.actor_count; i++ )
 		DodFilm_Place( i, gpGlobals->time - g_film_start, dt );
+	DodFilm_RunFx( gpGlobals->time - g_film_start );
 }

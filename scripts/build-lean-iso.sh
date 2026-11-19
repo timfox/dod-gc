@@ -288,7 +288,8 @@ pack() {
 			# after MAP_READY with gcworlddl (heap_free=104). Skip for lean listen;
 			# PVS/frustum CapFaces path does not need a static DL.
 			# Solo listen needs pad → engfuncs; without this CapFaces is view-only.
-			echo "gcplayerinput"
+			# DODGC_NO_PLAYERINPUT=1: no probe pad, so its attack/jump/use burst does not join the human (join-timing tests)
+			[[ -z "${DODGC_NO_PLAYERINPUT:-}" ]] && echo "gcplayerinput"
 			# Extra gamecube.cfg lines, e.g. DODGC_EXTRA_CFG="retailnewgame" (real play route).
 			[[ -n "${DODGC_EXTRA_CFG:-}" ]] && printf '%b\n' "$DODGC_EXTRA_CFG"
 			(( DUMPFRAMES )) && echo "dumpframes"

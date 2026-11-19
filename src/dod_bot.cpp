@@ -149,6 +149,7 @@ typedef struct DodBotState {
 	int path_len, path_idx;		/* nodes planned, and the one being walked to */
 	int path_goal;			/* goal id the path was planned for */
 	float path_replan;		/* earliest time to plan again */
+	int plan_resume, plan_resume_goal, plan_ignore_goal;	/* plan_ignore_goal: the objective for which the route may cross blocked edges */	/* graph searches of the current plan attempt already done in earlier frames, and for which goal */
 	float path_best, path_progress_time;	/* closest approach to the current node, and when it improved */
 	int nav_fails;
 	int ladder_dir;			/* +1 climbing up, -1 down, 0 not on a ladder */
@@ -177,6 +178,11 @@ typedef struct DodBotState {
 	float track_since, last_fight_time, react_until;
 	float burst_until, pause_until;
 	float next_unseen_log, last_fire;
+	/* one engagement: from sighting to losing the target for a second (see the log in RunBot) */
+	float eng_start, eng_dist0, eng_dist_min;
+	float group_wait_until;	/* attackers going to a point that needs several players hold back until the group is together */
+	int eng_frames, eng_fired, eng_why_far, eng_why_react, eng_why_aim, eng_why_pause, eng_why_reload, eng_why_noammo;
+	char eng_weapon[16];
 	/* The view: yaw/pitch are the angles the bot looks along (and what v_angle and the body yaw are written from); the
 	 * rest of the code only says where it wants to look (want_*) and one eased step per frame (Dod_BotEase) turns
 	 * the view towards it, so nothing ever snaps. */
@@ -225,16 +231,93 @@ static DodBotState *BotState( int index )
  * runs on a map, freed with the bot state or when the map changes. Without it bots steer with the look-ahead. */
 static DodNav g_nav;
 static DodTeamIntel g_intel;	/* what each team knows about where the enemy is (shared by its bots) */
+/* walls bots breached (see BreachWall) */
+static struct { int ent; float first; int done; } g_breach[8];
 static byte *g_nav_file;
 static char g_nav_map[32];
 
 static void FreeNav( void )
 {
+	memset( g_breach, 0, sizeof( g_breach ) );
 	Dod_NavFree( &g_nav );
 	if( g_nav_file )
 		FREE_FILE( g_nav_file );
 	g_nav_file = NULL;
 	g_nav_map[0] = '\0';
+}
+
+/* A solid func_wall_toggle across the way (charlie's shingle walls: the Allies are meant to blow them with satchels at the
+ * capture areas, which bots do not do). A bot stuck on one for DOD_BOT_BREACH_DELAY seconds breaches it, as if a satchel went off:
+ * the wall is toggled away, without the blast. */
+#define DOD_BOT_BREACH_DELAY 6.0f
+
+static void BreachWall( CBasePlayer *pBot, edict_t *wall )
+{
+	int i, free_slot = -1;
+	if( !FClassnameIs( wall, "func_wall_toggle" ) || wall->v.solid == SOLID_NOT || FStringNull( wall->v.targetname ) )
+		return;
+	for( i = 0; i < 8; i++ )
+	{
+		if( g_breach[i].ent == ENTINDEX( wall ) )
+			break;
+		if( !g_breach[i].ent && free_slot < 0 )
+			free_slot = i;
+	}
+	if( i == 8 )
+	{
+		if( free_slot < 0 )
+			return;
+		i = free_slot;
+		g_breach[i].ent = ENTINDEX( wall );
+		g_breach[i].first = gpGlobals->time;
+		g_breach[i].done = 0;
+	}
+	if( g_breach[i].done || gpGlobals->time - g_breach[i].first < DOD_BOT_BREACH_DELAY )
+		return;
+	g_breach[i].done = 1;
+	ALERT( at_console, "DoD bot %s breaches the wall %s (ent %d) after %.0f s stuck on it\n", STRING( pBot->pev->netname ),
+		STRING( wall->v.targetname ), ENTINDEX( wall ), gpGlobals->time - g_breach[i].first );
+	/* only the wall: firing its targetname would also set off the map's satchel explosion (env_explosion) right beside the bot */
+	{
+		CBaseEntity *entity = CBaseEntity::Instance( wall );
+		if( entity )
+			entity->Use( pBot, pBot, USE_TOGGLE, 0 );
+	}
+}
+
+/* A bot got stuck on a brush entity (a func_wall the waypoint graph was not baked with): every edge whose hull trace hits that
+ * same entity is avoided for 15 minutes, not just the one the bot was on, so the next plan does not walk into the same wall by
+ * a neighbouring edge. At most once per entity every 20 s. */
+static void BlockEdgesAround( edict_t *blocker, float now )
+{
+	static int candidates[256];
+	static float next_for[32];
+	float mins[1][3], maxs[1][3];
+	int n, i, blocked = 0;
+	const int slot = ENTINDEX( blocker ) & 31;
+	if( now < next_for[slot] || g_nav.node_count < 1 )
+		return;
+	next_for[slot] = now + 20.0f;
+	mins[0][0] = blocker->v.absmin.x - 24.0f; mins[0][1] = blocker->v.absmin.y - 24.0f; mins[0][2] = blocker->v.absmin.z - 24.0f;
+	maxs[0][0] = blocker->v.absmax.x + 24.0f; maxs[0][1] = blocker->v.absmax.y + 24.0f; maxs[0][2] = blocker->v.absmax.z + 24.0f;
+	n = Dod_NavEdgesCrossing( &g_nav, mins, maxs, 1, candidates, (int)( sizeof( candidates ) / sizeof( candidates[0] ) ) );
+	for( i = 0; i < n && blocked < 96; i++ )
+	{
+		int from, to;
+		float ax, ay, az, bx, by, bz;
+		TraceResult tr;
+		Dod_NavEdgeNodes( &g_nav, candidates[i], &from, &to );
+		Dod_NavNodePos( &g_nav, from, &ax, &ay, &az );
+		Dod_NavNodePos( &g_nav, to, &bx, &by, &bz );
+		UTIL_TraceHull( Vector( ax, ay, az ), Vector( bx, by, bz ), ignore_monsters, human_hull, NULL, &tr );
+		if( tr.flFraction < 1.0f && tr.pHit == blocker )
+		{
+			Dod_NavPenalize( &g_nav, from, to, now + 900.0f );
+			blocked++;
+		}
+	}
+	ALERT( at_console, "DoD nav: %s (ent %d, model %s) traps bots: %d of %d edges through it avoided for 15 minutes\n", STRING( blocker->v.classname ),
+		ENTINDEX( blocker ), STRING( blocker->v.model ), blocked, n );
 }
 
 /* How long an edge that bots got stuck on stays penalised: doubles with every report (a table of the worst ones). */
@@ -933,7 +1016,50 @@ static void PickGoal( CBasePlayer *pBot, DodBotState *state )
 				info[i].blocked = 1;
 		state->goal_id = -1;
 	}
-	id = Dod_BotChooseObjectiveRole( info, count, my_team, state->has_goal ? state->goal_id : -1, state->role, &kind );
+	id = -1;
+	/* One target for the attackers of a team: the first bot to choose sets it, the others follow it (a point that needs two players
+	 * is taken by two bots who went to the same point, not by two who each picked their nearest). */
+	if( state->role == DOD_ROLE_ATTACKER && my_team >= DOD_TEAM_ALLIES && my_team <= DOD_TEAM_AXIS )
+	{
+		static int team_target[4] = { -1, -1, -1, -1 };
+		const int cur = team_target[my_team];
+		int still_ok = 0, k;
+		for( k = 0; k < count; k++ )
+			if( info[k].id == cur && !info[k].blocked && info[k].owner != my_team && info[k].can_cap[my_team] )
+				still_ok = 1;
+		if( !still_ok )
+		{
+			int tkind;
+			const int pick = Dod_BotChooseObjectiveRole( info, count, my_team, -1, DOD_ROLE_ATTACKER, &tkind );
+			if( pick >= 0 && tkind == DOD_BOT_GOAL_ATTACK )
+			{
+				int inside = 0, jj;
+				for( k = 0; k < count; k++ )
+					if( info[k].id == pick )
+						break;
+				for( jj = 1; jj <= gpGlobals->maxClients; jj++ )
+				{
+					CBasePlayer *pIn = PlayerAt( jj );
+					if( pIn && pIn->IsAlive() && TeamOf( pIn ) == my_team && k < count &&
+						pIn->pev->origin.x >= views[k].mins.x && pIn->pev->origin.x <= views[k].maxs.x &&
+						pIn->pev->origin.y >= views[k].mins.y && pIn->pev->origin.y <= views[k].maxs.y )
+						inside++;
+				}
+				team_target[my_team] = pick;
+				ALERT( at_console, "DoD team target team %d: point %d needs %d, inside %d (team has %d alive)\n", (int)my_team, pick,
+					k < count ? info[k].need : 1, inside, team_alive );
+			}
+			else
+				team_target[my_team] = -1;
+		}
+		if( team_target[my_team] >= 0 )
+		{
+			id = team_target[my_team];
+			kind = DOD_BOT_GOAL_ATTACK;
+		}
+	}
+	if( id < 0 )
+		id = Dod_BotChooseObjectiveRole( info, count, my_team, state->has_goal ? state->goal_id : -1, state->role, &kind );
 	if( id < 0 )
 	{
 		state->has_goal = 0;
@@ -960,6 +1086,39 @@ static void PickGoal( CBasePlayer *pBot, DodBotState *state )
 		state->goal_progress_time = now;
 		state->cell_n = 0;
 		state->steer_off = 0.0f;
+	}
+	if( kind == DOD_BOT_GOAL_ATTACK && state->role == DOD_ROLE_ATTACKER && info[i].need >= 2 && info[i].distance > 900.0f && my_team >= DOD_TEAM_ALLIES && my_team <= DOD_TEAM_AXIS )
+	{
+		/* a point that needs a group: the nearest bots do not walk in alone while the others are far behind; they wait (at most 20 s per target)
+		 * so the group arrives together instead of dying one by one on the way in */
+		static float wait_start[4];
+		static int wait_target[4] = { -1, -1, -1, -1 };
+		const Vector centre = views[i].center;
+		float far_mate = 0.0f;
+		int j;
+		for( j = 1; j <= gpGlobals->maxClients && j <= DOD_BOT_MAX_SLOTS; j++ )
+		{
+			CBasePlayer *pOther = PlayerAt( j );
+			DodBotState *other = BotState( j );
+			if( pOther && pOther != pBot && other && DodBots_IsBot( pOther ) && pOther->IsAlive() && TeamOf( pOther ) == my_team &&
+				other->has_goal && other->goal_id == id && other->goal_kind == DOD_BOT_GOAL_ATTACK )
+			{
+				const float d = ( pOther->pev->origin - centre ).Length2D();
+				if( d > far_mate )
+					far_mate = d;
+			}
+		}
+		if( wait_target[my_team] != id )
+		{
+			wait_target[my_team] = id;
+			wait_start[my_team] = now;
+		}
+		if( far_mate > info[i].distance + 700.0f && now - wait_start[my_team] < 40.0f )
+		{
+			if( now >= state->group_wait_until )
+				ALERT( at_console, "DoD bot %s waits for its group before point %d (%.0f units from it, the farthest mate %.0f)\n", STRING( pBot->pev->netname ), id, info[i].distance, far_mate );
+			state->group_wait_until = now + 1.0f;
+		}
 	}
 	state->goal = views[i].center;
 	state->goal_mins = views[i].mins;
@@ -1112,13 +1271,15 @@ static BOOL NodeVisible( CBasePlayer *pBot, int node )
 
 /* Planning is the one expensive thing a bot does (a search over the whole graph), so it is rationed: at most
  * DOD_BOT_PLAN_SEARCHES searches per plan, and only one bot plans in a given server frame. */
-#define DOD_BOT_PLAN_SEARCHES 4
+#define DOD_BOT_PLAN_SEARCHES 4	/* per plan attempt, over as many server frames as it takes */
+#define DOD_BOT_PLAN_NODE_BUDGET 100	/* nodes one plan call expands (200 measured 2.3-2.8 ms worst plan call on the host, charlie, 4 bots); a search carries over to the next frame and only one runs at a time */
 static float g_plan_stamp = -1.0f;
 
 static BOOL PlanPath( CBasePlayer *pBot, DodBotState *state )
 {
 	PhaseTimer timer( DOD_PH_PLAN );
 	int starts[6], goals[4], tmp[DOD_NAV_MAX_PATH], ns, ng, i, j, k, pass, len, searches = 0;
+	const int skip = state->plan_resume_goal == state->nav_id ? state->plan_resume : 0;
 	const Vector origin = pBot->pev->origin;
 	if( gpGlobals->time <= g_plan_stamp )
 	{
@@ -1148,11 +1309,38 @@ static BOOL PlanPath( CBasePlayer *pBot, DodBotState *state )
 				continue;
 			for( j = 0; j < ng; j++ )
 			{
-				if( searches++ >= DOD_BOT_PLAN_SEARCHES )
+				searches++;
+				if( searches <= skip )
+					continue;	/* tried in an earlier frame */
+				if( searches > DOD_BOT_PLAN_SEARCHES )
+					goto plan_failed;
+				g_nav.ignore_blocked = state->plan_ignore_goal == state->nav_id + 1;
+				g_nav.allow_partial = 1;
+				if( !Dod_NavSearchBegin( &g_nav, starts[i], goals[j], pBot->entindex(), gpGlobals->time ) )
+				{
+					g_nav.ignore_blocked = g_nav.allow_partial = 0;
+					state->plan_resume = searches - 1;	/* another bot's search is in flight: wait, the old path (if any) keeps being followed */
+					state->plan_resume_goal = state->nav_id;
+					state->path_replan = gpGlobals->time + 0.05f;
 					return FALSE;
-				len = Dod_NavPath( &g_nav, starts[i], goals[j], tmp, DOD_NAV_MAX_PATH );
-				if( len <= 0 )
-					continue;
+				}
+				len = Dod_NavSearchStep( &g_nav, DOD_BOT_PLAN_NODE_BUDGET, gpGlobals->time, tmp, DOD_NAV_MAX_PATH );
+				g_nav.ignore_blocked = 0;
+				g_nav.allow_partial = 0;
+				if( len == 0 )
+				{
+					state->plan_resume = searches - 1;	/* carry on with this very search next frame */
+					state->plan_resume_goal = state->nav_id;
+					state->path_replan = gpGlobals->time + 0.03f;
+					return FALSE;
+				}
+				if( len < 0 )
+				{
+					state->plan_resume = searches;	/* no route from this start to this goal: the next candidate on the next frame, not this one */
+					state->plan_resume_goal = state->nav_id;
+					state->path_replan = gpGlobals->time + 0.03f;
+					return FALSE;
+				}
 				for( k = 0; k < len; k++ )
 					state->path[k] = (short)tmp[k];
 				state->path_len = len;
@@ -1166,6 +1354,7 @@ static BOOL PlanPath( CBasePlayer *pBot, DodBotState *state )
 					if( ( Vector( x1, y1, 0 ) - Vector( origin.x, origin.y, 0 ) ).Length() < ( Vector( x1, y1, 0 ) - Vector( x0, y0, 0 ) ).Length() )
 						state->path_idx = 1;
 				}
+				state->plan_resume = 0;
 				state->path_goal = state->nav_id;
 				state->path_best = 1e9f;
 				state->path_progress_time = gpGlobals->time;
@@ -1176,6 +1365,26 @@ static BOOL PlanPath( CBasePlayer *pBot, DodBotState *state )
 					state->nav_id, len, tmp[0], tmp[len - 1] );
 				return TRUE;
 			}
+		}
+	}
+plan_failed:
+	state->plan_resume = 0;
+	g_nav.ignore_blocked = 0;
+	if( g_nav.edge_blocked_count > 0 && state->plan_ignore_goal != state->nav_id + 1 )
+	{
+		/* no route round the blocked edges (a solid toggle wall cuts the way): plan through them, the bot walks up to the wall and breaches it */
+		state->plan_ignore_goal = state->nav_id + 1;
+		state->path_replan = gpGlobals->time + 0.03f;
+		return FALSE;
+	}
+	{
+		static int fail_logs;
+		if( fail_logs < 60 )
+		{
+			fail_logs++;
+			ALERT( at_console, "DoD plan failed: %s team %d goal %d, %d start nodes (%d..), %d goal nodes (%d..), %d searches tried, bot at %.0f,%.0f,%.0f\n",
+				STRING( pBot->pev->netname ), (int)TeamOf( pBot ), state->nav_id, ns, ns > 0 ? starts[0] : -1, ng, ng > 0 ? goals[0] : -1, searches,
+				origin.x, origin.y, origin.z );
 		}
 	}
 	return FALSE;
@@ -1245,7 +1454,7 @@ static BOOL NavTarget( CBasePlayer *pBot, DodBotState *state, Vector *target )
 			*target = Vector( lx, ly, lz );
 			return TRUE;
 		}
-		if( dist < DOD_BOT_NODE_REACH && fabsf( nz - origin.z ) < 72.0f )
+		if( dist < DOD_BOT_NODE_REACH && fabsf( nz - origin.z ) < 40.0f )	/* was 72: a bot under a ledge counted as on it and stalled on the climb */
 		{
 			if( last )
 			{
@@ -1310,6 +1519,102 @@ static BOOL NavTarget( CBasePlayer *pBot, DodBotState *state, Vector *target )
 				}
 			}
 			{
+				/* what blocks the way: a brush entity (a wall, a toggle wall) rather than the map itself, and the bot's whole situation */
+				TraceResult bh;
+				edict_t *blocker = NULL;
+				static int ctx_logs;
+				UTIL_TraceHull( origin, Vector( nx, ny, origin.z ), ignore_monsters, human_hull, pBot->edict(), &bh );
+				if( bh.flFraction < 1.0f && bh.pHit && !FNullEnt( bh.pHit ) && ENTINDEX( bh.pHit ) > 0 && !( bh.pHit->v.flags & ( FL_CLIENT | FL_FAKECLIENT ) ) )
+					blocker = bh.pHit;
+				if( ctx_logs < 40 )
+				{
+					const int pn = state->path_idx > 0 ? state->path[state->path_idx - 1] : -1;
+					float px = 0, py = 0, pz = 0;
+					ctx_logs++;
+					if( pn >= 0 )
+						Dod_NavNodePos( &g_nav, pn, &px, &py, &pz );
+					ALERT( at_console, "DoD stuck ctx %s: team %d action %s goal %s %d, edge %d -> %d (kind %d) from %.0f,%.0f,%.0f to %.0f,%.0f,%.0f, bot at %.0f,%.0f,%.0f, blocker %s (ent %d)\n",
+						STRING( pBot->pev->netname ), (int)TeamOf( pBot ), g_action_names[state->behavior], state->has_goal ? "id" : "none", state->has_goal ? state->goal_id : -1,
+						pn, state->path[state->path_idx], pn >= 0 ? Dod_NavEdgeKind( &g_nav, pn, state->path[state->path_idx] ) : -1, px, py, pz, nx, ny, nz,
+						origin.x, origin.y, origin.z, blocker ? STRING( blocker->v.classname ) : "none", blocker ? ENTINDEX( blocker ) : -1 );
+				}
+				{
+					/* the top stuck edges, so each cause can be named: edge, kind, blocker, count; printed every 60 s */
+					struct StuckEdge { int a, b, kind, count, ent; char cls[24]; float frac, nrm[3], ox, oy, oz; };
+					static StuckEdge top[48];
+					static int ntop;
+					static float next_report;
+					const int fa = state->path_idx > 0 ? state->path[state->path_idx - 1] : -1;
+					const int fb = state->path[state->path_idx];
+					int k;
+					for( k = 0; k < ntop; k++ )
+						if( top[k].a == fa && top[k].b == fb )
+							break;
+					if( k == ntop && ntop < 48 )
+					{
+						top[k].a = fa; top[k].b = fb; top[k].count = 0;
+						top[k].kind = fa >= 0 ? Dod_NavEdgeKind( &g_nav, fa, fb ) : -1;
+						ntop++;
+					}
+					if( k < ntop )
+					{
+						top[k].count++;
+						top[k].ent = blocker ? ENTINDEX( blocker ) : -1;
+						strncpy( top[k].cls, blocker ? STRING( blocker->v.classname ) : "map", sizeof( top[k].cls ) - 1 );
+						top[k].cls[sizeof( top[k].cls ) - 1] = 0;
+						top[k].frac = bh.flFraction; top[k].nrm[0] = bh.vecPlaneNormal.x; top[k].nrm[1] = bh.vecPlaneNormal.y; top[k].nrm[2] = bh.vecPlaneNormal.z;
+						top[k].ox = origin.x; top[k].oy = origin.y; top[k].oz = origin.z;
+					}
+					if( now >= next_report )
+					{
+						int shown;
+						next_report = now + 60.0f;
+						for( shown = 0; shown < 5; shown++ )
+						{
+							int best = -1, j;
+							for( j = 0; j < ntop; j++ )
+								if( top[j].count > 0 && ( best < 0 || top[j].count > top[best].count ) )
+									best = j;
+							if( best < 0 )
+								break;
+							{
+								float ax = 0, ay = 0, az = 0, bx = 0, by = 0, bz = 0;
+								if( top[best].a >= 0 ) Dod_NavNodePos( &g_nav, top[best].a, &ax, &ay, &az );
+								if( top[best].b >= 0 ) Dod_NavNodePos( &g_nav, top[best].b, &bx, &by, &bz );
+								ALERT( at_console, "DoD stuck top %d: edge %d -> %d (kind %d) blocker %s (ent %d) x%d; node a %.0f,%.0f,%.0f b %.0f,%.0f,%.0f; last bot %.0f,%.0f,%.0f, hull trace frac %.2f normal %.2f,%.2f,%.2f\n",
+									shown + 1, top[best].a, top[best].b, top[best].kind, top[best].cls, top[best].ent, top[best].count, ax, ay, az, bx, by, bz,
+									top[best].ox, top[best].oy, top[best].oz, top[best].frac, top[best].nrm[0], top[best].nrm[1], top[best].nrm[2] );
+							}
+							top[best].count = -top[best].count;
+						}
+						for( int j = 0; j < ntop; j++ )
+							if( top[j].count < 0 )
+								top[j].count = -top[j].count;
+					}
+				}
+				if( blocker )
+				{
+					if( FClassnameIs( blocker, "func_wall_toggle" ) )
+						BreachWall( pBot, blocker );
+					else if( FClassnameIs( blocker, "func_breakable" ) )
+					{
+						/* a breakable in the way is shot or knifed, then walked through; the edge stays usable */
+						static float next_hit[8];
+						const int slot = ENTINDEX( blocker ) & 7;
+						if( now >= next_hit[slot] && blocker->v.takedamage != DAMAGE_NO )
+						{
+							next_hit[slot] = now + 1.0f;
+							CBaseEntity *pb = CBaseEntity::Instance( blocker );
+							if( pb )
+								pb->TakeDamage( pBot->pev, pBot->pev, 60.0f, DMG_BULLET );
+							ALERT( at_console, "DoD bot %s breaks func_breakable ent %d (health %.0f)\n", STRING( pBot->pev->netname ), ENTINDEX( blocker ), blocker->v.health );
+						}
+					}
+					else
+						BlockEdgesAround( blocker, now );
+				}
+			}
+			{
 				/* an edge that traps bots again and again stays avoided longer each time (30 s, 60 s, ... up to 15 minutes), for every bot */
 				const int from = state->path_idx > 0 ? state->path[state->path_idx - 1] : -1;
 				const int to = state->path[state->path_idx > 0 ? state->path_idx : 0];
@@ -1335,6 +1640,14 @@ static BOOL NavTarget( CBasePlayer *pBot, DodBotState *state, Vector *target )
  * cover, join a teammate, go to / hold the objective. Cost per bot: one scan of the players, two traces, one
  * search over a few hundred integers. */
 #define DOD_BOT_MAX_FIRE_RANGE 2000.0f
+/* beyond this the bot's shots are wasted: submachine guns and the BAR spray, rifles and MGs reach */
+static float UsefulRange( CBasePlayerItem *it )
+{
+	const char *c = it ? STRING( it->pev->classname ) : "";
+	if( strstr( c, "stg44" ) || strstr( c, "mp40" ) || strstr( c, "thompson" ) || strstr( c, "grease" ) || strstr( c, "bar" ) || strstr( c, "mp44" ) || strstr( c, "sten" ) || strstr( c, "carbine" ) )
+		return 900.0f;
+	return DOD_BOT_MAX_FIRE_RANGE;
+}
 #define DOD_BOT_THINK_PERIOD 0.5f
 #define DOD_BOT_LOW_HEALTH 35.0f
 #define DOD_BOT_HURT_MEMORY 12.0f	/* seconds after a hit that low health keeps a bot in cover; nobody heals in DoD, so it must not last for ever */
@@ -1522,6 +1835,16 @@ static void BotThink( CBasePlayer *pBot, DodBotState *state, CBasePlayer *enemy 
 	{
 		state->known_pos = enemy->pev->origin;
 		state->known_until = now + BotSkill().memory;
+		{
+			/* the first time any bot of one team sees the other on this map, for the match log */
+			static char contact_map[32];
+			if( strcmp( contact_map, STRING( gpGlobals->mapname ) ) )
+			{
+				strncpy( contact_map, STRING( gpGlobals->mapname ), sizeof( contact_map ) - 1 );
+				ALERT( at_console, "DoD contact: first enemy sighting: %s (team %d) sees %s (team %d) at %.0f units, game time %.1f\n", STRING( pBot->pev->netname ),
+					(int)team, STRING( enemy->pev->netname ), (int)TeamOf( enemy ), ( enemy->pev->origin - pBot->pev->origin ).Length(), now );
+			}
+		}
 		state->search_left = 2;	/* if it slips away, sweep the area round where it was before giving up */
 		if( now >= state->next_report )
 		{
@@ -2160,7 +2483,7 @@ static void RunBot( int index, CBasePlayer *pBot )
 	const float dt = gpGlobals->frametime > 0.0f ? gpGlobals->frametime : 0.016f;
 	int msec_value = (int)( dt * 1000.0f );
 	if( msec_value < 1 ) msec_value = 1;
-	if( msec_value > 100 ) msec_value = 100;
+	if( msec_value > 250 ) msec_value = 250;	/* was 100: at 250 ms frames a bot moved 40% of the way each frame, so it crawled and the stuck timers fired on it; the server splits long commands itself */
 	const byte msec = (byte)msec_value;
 	/* pmove clamps to pev->maxspeed; the engine leaves it 0 on some builds, which froze the bots
 	 * in place (fwd=220 commanded, velocity 0). Give the bot a walking speed of its own. */
@@ -2188,6 +2511,7 @@ static void RunBot( int index, CBasePlayer *pBot )
 	{
 		/* a mate died here: the team now believes the enemy is near (the killer is not named, so it is a weak lead) */
 		const float dp[3] = { pBot->pev->origin.x, pBot->pev->origin.y, pBot->pev->origin.z };
+		ALERT( at_console, "DoD death: %s (team %d) at %.0f,%.0f,%.0f, game time %.1f\n", STRING( pBot->pev->netname ), (int)TeamOf( pBot ), dp[0], dp[1], dp[2], gpGlobals->time );
 		Dod_IntelReport( &g_intel, TeamOf( pBot ), dp, DOD_INTEL_DEATH, pBot->entindex(), gpGlobals->time, 20.0f );
 	}
 	state->was_alive = pBot->IsAlive();
@@ -2356,10 +2680,12 @@ static void RunBot( int index, CBasePlayer *pBot )
 		in.target_distance = enemy_distance;
 		if( enemy->entindex() != state->last_tgt || now - state->last_fight_time > 1.0f )
 		{
+			const BOOL again = enemy->entindex() == state->last_tgt && now - state->last_fight_time < 6.0f && state->last_fight_time > 0.0f;
 			/* a new target: a moment to take it in before the first shot, and aim from scratch */
 			state->last_tgt = enemy->entindex();
 			state->track_since = now;
-			state->react_until = now + Dod_BotReactionDelay( &sk, RANDOM_FLOAT( 0.0f, 1.0f ) );
+			/* an enemy seen again within a few seconds is not a surprise: a short delay, not a fresh reaction */
+			state->react_until = now + ( again ? 0.08f : Dod_BotReactionDelay( &sk, RANDOM_FLOAT( 0.0f, 1.0f ) ) );
 			state->next_noise = 0.0f;
 			ALERT( at_console, "DoD bot %s: sees an enemy at %.0f units, reacts in %.0f ms\n", STRING( pBot->pev->netname ), enemy_distance,
 				( state->react_until - now ) * 1000.0f );
@@ -2436,6 +2762,16 @@ static void RunBot( int index, CBasePlayer *pBot )
 	}
 
 	move = Dod_BotDecide( &in );
+	if( !fight && gpGlobals->time < state->group_wait_until && !state->nav_arrived )
+	{
+		move.forward = 0.0f;
+		move.side = 0.0f;
+	}
+	if( fight && !advance && !state->nav_arrived && !state->ladder_dir && enemy_distance > UsefulRange( pBot->m_pActiveItem ) - 100.0f )
+	{
+		move.forward = 1.0f;	/* an enemy beyond useful range and no route to follow: close the distance along the view, which is on the enemy */
+		move.side = 0.0f;
+	}
 	if( advance )
 	{
 		move.forward = 1.0f;	/* the route, not the enemy, sets the way; the view stays on the enemy */
@@ -2523,7 +2859,30 @@ static void RunBot( int index, CBasePlayer *pBot )
 		const DodBotSkill sk = BotSkill();
 		const float now = gpGlobals->time;
 		const BOOL automatic = !in.semi_auto;
-		if( now < state->react_until || enemy_distance > DOD_BOT_MAX_FIRE_RANGE )
+		{
+			CBasePlayerItem *eit = pBot->m_pActiveItem;
+			CBasePlayerWeapon *ew = eit ? (CBasePlayerWeapon *)eit->GetWeaponPtr() : NULL;
+			if( state->eng_frames == 0 )
+			{
+				state->eng_start = now;
+				state->eng_dist0 = state->eng_dist_min = enemy_distance;
+				state->eng_fired = state->eng_why_far = state->eng_why_react = state->eng_why_aim = state->eng_why_pause = state->eng_why_reload = state->eng_why_noammo = 0;
+				strncpy( state->eng_weapon, eit ? STRING( eit->pev->classname ) : "none", sizeof( state->eng_weapon ) - 1 );
+				state->eng_weapon[sizeof( state->eng_weapon ) - 1] = 0;
+			}
+			state->eng_frames++;
+			if( enemy_distance < state->eng_dist_min )
+				state->eng_dist_min = enemy_distance;
+			if( !move.fire )
+			{
+				if( enemy_distance > UsefulRange( eit ) ) state->eng_why_far++;
+				else if( now < state->react_until ) state->eng_why_react++;
+				else if( state->behavior == DOD_ACT_RELOAD || ( ew && ew->m_iClip == 0 && ew->m_iPrimaryAmmoType >= 0 && pBot->m_rgAmmo[ew->m_iPrimaryAmmoType] > 0 ) ) state->eng_why_reload++;
+				else if( ew && ew->m_iClip == 0 ) state->eng_why_noammo++;
+				else state->eng_why_aim++;
+			}
+		}
+		if( now < state->react_until || enemy_distance > UsefulRange( pBot->m_pActiveItem ) )
 			move.fire = 0;	/* still taking the target in, or too far to bother */
 		else if( move.fire )
 		{
@@ -2552,6 +2911,7 @@ static void RunBot( int index, CBasePlayer *pBot )
 			const float off_pitch = fabsf( Dod_BotAngleDelta( state->pitch, PitchTo( eye, tc ) ) );
 			const float body = atanf( 16.0f / ( enemy_distance > 16.0f ? enemy_distance : 16.0f ) ) * 180.0f / (float)M_PI;
 			state->fire_frames++;
+			state->eng_fired++;
 			state->last_fire = now;
 			if( off_yaw < body && off_pitch < body * 2.0f )
 				state->hit_frames++;
@@ -2564,7 +2924,16 @@ static void RunBot( int index, CBasePlayer *pBot )
 		}
 	}
 	else
+	{
 		state->burst_until = 0.0f;
+		if( state->eng_frames && gpGlobals->time - state->last_fight_time > 1.0f )
+		{
+			ALERT( at_console, "DoD engagement %s: %s, first %.0f min %.0f units, %.1f s, %d frames, fired %d; not firing: out of range %d, reacting %d, reload %d, no ammo %d, aim/trigger %d\n",
+				STRING( pBot->pev->netname ), state->eng_weapon, state->eng_dist0, state->eng_dist_min, state->last_fight_time - state->eng_start,
+				state->eng_frames, state->eng_fired, state->eng_why_far, state->eng_why_react, state->eng_why_reload, state->eng_why_noammo, state->eng_why_aim );
+			state->eng_frames = 0;
+		}
+	}
 	if( state->stage_role == 1 )
 	{
 		/* test scenario: the watcher stays where it was put, looking where it was put until something draws its aim */

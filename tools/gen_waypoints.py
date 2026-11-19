@@ -392,7 +392,7 @@ def ladder_links(bsp, hull, cells, cell):
             # foot's own side is some other structure above it, not where the ladder leads.
             for top_side in (-side,):
                 top = at(top_side, 36.0, maxs[2] + 72.0, maxs[2] - 72.0)
-                if top is None or cells[top][2] - cells[foot][2] < 60.0:
+                if top is None or cells[top][2] - cells[foot][2] < 46.0:	# a rise a jump cannot make (JUMP 45); 60 left the 52-unit ladders of kalt out and pits had no way up
                     continue
                 link = (foot, top, cells[top][2] - cells[foot][2])
                 if all(l[:2] != link[:2] for l in links):

@@ -28,6 +28,10 @@ static cvar_t dod_rounds = { "dod_rounds", "2", FCVAR_SERVER };
  * to watch the bots fight. dod_spec_auto 1: a director moves the camera between
  * the bots by itself (any manual target pick pauses it for a while). */
 static cvar_t dod_spectate = { "dod_spectate", "0", FCVAR_SERVER };
+/* dod_gc_join "<seconds> <team> <class>" (debug, off when empty; needs dod_spectate 1): the local human, spectating the bots, takes that side
+ * (1 Allies, 2 Axis) and class (1 rifleman .. 6 rocket) once the map has run that many seconds: a human joining a round in progress. */
+static cvar_t dod_gc_join = { "dod_gc_join", "", FCVAR_SERVER };
+static BOOL g_join_done[DOD_MAX_PLAYERS + 1];
 static cvar_t dod_spec_auto = { "dod_spec_auto", "1", FCVAR_SERVER };
 /* dod_gc_autojoin "<team> <class>" (debug, off when empty): the local human takes that side and class a couple of
  * seconds after connecting, with the steps the menus take, so an automated run (no pad) gets a playable human and a
@@ -534,6 +538,7 @@ CHalfLifeDoD::CHalfLifeDoD()
 		Dod_CvarRegisterKeep( &dod_spec_auto );
 		Dod_CvarRegisterKeep( &dod_gc_autojoin );
 		Dod_CvarRegisterKeep( &dod_gc_autotele );
+		Dod_CvarRegisterKeep( &dod_gc_join );
 		Dod_CvarRegisterKeep( &dod_paras );
 		for( int k = 0; k < DOD_LIMIT_CVARS; k++ ) {
 			g_limit_cvar_storage[k].name = g_limit_cvars[k].name;
@@ -592,6 +597,7 @@ CHalfLifeDoD::CHalfLifeDoD()
 	memset( g_autotele_seen, 0, sizeof( g_autotele_seen ) );
 	memset( g_autotele_done, 0, sizeof( g_autotele_done ) );
 	memset( g_autojoin_spec_done, 0, sizeof( g_autojoin_spec_done ) );
+	memset( g_join_done, 0, sizeof( g_join_done ) );
 }
 
 /* The first open class for a side, starting at the one asked for: a bot's pick when limits turn its choice away. */
@@ -862,6 +868,15 @@ static void DodGC_CycleWeapon( CBasePlayer *pPlayer, int step );
 BOOL CHalfLifeDoD::ClientCommand( CBasePlayer *pPlayer, const char *pcmd )
 {
 	const int index = DodGC_PlayerIndex( pPlayer );
+	if( index >= 1 && index <= DOD_MAX_PLAYERS && !g_join_done[index] && CVAR_GET_STRING( "dod_gc_join" )[0] && !DodBots_IsBot( pPlayer )
+		&& ( FStrEq( pcmd, "dod_team" ) || FStrEq( pcmd, "dod_class" ) || FStrEq( pcmd, "menuselect" ) ) ) {
+		float delay = 0.0f;
+		sscanf( CVAR_GET_STRING( "dod_gc_join" ), "%f", &delay );
+		if( gpGlobals->time < delay ) {
+			ALERT( at_console, "DoD join: held '%s' from the human until game time %.0f\n", pcmd, delay );
+			return TRUE;	/* a test that joins the human at a set time: nothing joins it earlier */
+		}
+	}
 	if( index >= 1 && index <= DOD_MAX_PLAYERS && g_dod_voice_menu[index]
 		&& ( FStrEq( pcmd, "dod_nextweapon" ) || FStrEq( pcmd, "dod_prevweapon" ) || FStrEq( pcmd, "dod_lastweapon" ) ) ) {
 		/* the voice menu owns the D-pad while it is open */
@@ -1356,6 +1371,17 @@ static void DodGC_SpectatorThink( void )
 		}
 		if( !pSpec || !pSpec->IsPlayer() || !pSpec->IsObserver() || DodBots_IsBot( pSpec ) )
 			continue;
+		if( i <= DOD_MAX_PLAYERS && !g_join_done[i] && CVAR_GET_STRING( "dod_gc_join" )[0] ) {
+			float delay = 0.0f;
+			int team = 0, cls = 0;
+			if( sscanf( CVAR_GET_STRING( "dod_gc_join" ), "%f %d %d", &delay, &team, &cls ) >= 2 && gpGlobals->time >= delay ) {
+				g_join_done[i] = TRUE;
+				ALERT( at_console, "DoD join: the human joins team %d class %d at game time %.1f\n", team, cls, gpGlobals->time );
+				DodGC_HumanJoin( pSpec, team == 2 ? DOD_TEAM_AXIS : DOD_TEAM_ALLIES, (DodClass)( cls >= 1 && cls <= 6 ? cls : 1 ) );
+				ALERT( at_console, "DoD join: human spawned team %s alive %d at %.0f,%.0f,%.0f\n", pSpec->m_szTeamName, (int)pSpec->IsAlive(), pSpec->pev->origin.x, pSpec->pev->origin.y, pSpec->pev->origin.z );
+				continue;
+			}
+		}
 		if( slot && ( pSpec->pev->button & ( IN_ATTACK | IN_ATTACK2 | IN_JUMP ) ) )
 			g_spec_hold_until[slot] = gpGlobals->time + DOD_SPEC_MANUAL_HOLD;
 		mode = pSpec->pev->iuser1;
@@ -1757,6 +1783,8 @@ private:
 	int m_iAreaNumCap[3];	/* players of a team needed inside to capture */
 	BOOL m_bHasBounds;
 	int m_iPointIndex;
+	BOOL m_bTouchKeys;	/* the map set point_can_allies_touch / point_can_axis_touch */
+	BOOL m_bFixed;	/* a flag that starts owned and has no way to be taken (no capture area, no touch keys): it only counts in the master's tally */
 	int m_iDefaultOwner;
 	int m_iPointsForCap;	/* point_points_for_cap: Score for each player who captures it */
 	int m_iTeamPoints, m_iTimePoints;	/* point_team_points (on capture), point_pointvalue (timed) */
@@ -1776,6 +1804,8 @@ LINK_ENTITY_TO_CLASS( dod_control_point, CDoDControlPoint )
 CDoDControlPoint::CDoDControlPoint()
 {
 	m_iPointIndex = -1;
+	m_bTouchKeys = FALSE;
+	m_bFixed = FALSE;
 	m_iDefaultOwner = DOD_TEAM_UNASSIGNED;
 	m_iPointsForCap = 1;
 	m_iTeamPoints = 0;
@@ -1857,6 +1887,7 @@ void CDoDControlPoint::SetAreaDriven( float capture_seconds )
 	if( m_bAreaDriven )
 		return;
 	m_bAreaDriven = TRUE;
+	m_bFixed = FALSE;
 	if( capture_seconds > 0.0f )
 		Dod_RegisterObjective( m_iPointIndex, DOD_OBJ_CAPTURE_POINT, (DodTeam)m_iDefaultOwner,
 			capture_seconds, DOD_POINT_SCORE_PER_MINUTE );
@@ -1868,6 +1899,8 @@ void CDoDControlPoint::KeyValue( KeyValueData *pkvd )
 {
 	if( FStrEq( pkvd->szKeyName, "point_index" ) ) {
 		m_iPointIndex = atoi( pkvd->szValue ); pkvd->fHandled = TRUE;
+	} else if( FStrEq( pkvd->szKeyName, "point_can_allies_touch" ) || FStrEq( pkvd->szKeyName, "point_can_axis_touch" ) ) {
+		m_bTouchKeys = TRUE; pkvd->fHandled = TRUE;
 	} else if( FStrEq( pkvd->szKeyName, "point_default_owner" ) ) {
 		m_iDefaultOwner = atoi( pkvd->szValue ); pkvd->fHandled = TRUE;
 	} else if( FStrEq( pkvd->szKeyName, "point_points_for_cap" ) ) {
@@ -1897,7 +1930,16 @@ void CDoDControlPoint::Spawn( void )
 {
 	pev->solid = SOLID_NOT;
 	pev->movetype = MOVETYPE_NONE;
-	if( m_iPointIndex < 0 ) m_iPointIndex = 0;
+	if( m_iPointIndex < 0 ) {
+		/* point_index -1 (donner: all five points) means "give me one": every such point used to land on index 0 and count as one point */
+		int id = 16;
+		while( Dod_GetObjective( id ) && id < 31 )
+			id++;
+		m_iPointIndex = id;
+	}
+	m_bFixed = ( m_iDefaultOwner == DOD_TEAM_ALLIES || m_iDefaultOwner == DOD_TEAM_AXIS ) && !m_bTouchKeys;
+	if( m_bFixed )
+		m_iAreaCanCap[0] = m_iAreaCanCap[DOD_TEAM_ALLIES] = m_iAreaCanCap[DOD_TEAM_AXIS] = 0;
 	Dod_RegisterObjective( m_iPointIndex, DOD_OBJ_CAPTURE_POINT,
 		(DodTeam)m_iDefaultOwner, 10.0f, DOD_POINT_SCORE_PER_MINUTE );
 	Dod_SetObjectivePointsForCap( m_iPointIndex, m_iPointsForCap );
@@ -1923,7 +1965,7 @@ void CDoDControlPoint::Think( void )
 		if( objective )
 			ShowOwner( objective->owner );
 	}
-	if( m_bAreaDriven ) {
+	if( m_bAreaDriven || m_bFixed ) {
 		pev->nextthink = gpGlobals->time + 0.25f;
 		return;
 	}
@@ -1970,6 +2012,7 @@ private:
 	BOOL m_bResolved;
 	BOOL m_bStarted;
 	BOOL m_bContested;
+	float m_flNextStateLog;	/* throttle for the capture area state log */
 	CDoDControlPoint *m_pPoint;
 };
 
@@ -2048,7 +2091,15 @@ void CDoDCaptureArea::Think( void )
 	if( !m_pPoint )
 		return;	/* an area without a point (charlie's `*8`) only gates map logic */
 	if( m_iszMaster && !UTIL_IsMasterTriggered( m_iszMaster, NULL ) )
+	{
+		static float next_master_log;
+		if( gpGlobals->time >= next_master_log )
+		{
+			next_master_log = gpGlobals->time + 30.0f;
+			ALERT( at_console, "DoD capture area point %d is closed by its master %s\n", m_pPoint->PointIndex(), STRING( m_iszMaster ) );
+		}
 		return;
+	}
 	for( i = 1; i <= gpGlobals->maxClients; ++i ) {
 		CBasePlayer *player = (CBasePlayer *)UTIL_PlayerByIndex( i );
 		DodTeam team;
@@ -2060,6 +2111,14 @@ void CDoDCaptureArea::Think( void )
 		team = DodGC_TeamForPlayer( player );
 		if( team == DOD_TEAM_ALLIES || team == DOD_TEAM_AXIS )
 			++inside[team];
+	}
+	if( inside[DOD_TEAM_ALLIES] + inside[DOD_TEAM_AXIS] > 0 && gpGlobals->time >= m_flNextStateLog )
+	{
+		const DodObjectiveState *st = Dod_GetObjective( m_pPoint->PointIndex() );
+		m_flNextStateLog = gpGlobals->time + 10.0f;
+		ALERT( at_console, "DoD capture area point %d: inside Allies %d Axis %d, needs Allies %d Axis %d, may capture Allies %d Axis %d, owner %d, progress %.0f%%\n",
+			m_pPoint->PointIndex(), inside[DOD_TEAM_ALLIES], inside[DOD_TEAM_AXIS], m_iNumCap[DOD_TEAM_ALLIES], m_iNumCap[DOD_TEAM_AXIS],
+			m_iCanCap[DOD_TEAM_ALLIES], m_iCanCap[DOD_TEAM_AXIS], st ? (int)st->owner : -1, st ? st->capture_progress * 100.0f : 0.0f );
 	}
 	{
 		int allies = ( m_iCanCap[DOD_TEAM_ALLIES] && inside[DOD_TEAM_ALLIES] >= m_iNumCap[DOD_TEAM_ALLIES] ) ? inside[DOD_TEAM_ALLIES] : 0;
