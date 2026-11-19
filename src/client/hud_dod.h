@@ -9,6 +9,7 @@
 
 #include "dod_hud.h"
 #include "dod_hud_retail.h"
+#include "dod_hud_geom.h"
 
 class CHudDod : public CHudBase
 {
@@ -26,6 +27,9 @@ public:
 	int MsgFunc_DodBoard( const char *pszName, int iSize, void *pbuf );
 	int MsgFunc_DodVoice( const char *pszName, int iSize, void *pbuf );
 	int MsgFunc_DodKill( const char *pszName, int iSize, void *pbuf );
+	/* A modal panel is up (team/class menu, voice menu, scoreboard, chat prompt): the kill feed and chat lines step aside
+	 * so nothing draws over anything else (see dod_hud_geom.h). */
+	int Modal( void );
 
 private:
 	void DrawBoard( void );
@@ -41,6 +45,7 @@ private:
 	char m_szBoard[256];	/* scoreboard text from the DodBoard message, lines split by newlines */
 	float m_flBoardTime;	/* client time of the last DodBoard message; the board hides 3 s after it */
 	int m_fBoardShown;
+	int m_fChatting;	/* the chat prompt (on-screen keyboard) is up: set from HUD_ChatInputPosition */
 	DodHudState m_state;
 	float m_flLastUpdate;
 	float m_flTimerBase;	/* client time the clock was last set */
@@ -52,5 +57,8 @@ private:
 	unsigned m_fSheetTried;	/* on-use sheets already attempted (bit per sheet) */
 	cvar_t *m_pCvar;
 };
+
+/* HUD_ChatInputPosition: the chat prompt goes above the keyboard, inside the safe area; also notes that chat is open. */
+void DodHud_ChatInputPosition( int *x, int *y );
 
 #endif

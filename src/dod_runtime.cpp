@@ -226,7 +226,7 @@ static void DodGC_ShowClassMenu( CBasePlayer *pPlayer )
 	int len;
 	if( index > 0 && index <= DOD_MAX_PLAYERS )
 		g_dod_menu_state[index] = 2;
-	len = snprintf( text, sizeof( text ), "\\y%s - CHOOSE A CLASS\n\\w\n",
+	len = snprintf( text, sizeof( text ), "\\y%s - CHOOSE A CLASS\n\\w",
 		team == DOD_TEAM_AXIS ? "AXIS" : "ALLIES" );
 	for( int c = DOD_CLASS_RIFLEMAN; c < DOD_CLASS_COUNT && len < (int)sizeof( text ); c++ )
 		len += snprintf( text + len, sizeof( text ) - len, "%d. %s (%s)%s\n", c,

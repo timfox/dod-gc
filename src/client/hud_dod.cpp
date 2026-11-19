@@ -49,6 +49,7 @@ void CHudDod::InitState( void )
 	HOOK_MESSAGE( DodVoice );
 	HOOK_MESSAGE( DodKill );
 	m_nKills = 0;
+	m_fChatting = 0;
 	m_szVoice[0] = 0;
 	m_iVoiceSel = 0;
 	m_flVoiceTime = 0.0f;
@@ -137,13 +138,34 @@ int CHudDod::MsgFunc_DodKill( const char *pszName, int iSize, void *pbuf )
 	strncpy( line.weapon, READ_STRING(), sizeof( line.weapon ) - 1 );
 	line.weapon[sizeof( line.weapon ) - 1] = 0;
 	line.time = gEngfuncs.GetClientTime();
-	if( m_nKills == 5 )
+	if( m_nKills == DOD_HUD_KILL_LINES )
 	{
-		memmove( &m_kills[0], &m_kills[1], sizeof( KillLine ) * 4 );
-		m_nKills = 4;
+		memmove( &m_kills[0], &m_kills[1], sizeof( KillLine ) * ( DOD_HUD_KILL_LINES - 1 ));
+		m_nKills = DOD_HUD_KILL_LINES - 1;
 	}
 	m_kills[m_nKills++] = line;
 	return 1;
+}
+
+static float g_flChatInputTime = -10.0f;
+
+void DodHud_ChatInputPosition( int *x, int *y )
+{
+	const float sx = ( ScreenWidth > 0 ? ScreenWidth : 640 ) / 640.0f, sy = ( ScreenHeight > 0 ? ScreenHeight : 480 ) / 480.0f;
+	const DodRect r = Dod_HudChatInput( DOD_HUD_LINE_H );
+
+	g_flChatInputTime = gEngfuncs.GetClientTime();
+	*x = (int)( r.x * sx + 0.5f );
+	*y = (int)( r.y * sy + 0.5f );
+}
+
+int CHudDod::Modal( void )
+{
+	const float now = gEngfuncs.GetClientTime();
+
+	m_fChatting = now - g_flChatInputTime < 0.3f;
+	return m_fChatting || gHUD.m_Menu.m_fMenuDisplayed || ( m_fBoardShown && now - m_flBoardTime <= 3.0f )
+		|| ( m_fVoiceShown && now - m_flVoiceTime <= 9.0f );
 }
 
 void CHudDod::DrawKills( void )
@@ -151,7 +173,8 @@ void CHudDod::DrawKills( void )
 	const int line_h = gHUD.m_scrinfo.iCharHeight > 0 ? gHUD.m_scrinfo.iCharHeight : 12;
 	const int w = ScreenWidth > 0 ? ScreenWidth : 320;
 	const float now = gEngfuncs.GetClientTime();
-	int i, y = 62, drawn = 0;
+	const float gsy = ( ScreenHeight > 0 ? ScreenHeight : 480 ) / 480.0f;
+	int i, y = (int)( Dod_HudModalTop() * gsy + 0.5f ), drawn = 0;
 
 	/* Spectators get the objective bar lower (retail CObjectiveIcons: 54 px down at 640x480, flags 2 * 54):
 	 * its flags span 54..70 at this HUD size, so start the feed below them instead of across them. */
@@ -211,24 +234,44 @@ void CHudDod::DrawVoice( void )
 	char line[48];
 	const char *p = m_szVoice;
 	const int line_h = gHUD.m_scrinfo.iCharHeight > 0 ? gHUD.m_scrinfo.iCharHeight : 12;
-	const int w = ScreenWidth > 0 ? ScreenWidth : 320, h = ScreenHeight > 0 ? ScreenHeight : 240;
-	const int pw = 150, pad = 8;
-	int rows = 1, x0, y0, ph, y, row = 0;
+	const int w = ScreenWidth > 0 ? ScreenWidth : 640, h = ScreenHeight > 0 ? ScreenHeight : 480;
+	const float gsx = w / 640.0f, gsy = h / 480.0f;
+	const int glh = (int)( line_h / gsy + 0.5f ), pad = 8;
+	int rows = 0, maxw, x0, y0, pw, ph, y, row = 0, show, first;
+	DodRect pr;
 
 	if( !m_fVoiceShown || gEngfuncs.GetClientTime() - m_flVoiceTime > 9.0f )
 		return;
-	for( const char *q = p; *q; q++ )
-		if( *q == '\n' ) rows++;
-	ph = ( rows + 1 ) * line_h + 2 * pad;
-	x0 = ( w - pw ) / 2;
-	y0 = ( h - ph ) / 2;
-	if( y0 < 8 ) y0 = 8;
+	/* the widest line, the rows the band can hold (the list scrolls to keep the chosen row in view) */
+	maxw = gHUD.DrawHudStringLen( "Voice" );
+	for( const char *q = p; *q; )
+	{
+		char tmp[48];
+		int n = 0;
+
+		while( q[n] && q[n] != '\n' && n < (int)sizeof( tmp ) - 1 ) { tmp[n] = q[n]; n++; }
+		tmp[n] = 0;
+		q += n;
+		if( *q == '\n' ) q++;
+		if( gHUD.DrawHudStringLen( tmp ) > maxw ) maxw = gHUD.DrawHudStringLen( tmp );
+		rows++;
+	}
+	show = rows + 1 > Dod_HudModalRows( glh ) ? Dod_HudModalRows( glh ) : rows + 1;	/* with the title */
+	first = m_iVoiceSel - ( show - 1 ) / 2;
+	if( first > rows - ( show - 1 )) first = rows - ( show - 1 );
+	if( first < 0 ) first = 0;
+	pr = Dod_HudCentredPanel( show, (int)( maxw / gsx + 0.5f ), glh );
+	x0 = (int)( pr.x * gsx + 0.5f );
+	y0 = (int)( pr.y * gsy + 0.5f );
+	pw = (int)( pr.w * gsx + 0.5f );
+	ph = (int)( pr.h * gsy + 0.5f );
 	gEngfuncs.pfnFillRGBABlend( x0, y0, pw, ph, 0, 0, 0, 170 );
 	gEngfuncs.pfnFillRGBABlend( x0, y0, pw, 1, 200, 200, 200, 160 );
 	gEngfuncs.pfnFillRGBABlend( x0, y0 + ph - 1, pw, 1, 200, 200, 200, 160 );
 	gEngfuncs.pfnFillRGBABlend( x0, y0, 1, ph, 200, 200, 200, 160 );
 	gEngfuncs.pfnFillRGBABlend( x0 + pw - 1, y0, 1, ph, 200, 200, 200, 160 );
-	y = y0 + pad;
+	y = y0 + (int)( DOD_HUD_PANEL_PAD * gsy + 0.5f );
+	(void)pad;
 	gHUD.DrawHudString( x0 + pad, y, x0 + pw - pad, "Voice", 255, 255, 255 );
 	y += line_h;
 	while( *p )
@@ -244,11 +287,14 @@ void CHudDod::DrawVoice( void )
 		line[n] = 0;
 		p += n;
 		if( *p == '\n' ) p++;
-		/* the chosen line sits on a bar (the HUD font has no marker glyph that reads well) */
-		if( sel )
-			gEngfuncs.pfnFillRGBABlend( x0 + 2, y - 1, pw - 4, line_h, 255, 230, 90, 70 );
-		gHUD.DrawHudString( x0 + pad, y, x0 + pw - pad, line, sel ? 255 : 220, sel ? 230 : 220, sel ? 90 : 220 );
-		y += line_h;
+		if( row >= first && row < first + show - 1 )
+		{
+			/* the chosen line sits on a bar (the HUD font has no marker glyph that reads well) */
+			if( sel )
+				gEngfuncs.pfnFillRGBABlend( x0 + 2, y - 1, pw - 4, line_h, 255, 230, 90, 70 );
+			gHUD.DrawHudString( x0 + pad, y, x0 + pw - pad, line, sel ? 255 : 220, sel ? 230 : 220, sel ? 90 : 220 );
+			y += line_h;
+		}
 		row++;
 	}
 }
@@ -261,8 +307,10 @@ void CHudDod::DrawBoard( void )
 	const char *p = m_szBoard;
 	const int line_h = gHUD.m_scrinfo.iCharHeight > 0 ? gHUD.m_scrinfo.iCharHeight : 12;
 	const int w = ScreenWidth > 0 ? ScreenWidth : 320, h = ScreenHeight > 0 ? ScreenHeight : 240;
-	const int pw = w - 24 < 288 ? w - 24 : 288, pad = 8;
-	int rows = 0, gaps = 0, ph, x0, y0, y;
+	const float gsx = w / 640.0f, gsy = h / 480.0f;
+	const int pad = 8;
+	int pw, rows = 0, gaps = 0, ph, x0, y0, y, y_end;
+	DodRect pr;
 
 	if( !m_fBoardShown || gEngfuncs.GetClientTime() - m_flBoardTime > 3.0f )
 		return;
@@ -273,9 +321,13 @@ void CHudDod::DrawBoard( void )
 	}
 	rows++;	/* the first line has no newline before it */
 	ph = ( rows + 1 ) * line_h + gaps * ( line_h / 2 ) + 2 * pad;	/* + the title */
-	x0 = ( w - pw ) / 2;
-	y0 = ( h - ph ) / 2;
-	if( y0 < 8 ) y0 = 8;
+	/* centred in the band under the objective row and above the status panel; rows beyond it are not drawn */
+	pr = Dod_HudCentredPanel(( ph + (int)( DOD_HUD_LINE_H * gsy ) - 1 ) / (int)( DOD_HUD_LINE_H * gsy ), 520, DOD_HUD_LINE_H );
+	x0 = (int)( pr.x * gsx + 0.5f );
+	y0 = (int)( pr.y * gsy + 0.5f );
+	pw = (int)( pr.w * gsx + 0.5f );
+	if( ph > (int)( pr.h * gsy )) ph = (int)( pr.h * gsy );
+	y_end = y0 + ph - pad;
 	gEngfuncs.pfnFillRGBABlend( x0, y0, pw, ph, 0, 0, 0, 170 );
 	/* a 1 px border */
 	gEngfuncs.pfnFillRGBABlend( x0, y0, pw, 1, 200, 200, 200, 160 );
@@ -301,6 +353,7 @@ void CHudDod::DrawBoard( void )
 		p += n;
 		if( *p == '\n' ) p++;
 		if( !n ) { y += line_h / 2; continue; }
+		if( y + line_h > y_end ) break;	/* the rest does not fit the panel */
 		if( !strncmp( line, "Allies", 6 )) { r = 140; g = 230; b = 140; }
 		else if( !strncmp( line, "Axis", 4 )) { r = 235; g = 130; b = 130; }
 		else if( line[0] == '>' )
@@ -388,6 +441,9 @@ int CHudDod::DrawRetail( float flTime )
 	in.safe_left = in.safe_right = 32;
 	in.safe_top = in.safe_bottom = 24;
 	in.text_w = (int)( gHUD.DrawHudStringLen( "x 99" ) / sx + 0.5f );
+	in.text_h = (int)( ( gHUD.m_scrinfo.iCharHeight > 0 ? gHUD.m_scrinfo.iCharHeight : 12 ) / sy + 0.5f );
+	Modal();
+	in.hide_bottom = m_fChatting;
 	in.health = gHUD.m_Health.m_iHealth;
 	in.stamina = m_fHaveState ? (float)m_state.stamina : 100.0f;
 	in.spectating = g_iUser1 != 0;
@@ -484,8 +540,7 @@ int CHudDod::DrawRetail( float flTime )
 	DrawVoice();
 	/* The feed is drawn last, so it ran across the centred scoreboard and voice menu panels (both overlap its
 	 * x 6..w, y 62.. rows); it waits until they close. */
-	if( !( m_fBoardShown && gEngfuncs.GetClientTime() - m_flBoardTime <= 3.0f )
-		&& !( m_fVoiceShown && gEngfuncs.GetClientTime() - m_flVoiceTime <= 9.0f ))
+	if( !Modal( ))
 		DrawKills();
 	/* a dead player waits for the next wave of their side */
 	if( m_fHaveState && m_state.respawn > 0 && gHUD.m_Health.m_iHealth <= 0 && gEngfuncs.GetClientTime() - m_flLastUpdate < 3.0f )
@@ -494,7 +549,9 @@ int CHudDod::DrawRetail( float flTime )
 		const int w = ScreenWidth > 0 ? ScreenWidth : 320, h = ScreenHeight > 0 ? ScreenHeight : 240;
 		const int n = sprintf( text, "Respawn in %d", (int)m_state.respawn );
 
-		gHUD.DrawHudString( ( w - gHUD.DrawHudStringLen( text )) / 2, h / 2 - 20, w, text, 255, 255, 255 );
+		const DodRect rr = Dod_HudRespawnText( DOD_HUD_LINE_H );
+
+		gHUD.DrawHudString( (int)( rr.x * w / 640.0f + 0.5f ), (int)( rr.y * h / 480.0f + 0.5f ), w, text, 255, 255, 255 );
 		(void)n;
 	}
 	if( !m_fDrawLogged )
