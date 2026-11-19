@@ -95,6 +95,7 @@ DumpPath = $DUMP
 DumpFrames = True
 DumpFramesSilent = True
 INI
+	# Older Dolphin builds read the dump switches from GFX.ini, newer ones from [Movie] in Dolphin.ini: set both
 	cat > "$USER_DIR/Config/GFX.ini" <<INI
 [Settings]
 DumpFramesAsImages = True

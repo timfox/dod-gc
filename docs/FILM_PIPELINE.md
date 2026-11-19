@@ -185,6 +185,22 @@ explosions, footsteps. A shot's `foley` list names sounds by their path under th
 spacing, each picking a sound from the list, a level near `gain` and a place in `pan`'s range; `fx` takes the
 voice effects; `rate` below 1 slows and deepens a sound. Cues are seeded, so a re-assemble sounds the same.
 The foley track ducks under narration and leaves the music alone. A missing sound is a warning.
+## Clearance: no camera through the map
+
+The engine camera has no collision, so `film.py check <ep>.json` (and every `plan`, which the capture script
+runs first) tests each shot against the map's BSP, sampled every 4 units along the path:
+
+- **inside the world**: the eye in solid in hull 0, the geometry that is drawn;
+- **too close to a surface**: drawn geometry within 16 units across or 18 up and down of the eye, where the
+  near plane and a wide lens start cutting into it. Only what is drawn counts: invisible player-clip brushes
+  (dod_charlie has them over the sea and along the shingle) do not stop a camera;
+- **through a soldier**: the eye inside an actor's body at that moment.
+
+Solid brush entities (`func_wall`, `func_breakable`, doors ...) count, at their spawn positions. `plan` stops
+with the shot, time and position of each problem; previews (`boards`, `animatic`) only warn. The BSP is found
+in `$FILM_BSP_DIR`, `content/dod/maps` or `content/valve/maps`, or passed as `--bsp dod_charlie=PATH`. Where
+there is none (the retail maps are not in the repo) shots are checked against the soldiers only, and `plan`
+says so.
 
 ## Making an episode
 
@@ -195,7 +211,8 @@ The foley track ducks under narration and leaves the music alone. A missing soun
 2. **Refine moves in game (optional).** On a desktop or Dolphin session, noclip to a spot and run
    `cine_mark <t>`; each call appends a key for the current view to `cine/marks.cam`. Paste keys into a
    shot as `{"type": "keys", "keys": [[t, x, y, z, pitch, yaw, roll, fov, "smooth"], ...]}`.
-3. **Capture.** `scripts/film-capture.sh film/episodes/<ep>.json`. Each map boots once and plays its shots
+3. **Capture.** `scripts/film-capture.sh film/episodes/<ep>.json`. It stops before building anything if a
+   camera path clips (above). Each map boots once and plays its shots
    back to back (each shot's end runs the next one). Locked game time means a slow emulator makes the
    capture longer, not the film choppier, so `FILM_IR=3` (1920x1440) is fine. Captures land in
    `out/film/<ep>/captures/<map>/`.

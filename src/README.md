@@ -227,6 +227,19 @@ The local human can watch the bots fight instead of playing.
   untouched. `DodCam_Level` also zeroes roll and clamps pitch to +-89 in the chase
   and roaming cameras so the horizon stays level (in-eye keeps the followed
   player's own view). Host-tested; not yet seen in Dolphin.
+- **No clipping.** After smoothing, the chase cameras are traced from the
+  followed player's eye to the camera and stop 6 units short of any world or
+  brush surface; free-fly is traced from last frame's position. Static props
+  have no collision, so cameras can still pass through those.
+- **Cinematic mode.** `dod_spec_cine 1` turns the chase camera into a film
+  camera: moving shots around the followed player (slow orbit, three-quarter
+  track, rising crane, side flyby, low hero angle push-in), each 6 s, cutting to
+  the next shot or straight away when the director switches player. Each shot
+  keeps the target's facing from its first frame so the path does not swing as
+  the bot turns, glides like the chase camera, is clipped from the target's eye
+  and re-aimed at the chest after clipping. With `dod_spec_auto 1` this is a
+  hands-free fly-through of the match; `gc_hud_off 1` (engine) hides the HUD for
+  clean footage. Host-tested (`dod_cam_test.c`); not yet seen in Dolphin.
 - **Director.** `dod_spec_auto` (default 1) moves the follow camera by itself
   to the bot in the closest fight, staying at least 4 s and at most 14 s on one
   target, and straight away when the followed bot dies. Any Fire, Alt-fire or
