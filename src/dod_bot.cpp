@@ -1011,7 +1011,50 @@ static void PickGoal( CBasePlayer *pBot, DodBotState *state )
 				info[i].blocked = 1;
 		state->goal_id = -1;
 	}
-	id = Dod_BotChooseObjectiveRole( info, count, my_team, state->has_goal ? state->goal_id : -1, state->role, &kind );
+	id = -1;
+	/* One target for the attackers of a team: the first bot to choose sets it, the others follow it (a point that needs two players
+	 * is taken by two bots who went to the same point, not by two who each picked their nearest). */
+	if( state->role == DOD_ROLE_ATTACKER && my_team >= DOD_TEAM_ALLIES && my_team <= DOD_TEAM_AXIS )
+	{
+		static int team_target[4] = { -1, -1, -1, -1 };
+		const int cur = team_target[my_team];
+		int still_ok = 0, k;
+		for( k = 0; k < count; k++ )
+			if( info[k].id == cur && !info[k].blocked && info[k].owner != my_team && info[k].can_cap[my_team] )
+				still_ok = 1;
+		if( !still_ok )
+		{
+			int tkind;
+			const int pick = Dod_BotChooseObjectiveRole( info, count, my_team, -1, DOD_ROLE_ATTACKER, &tkind );
+			if( pick >= 0 && tkind == DOD_BOT_GOAL_ATTACK )
+			{
+				int inside = 0, jj;
+				for( k = 0; k < count; k++ )
+					if( info[k].id == pick )
+						break;
+				for( jj = 1; jj <= gpGlobals->maxClients; jj++ )
+				{
+					CBasePlayer *pIn = PlayerAt( jj );
+					if( pIn && pIn->IsAlive() && TeamOf( pIn ) == my_team && k < count &&
+						pIn->pev->origin.x >= views[k].mins.x && pIn->pev->origin.x <= views[k].maxs.x &&
+						pIn->pev->origin.y >= views[k].mins.y && pIn->pev->origin.y <= views[k].maxs.y )
+						inside++;
+				}
+				team_target[my_team] = pick;
+				ALERT( at_console, "DoD team target team %d: point %d needs %d, inside %d (team has %d alive)\n", (int)my_team, pick,
+					k < count ? info[k].need : 1, inside, team_alive );
+			}
+			else
+				team_target[my_team] = -1;
+		}
+		if( team_target[my_team] >= 0 )
+		{
+			id = team_target[my_team];
+			kind = DOD_BOT_GOAL_ATTACK;
+		}
+	}
+	if( id < 0 )
+		id = Dod_BotChooseObjectiveRole( info, count, my_team, state->has_goal ? state->goal_id : -1, state->role, &kind );
 	if( id < 0 )
 	{
 		state->has_goal = 0;
