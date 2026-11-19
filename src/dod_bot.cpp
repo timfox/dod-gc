@@ -1279,10 +1279,7 @@ static BOOL PlanPath( CBasePlayer *pBot, DodBotState *state )
 				if( searches <= skip )
 					continue;	/* tried in an earlier frame */
 				if( searches > DOD_BOT_PLAN_SEARCHES )
-				{
-					state->plan_resume = 0;
-					return FALSE;
-				}
+					goto plan_failed;
 				if( !Dod_NavSearchBegin( &g_nav, starts[i], goals[j], pBot->entindex(), gpGlobals->time ) )
 				{
 					state->plan_resume = searches - 1;	/* another bot's search is in flight: wait, the old path (if any) keeps being followed */
@@ -1331,7 +1328,18 @@ static BOOL PlanPath( CBasePlayer *pBot, DodBotState *state )
 			}
 		}
 	}
+plan_failed:
 	state->plan_resume = 0;
+	{
+		static int fail_logs;
+		if( fail_logs < 60 )
+		{
+			fail_logs++;
+			ALERT( at_console, "DoD plan failed: %s team %d goal %d, %d start nodes (%d..), %d goal nodes (%d..), %d searches tried, bot at %.0f,%.0f,%.0f\n",
+				STRING( pBot->pev->netname ), (int)TeamOf( pBot ), state->nav_id, ns, ns > 0 ? starts[0] : -1, ng, ng > 0 ? goals[0] : -1, searches,
+				origin.x, origin.y, origin.z );
+		}
+	}
 	return FALSE;
 }
 
