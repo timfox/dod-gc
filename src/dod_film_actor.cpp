@@ -405,6 +405,11 @@ void DodFilm_Init( void )
 	FREE_FILE( text );
 }
 
+int DodFilm_IsFilmMap( void )
+{
+	return g_film_precached[DOD_TEAM_ALLIES] || g_film_precached[DOD_TEAM_AXIS];
+}
+
 void DodFilm_Think( void )
 {
 	if( !g_film_cast.actor_count && !g_film_cast.fx_count )
