@@ -436,6 +436,17 @@ static void test_nav(void)
 		Dod_NavSearchStep(&nav, 1000, 7.0f, sp, DOD_NAV_MAX_PATH);
 	}
 
+	{
+		/* a route longer than the caller's array: refused by default, its first stretch with allow_partial */
+		int two[2], r;
+		assert(Dod_NavPath(&nav, 0, 4, two, 2) == 0);
+		assert(Dod_NavSearchBegin(&nav, 0, 4, 3, 1.0f) == 1);
+		nav.allow_partial = 1;
+		r = Dod_NavSearchStep(&nav, 1000, 1.0f, two, 2);
+		nav.allow_partial = 0;
+		assert(r == 2 && two[0] == 0);
+	}
+
 	/* a penalized edge is avoided while the penalty lasts: 0 -> 4 has to take the ladder when the jump is stuck */
 	Dod_NavSetTime(&nav, 10.0f);
 	Dod_NavPenalize(&nav, 2, 4, 40.0f);

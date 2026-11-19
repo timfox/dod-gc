@@ -1155,15 +1155,18 @@ int Dod_NavSearchStep(DodNav *nav, int budget, float now, int *path, int max_pat
 		return -1;
 	count = 0;
 	for (n = to; n >= 0; n = nav->parent[n]) {
-		if (++count > max_path)
+		if (++count > max_path && !nav->allow_partial)
 			return -1;
 		if (n == from)
 			break;
 	}
 	i = count;
-	for (n = to; i > 0; n = nav->parent[n])
-		path[--i] = n;
-	return count;
+	for (n = to; i > 0; n = nav->parent[n]) {
+		--i;
+		if (i < max_path)
+			path[i] = n;
+	}
+	return count > max_path ? max_path : count;
 }
 
 
