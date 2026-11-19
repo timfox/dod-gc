@@ -231,8 +231,36 @@ static void test_objective_icons(void)
 	}
 }
 
+static void test_ammo_title_safe(void)
+{
+	DodRetailInput in = base();
+	DodRetailDraw d[DOD_RETAIL_MAX_DRAWS];
+	DodRetailText text;
+	int n, i, right = 0, bottom = 0;
+
+	in.weapon = Dod_RetailClipForKit("weapon_dod_garand", 0);
+	assert(in.weapon);
+	in.clip = 8;
+	in.reserve = 48;
+	in.safe_right = 32;
+	in.safe_bottom = 24;
+	in.text_w = 60;	/* "x 99" in a font wider than retail's 45 px */
+	n = Dod_RetailHudLayoutText(&in, d, DOD_RETAIL_MAX_DRAWS, &text);
+	for (i = 0; i < n; i++) {
+		if (d[i].x + d[i].cell.w > right)
+			right = d[i].x + d[i].cell.w;
+		if (d[i].y + d[i].cell.h > bottom)
+			bottom = d[i].y + d[i].cell.h;
+	}
+	assert(text.x >= 0 && text.x + in.text_w <= 640 - in.safe_right);	/* the spare count stays inside the margin */
+	assert(right <= 640 - in.safe_right);
+	assert(text.y + DOD_RETAIL_FONT_H <= 480 - in.safe_bottom);
+	(void)bottom;
+}
+
 int main(void)
 {
+	test_ammo_title_safe();
 	test_panel_full_health();
 	test_half_health_and_stamina();
 	test_dead_or_spectating_hides_panel();

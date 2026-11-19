@@ -167,6 +167,7 @@ void CHudDod::DrawKills( void )
 		memmove( &m_kills[0], &m_kills[1], sizeof( KillLine ) * ( m_nKills - 1 ));
 		m_nKills--;
 	}
+	const int safe_x = w / 20 > 6 ? w / 20 : 6; // 5% title-safe
 	for( i = 0; i < m_nKills; i++ )
 	{
 		char text[110];
@@ -180,7 +181,7 @@ void CHudDod::DrawKills( void )
 		/* the victim's side colours the line: Allies green, Axis red */
 		if( k.victim_team == 1 ) { r = 150; g = 230; b = 150; }
 		else if( k.victim_team == 2 ) { r = 235; g = 140; b = 140; }
-		gHUD.DrawHudString( 6, y, w - 6, text, r, g, b );
+		gHUD.DrawHudString( safe_x, y, w - safe_x, text, r, g, b );
 		y += line_h;
 		drawn++;
 	}
@@ -379,6 +380,11 @@ int CHudDod::DrawRetail( float flTime )
 	memset( &in, 0, sizeof( in ) );
 	in.screen_w = 640;
 	in.screen_h = 480;
+	/* title-safe area: about 5% off the right and bottom edges so the ammo block is not lost to TV overscan or the
+	 * output edge. The text width is measured in the HUD font (wider than retail's at 640). */
+	in.safe_right = 32;
+	in.safe_bottom = 24;
+	in.text_w = (int)( gHUD.DrawHudStringLen( "x 99" ) / sx + 0.5f );
 	in.health = gHUD.m_Health.m_iHealth;
 	in.stamina = m_fHaveState ? (float)m_state.stamina : 100.0f;
 	in.spectating = g_iUser1 != 0;

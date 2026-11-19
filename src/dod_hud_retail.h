@@ -200,6 +200,8 @@ typedef struct DodRetailInput {
 	int clip;		/* rounds in the clip, < 0: none */
 	int reserve;		/* rounds carried outside the clip */
 	int max_clip;		/* retail: the WeaponList max clip; <= 0 (HL WeaponList has none): the table's */
+	int safe_right, safe_bottom;	/* title-safe margins in layout pixels the ammo block keeps clear (0: retail) */
+	int text_w;		/* width of the widest "x NN" spare count in the client font, layout pixels (0: retail's 45) */
 	int num_points;		/* capture points on the objective bar */
 	int owner[DOD_RETAIL_MAX_POINTS];	/* 0 neutral, 1 Allies, 2 Axis */
 } DodRetailInput;
@@ -278,8 +280,10 @@ static inline int Dod_RetailHudLayoutText(const DodRetailInput *in, DodRetailDra
 	if (in->weapon && in->clip >= 0 && !in->dead && !in->spectating) {
 		const DodRetailClip *w = in->weapon;
 		const int fh = DOD_RETAIL_FONT_H;
-		const int tx = in->screen_w - w->full.w - w->extra.w - 45;
-		const int base = in->screen_h - fh - fh / 2;
+		/* retail reserves 45 px for the "x N" text; a wider client font (and the TV's overscan) needs more */
+		const int text_room = in->text_w > 45 ? in->text_w : 45;
+		const int tx = in->screen_w - in->safe_right - w->full.w - w->extra.w - text_room;
+		const int base = in->screen_h - in->safe_bottom - fh - fh / 2;
 		const int per_clip = in->max_clip > 0 ? in->max_clip : w->clip;
 		const int spare = per_clip > 0 ? in->reserve / per_clip : 0;
 
