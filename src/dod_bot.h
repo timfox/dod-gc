@@ -7,6 +7,8 @@
 
 /* Register the cvars; called when the DoD rules are created. */
 void DodBots_Init( void );
+/* Register a game cvar without losing a value given to it earlier (cfg file, earlier code). */
+void Dod_CvarRegisterKeep( cvar_t *cv );
 /* Once per server frame: keep the bot count at dod_bots, run each bot's AI. */
 void DodBots_Think( void );
 /* True while a bot's loadout is being granted: its weapons skip the viewmodel

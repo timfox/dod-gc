@@ -474,23 +474,23 @@ CHalfLifeDoD::CHalfLifeDoD()
 	DodBots_Init();
 	float round_seconds;
 	if( !g_dod_cvars_registered ) {
-		CVAR_REGISTER( &dod_roundtime );
-		CVAR_REGISTER( &dod_rounds );
-		CVAR_REGISTER( &dod_spectate );
-		CVAR_REGISTER( &dod_spec_auto );
-		CVAR_REGISTER( &dod_paras );
+		Dod_CvarRegisterKeep( &dod_roundtime );
+		Dod_CvarRegisterKeep( &dod_rounds );
+		Dod_CvarRegisterKeep( &dod_spectate );
+		Dod_CvarRegisterKeep( &dod_spec_auto );
+		Dod_CvarRegisterKeep( &dod_paras );
 		for( int k = 0; k < DOD_LIMIT_CVARS; k++ ) {
 			g_limit_cvar_storage[k].name = g_limit_cvars[k].name;
 			g_limit_cvar_storage[k].string = (char *)"-1";
 			g_limit_cvar_storage[k].flags = FCVAR_SERVER;
-			CVAR_REGISTER( &g_limit_cvar_storage[k] );
+			Dod_CvarRegisterKeep( &g_limit_cvar_storage[k] );
 		}
-		CVAR_REGISTER( &mp_alliesclasses );
-		CVAR_REGISTER( &mp_axisclasses );
-		CVAR_REGISTER( &mp_spawnbazookas );
-		CVAR_REGISTER( &dod_respawn_delay );
-		CVAR_REGISTER( &dod_allies_body );
-		CVAR_REGISTER( &dod_axis_body );
+		Dod_CvarRegisterKeep( &mp_alliesclasses );
+		Dod_CvarRegisterKeep( &mp_axisclasses );
+		Dod_CvarRegisterKeep( &mp_spawnbazookas );
+		Dod_CvarRegisterKeep( &dod_respawn_delay );
+		Dod_CvarRegisterKeep( &dod_allies_body );
+		Dod_CvarRegisterKeep( &dod_axis_body );
 		g_dod_cvars_registered = TRUE;
 	}
 	Dod_GameInit();
