@@ -34,7 +34,7 @@ usage: scripts/build-lean-iso.sh [options]
   --dumpeye "x y z [pitch] [yaw]"
                    CapFaces camera override in gamecube.cfg (spawn atlas)
   --tas NAME       stage dod/tas/NAME.tas + gamecube.cfg tas NAME (pad replay)
-  --film DIR       stage a film plan (tools/film/film.py plan): DIR/cine/*.cam onto the disc and
+  --film DIR       stage a film plan (from a film plan): DIR/cine/*.cam onto the disc and
                    DIR/film-<map>.cfg into listenserver.cfg, so the listen map plays its shots; needs --listen
   --skip-stage     reuse existing lean cache trees
   -h, --help
@@ -121,7 +121,7 @@ while [[ $# -gt 0 ]]; do
 			;;
 		--film)
 			FILM="${2:-}"
-			[[ -d "$FILM/cine" ]] || { echo "error: --film needs a plan directory with cine/ (tools/film/film.py plan)" >&2; exit 2; }
+			[[ -d "$FILM/cine" ]] || { echo "error: --film needs a plan directory with cine/ (from a film plan)" >&2; exit 2; }
 			shift
 			;;
 		--skip-stage) SKIP_STAGE=1 ;;

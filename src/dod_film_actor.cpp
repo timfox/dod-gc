@@ -1,5 +1,5 @@
 /* Film actors in the game DLL: props wearing the team player models that walk the
- * keyed paths of a shot's cast file (see dod_film.h and docs/FILM_PIPELINE.md).
+ * keyed paths of a shot's cast file (see dod_film.h).
  *
  *   film_cast <shot> [preroll]   load cine/<shot>.act, put its actors in place, start their
  *                                clock after preroll seconds (the camera's cine_play preroll)
@@ -7,7 +7,7 @@
  *
  * The player models have to be precached while the map loads, before any command can
  * run, so the gamerules constructor reads cine/cast.txt (one team name per line, written
- * by tools/film/film.py plan) and precaches those teams' bodies. A disc built without
+ * by a film plan) and precaches those teams' bodies. A disc built without
  * --film has no cine/ folder and precaches nothing extra. Actors are driven from the
  * gamerules Think every server frame, with no entity think of their own, so their clock
  * steps with the engine's locked cinematic frame time exactly as the camera's does. */

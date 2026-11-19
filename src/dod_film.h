@@ -1,9 +1,9 @@
-/* Film actors: the people in a documentary shot (see docs/FILM_PIPELINE.md).
+/* Film actors: scripted props for camera shots.
  *
  * An actor is a prop entity wearing a team's player model, not a bot: it costs one
  * edict and no client slot, so a shot can have a dozen soldiers on the GameCube where
  * the listen server has room for exactly one bot. Each shot has a cast file,
- * cine/<shot>.act, written by tools/film/film.py plan:
+ * cine/<shot>.act, written by a film plan:
  *
  *   act 1
  *   actor <name> <allies|axis> [class]

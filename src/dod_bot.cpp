@@ -335,7 +335,9 @@ static void EnsureNav( void )
 
 static void FreeBotState( void )
 {
-	FreeNav();
+#if !defined( __GAMECUBE__ )
+	FreeNav();	/* on GameCube the graph stays for the map: see DodBots_Init */
+#endif
 	Dod_IntelReset( &g_intel );
 #if !defined( __GAMECUBE__ )
 	if( g_bot )
@@ -445,6 +447,13 @@ void DodBots_Init( void )
 	FreeBotState();
 	g_next_plan = 0.0f;
 	g_first_human_time = 0.0f;
+#if defined( __GAMECUBE__ )
+	/* Load the waypoint graph now, while the map has just loaded and the heap is still open (400 KB and more), and
+	 * keep it for the whole map. Loading it when the first bot joined left it to whatever was free by then: on
+	 * dod_caen all 12 tries failed ("did not fit the heap or the surface-cache store") and the match had no graph. */
+	if( CVAR_GET_FLOAT( "dod_bots" ) > 0.0f )
+		EnsureNav();
+#endif
 }
 
 static DodTeam TeamOf( CBasePlayer *pPlayer )
