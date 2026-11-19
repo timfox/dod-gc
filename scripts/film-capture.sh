@@ -80,7 +80,7 @@ for MAP in "${MAPS[@]}"; do
 	cat > "$USER_DIR/Config/Dolphin.ini" <<INI
 [Core]
 CPUCore = 1
-CPUThread = True
+CPUThread = False
 DSPHLE = True
 FastDiscSpeed = True
 MMU = True
@@ -89,7 +89,13 @@ SIDevice0 = 6
 Muted = True
 [Interface]
 ConfirmStop = False
+[General]
+DumpPath = $DUMP/
+[Movie]
+DumpFrames = True
+DumpFramesSilent = True
 INI
+	# Older Dolphin builds read the dump switches from GFX.ini, newer ones from [Movie] in Dolphin.ini: set both
 	cat > "$USER_DIR/Config/GFX.ini" <<INI
 [Settings]
 DumpFrames = True
@@ -133,11 +139,13 @@ INI
 	kill "$DPID" 2>/dev/null || true
 	wait "$DPID" 2>/dev/null || true
 	cat "$USER_DIR"/Logs/*.log >> "$LOG" 2>/dev/null || true
-	# Dolphin writes into DumpPath/Frames on some versions
-	if [[ -d "$DUMP/Frames" ]]; then
-		find "$DUMP/Frames" -maxdepth 1 -type f -exec mv -t "$DUMP" {} +
-		rmdir "$DUMP/Frames" 2>/dev/null || true
-	fi
+	# Dolphin writes into DumpPath/Frames on some versions, and into the user folder's Dump/Frames on others
+	for frames in "$DUMP/Frames" "$USER_DIR/Dump/Frames"; do
+		if [[ -d "$frames" ]]; then
+			find "$frames" -maxdepth 1 -type f -exec mv -t "$DUMP" {} +
+			rmdir "$frames" 2>/dev/null || true
+		fi
+	done
 	n=$(find "$DUMP" -maxdepth 1 -type f | wc -l)
 	grep -aoE "CINE (START|DONE|STOP) [^\r]*" "$LOG" | sort -u | sed 's/^/    /' || true
 	echo "==> $MAP: session_done=$done_ok images=$n -> $DUMP"
