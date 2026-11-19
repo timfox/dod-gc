@@ -167,7 +167,8 @@ int CHudDod::Modal( void )
 {
 	const float now = gEngfuncs.GetClientTime();
 
-	m_fChatting = now - g_flChatInputTime < 0.3f;
+	/* the chat prompt asked for a position, or the on-screen keyboard is up (it covers the bottom of the screen) */
+	m_fChatting = now - g_flChatInputTime < 0.3f || gEngfuncs.pfnGetCvarFloat( "gc_osk_open" ) != 0.0f;
 	return m_fChatting || gHUD.m_Menu.m_fMenuDisplayed || ( m_fBoardShown && now - m_flBoardTime <= 3.0f )
 		|| ( m_fVoiceShown && now - m_flVoiceTime <= 9.0f );
 }
