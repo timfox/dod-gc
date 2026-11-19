@@ -282,7 +282,7 @@
           },
           {
             "voice": "sgt",
-            "at": 9.6,
+            "at": 9.0,
             "text": "Spread out! Don't bunch up!",
             "delivery": "Shouting hard over gunfire and surf, hoarse, urgent",
             "fx": "field",
@@ -570,7 +570,7 @@
           },
           {
             "voice": "sgt",
-            "at": 11.3,
+            "at": 10.3,
             "text": "We can't stay here! Up!",
             "delivery": "Shouting, rallying the men, voice cracking with effort",
             "fx": "field",

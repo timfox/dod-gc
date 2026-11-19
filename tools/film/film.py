@@ -534,7 +534,7 @@ def assemble(ep, timeline, plan_dir, captures, out_path, burn_subs=False):
     if has_subs and not burn_subs:
         cmd += ["-map", "3:s", "-c:s", "mov_text", "-metadata:s:s:0", "language=eng"]
     cmd += ["-map", "0:v", "-map", "1:a", "-map_metadata", "2", "-map_chapters", "2",
-            "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", "-shortest", str(out_path)]
+            "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", "-t", f"{timeline['duration']:.3f}", str(out_path)]
     run(cmd)
     (plan_dir / "assembly-report.txt").write_text("\n".join(report) + "\n")
     return report
