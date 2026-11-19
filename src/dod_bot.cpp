@@ -1113,7 +1113,7 @@ static void PickGoal( CBasePlayer *pBot, DodBotState *state )
 			wait_target[my_team] = id;
 			wait_start[my_team] = now;
 		}
-		if( far_mate > info[i].distance + 700.0f && now - wait_start[my_team] < 20.0f )
+		if( far_mate > info[i].distance + 700.0f && now - wait_start[my_team] < 40.0f )
 		{
 			if( now >= state->group_wait_until )
 				ALERT( at_console, "DoD bot %s waits for its group before point %d (%.0f units from it, the farthest mate %.0f)\n", STRING( pBot->pev->netname ), id, info[i].distance, far_mate );
