@@ -243,7 +243,7 @@ static void FreeNav( void )
 
 /* A solid func_wall_toggle across the way (charlie's shingle walls: the Allies are meant to blow them with satchels at the
  * capture areas, which bots do not do). A bot stuck on one for DOD_BOT_BREACH_DELAY seconds breaches it, as if a satchel went off:
- * the wall's own targetname is fired, which toggles it away like the map's logic would. */
+ * the wall is toggled away, without the blast. */
 #define DOD_BOT_BREACH_DELAY 6.0f
 
 static void BreachWall( CBasePlayer *pBot, edict_t *wall )
@@ -272,7 +272,12 @@ static void BreachWall( CBasePlayer *pBot, edict_t *wall )
 	g_breach[i].done = 1;
 	ALERT( at_console, "DoD bot %s breaches the wall %s (ent %d) after %.0f s stuck on it\n", STRING( pBot->pev->netname ),
 		STRING( wall->v.targetname ), ENTINDEX( wall ), gpGlobals->time - g_breach[i].first );
-	FireTargets( STRING( wall->v.targetname ), pBot, pBot, USE_TOGGLE, 0 );
+	/* only the wall: firing its targetname would also set off the map's satchel explosion (env_explosion) right beside the bot */
+	{
+		CBaseEntity *entity = CBaseEntity::Instance( wall );
+		if( entity )
+			entity->Use( pBot, pBot, USE_TOGGLE, 0 );
+	}
 }
 
 /* A bot got stuck on a brush entity (a func_wall the waypoint graph was not baked with): every edge whose hull trace hits that
