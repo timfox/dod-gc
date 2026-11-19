@@ -13,18 +13,48 @@ if [[ -z "${DEVKITPRO:-}" && -f "$DODGC_NETWORK_TOOLCHAIN/versions.txt" ]]; then
 	export DEVKITPRO="$DODGC_NETWORK_TOOLCHAIN/devkitpro"
 fi
 
-# Engine lives outside this repo (read/build there; do not treat as HL1 workspace).
-export DODGC_ENGINE="${DODGC_ENGINE:-$DODGC_ROOT/engine}"
-if [[ ! -d "$DODGC_ENGINE/scripts" ]]; then
-	echo "error: engine symlink missing or incomplete: $DODGC_ENGINE" >&2
-	echo "  expected scripts/build-gamecube.sh under the xash3d-gc tree" >&2
+# Pinned sources (scripts/sources.lock): the engine ref, and the game-code SDK branch + commit.
+# shellcheck disable=SC1091
+source "$DODGC_ROOT/scripts/sources.lock"
+
+# Engine and SDK: the checkouts named by DODGC_ENGINE / DODGC_HLSDK, or the pinned clones that
+# scripts/fetch-sources.sh makes under .deps/. Never a symlink into somebody's working tree (the
+# tracked engine/ and hlsdk-portable/ symlinks used to point at one developer's external drive, so a
+# default build compiled whatever state that tree happened to be in).
+if [[ -z "${DODGC_ENGINE:-}" && -d "$DODGC_ROOT/.deps/xash3d-gc/scripts" ]]; then
+	DODGC_ENGINE="$DODGC_ROOT/.deps/xash3d-gc"
+fi
+if [[ -z "${DODGC_HLSDK:-}" && -d "$DODGC_ROOT/.deps/hlsdk-portable" ]]; then
+	DODGC_HLSDK="$DODGC_ROOT/.deps/hlsdk-portable"
+fi
+if [[ -z "${DODGC_ENGINE:-}" || ! -d "${DODGC_ENGINE}/scripts" ]]; then
+	echo "error: no engine / SDK sources selected." >&2
+	echo "  engine: ${DODGC_ENGINE:-<unset>}   hlsdk: ${DODGC_HLSDK:-<unset>}" >&2
+	echo "  Either run scripts/fetch-sources.sh (pinned clones under .deps/), or point" >&2
+	echo "  DODGC_ENGINE at an xash3d-gc checkout and DODGC_HLSDK at the game-code SDK checkout." >&2
 	exit 1
 fi
+export DODGC_ENGINE
+export DODGC_HLSDK="${DODGC_HLSDK:-}"
 
-# Legally obtained Steam Day of Defeat + HL1 basedir (DoD falls back to valve/).
+# Scripts that build the game DLL call this; ones that only package a disc do not need the SDK.
+dodgc_require_hlsdk() {
+	if [[ -z "$DODGC_HLSDK" || ! -d "$DODGC_HLSDK/dlls" ]]; then
+		echo "error: no SDK source selected (hlsdk: ${DODGC_HLSDK:-<unset>})." >&2
+		echo "  Run scripts/fetch-sources.sh, or point DODGC_HLSDK at the game-code SDK checkout." >&2
+		exit 1
+	fi
+}
+# The engine's SDK build script runs `git checkout $HLSDK_GAMECUBE_BRANCH` in $HLSDK_PORTABLE_DIR and
+# defaults to a local branch name (mobile_hacks) that a fresh clone does not have; name the pinned one.
+export HLSDK_PORTABLE_DIR="${HLSDK_PORTABLE_DIR:-$DODGC_HLSDK}"
+export HLSDK_GAMECUBE_BRANCH="${HLSDK_GAMECUBE_BRANCH:-$DODGC_HLSDK_BRANCH}"
+# Host tools (split_studio_mdl.py ...): this repo's own copy, not a stale one lying around in /tmp.
+export DODGC_TOOLS="${DODGC_TOOLS:-$DODGC_ROOT/tools}"
+
+# Legally obtained retail Day of Defeat + HL1 basedir (DoD falls back to valve/).
 export DODGC_CONTENT_DOD="${DODGC_CONTENT_DOD:-$DODGC_ROOT/content/dod}"
 export DODGC_CONTENT_VALVE="${DODGC_CONTENT_VALVE:-$DODGC_ROOT/content/valve}"
-export DODGC_HLSDK="${DODGC_HLSDK:-$DODGC_ROOT/hlsdk-portable}"
 
 # All DoD artifacts stay under this repo — never OUT/xash3d-gc.iso / boot.dol.
 export DODGC_OUT="${DODGC_OUT:-$DODGC_ROOT/out}"
@@ -54,7 +84,7 @@ mkdir -p "$DODGC_OUT" "$DODGC_SHOTS" "$DODGC_VIDEOS" "$DODGC_NOTES" "$XASH3D_GC_
 dodgc_require_content() {
 	if [[ ! -f "$DODGC_CONTENT_DOD/liblist.gam" ]]; then
 		echo "error: DoD content missing at $DODGC_CONTENT_DOD" >&2
-		echo "  symlink content/dod → Steam Half-Life/dod" >&2
+		echo "  symlink content/dod → retail Half-Life/dod" >&2
 		exit 1
 	fi
 	if [[ ! -d "$DODGC_CONTENT_VALVE" ]]; then

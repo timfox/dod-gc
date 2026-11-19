@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Stage a MEM1-friendly Day of Defeat tree for dodgc.iso / dodgc-menu.iso.
-# Full Steam dod/ is far too large for GameCube boot; keep markers + UI only.
+# Full retail dod/ is far too large for GameCube boot; keep markers + UI only.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -124,9 +124,70 @@ echo "staged lean HUD sources: $hud_staged sprites (for gc_* bootstrap inject)"
 
 # DoD match HUD (cl_dodhud): one 96x32 sheet with the neutral, Allies and Axis
 # flag icons (3.9 KB). The client loads it the first time it draws a flag.
+# particle_shooter smoke (src/dod_runtime.cpp): one small puff sprite for every emitter (9 KB; the map sprites are 72-197 KB).
+if [[ -f "$SRC/sprites/gas_puff_01.spr" ]]; then
+	cp -f "$SRC/sprites/gas_puff_01.spr" "$LEAN/sprites/"
+	echo "staged particle_shooter puff sprite: sprites/gas_puff_01.spr"
+fi
 if [[ -f "$SRC/sprites/icon_obj.spr" ]]; then
 	cp -f "$SRC/sprites/icon_obj.spr" "$LEAN/sprites/"
 	echo "staged DoD HUD flag sheet: sprites/icon_obj.spr"
+fi
+
+# Combat effect sprites. The game precaches these for its temp entities
+# (explosions, steam, bubbles, blood) and the engine uses muzzleflash1-3 and
+# richo1 for gun flashes and ricochet sparks. Without them every temp entity
+# has no model and nothing is drawn. DoD's own copy wins; WXplo1 and richo1
+# come from valve. They load only when an effect first plays.
+fx_staged=0
+fx_bytes=0
+# The second group is what the game DLL also precaches for tracers, beams,
+# sparks, smoke and the MG42 flash; without the files those effects draw
+# nothing. Names are the precache spelling (the retail file may differ in
+# case, e.g. xspark1.spr), so the lookup ignores case.
+fx_wanted=0
+for s in muzzleflash1.spr muzzleflash2.spr muzzleflash3.spr richo1.spr \
+	zerogxplode.spr WXplo1.spr steam1.spr bubble.spr bloodspray.spr blood.spr \
+	hotglow.spr smoke.spr laserdot.spr streak.spr xbeam1.spr XSpark1.spr \
+	muz1.spr laserbeam.spr explode1.spr mg42.spr lgtning.spr
+do
+	fx_wanted=$((fx_wanted + 1))
+	for dir in "$SRC/sprites" "$VALVE/sprites"; do
+		[[ -d "$dir" ]] || continue
+		found="$(find "$dir" -maxdepth 1 -type f -iname "$s" | head -n 1)"
+		if [[ -n "$found" ]]; then
+			cp -f "$found" "$LEAN/sprites/$s"
+			fx_staged=$((fx_staged + 1))
+			fx_bytes=$((fx_bytes + $(stat -c %s "$found")))
+			break
+		fi
+	done
+done
+echo "staged combat effect sprites: $fx_staged of $fx_wanted ($fx_bytes bytes)"
+
+# Retail DoD HUD: sprites/hud.txt plus every sheet it names (hud_layout,
+# clip_*, weapons1-5, dodcross, scopes, ...). The client's HUD_VidInit reads
+# hud.txt at 640 and loads these. DODGC_STAGE_RETAIL_HUD=0 leaves them out.
+if [[ "${DODGC_STAGE_RETAIL_HUD:-1}" == "1" && -f "$SRC/sprites/hud.txt" ]]; then
+	cp -f "$SRC/sprites/hud.txt" "$LEAN/sprites/"
+	retail_hud=0
+	while read -r sheet; do
+		if [[ -f "$SRC/sprites/$sheet.spr" ]]; then
+			cp -f "$SRC/sprites/$sheet.spr" "$LEAN/sprites/"
+			retail_hud=$((retail_hud + 1))
+		else
+			echo "warning: hud.txt names sprites/$sheet.spr, not in $SRC" >&2
+		fi
+	done < <(awk 'NF >= 7 && $2 ~ /^[0-9]+$/ { print $3 }' "$SRC/sprites/hud.txt" | sort -u)
+	echo "staged retail DoD HUD: sprites/hud.txt + $retail_hud sheets"
+	# Objective bar flags (CObjectiveIcons): the generic neutral/Allies/Axis
+	# trio, 32x32 each (about 3 KB apiece).
+	mkdir -p "$LEAN/sprites/obj_icons"
+	for state in neutral allies axis; do
+		if [[ -f "$SRC/sprites/obj_icons/icon_obj_$state.spr" ]]; then
+			cp -f "$SRC/sprites/obj_icons/icon_obj_$state.spr" "$LEAN/sprites/obj_icons/"
+		fi
+	done
 fi
 
 # DoD UI / title art (no loading-screen wallpaper farms).
@@ -156,6 +217,16 @@ if [[ -n "$MAP_NAME" ]]; then
 	fi
 	cp -f "$bsp" "$LEAN/maps/${stem}.bsp"
 	echo "staged map: $bsp ($(du -h "$bsp" | awk '{print $1}'))"
+	# The bot waypoint graph baked from this BSP (tools/gen_waypoints.py), next to it. Without one the
+	# bots fall back to steering by look-ahead and cannot find stairs and ladders.
+	wpt="$DODGC_ROOT/data/waypoints/${stem}.wpt"
+	rm -f "$LEAN/maps/${stem}.wpt"
+	if [[ -f "$wpt" ]]; then
+		cp -f "$wpt" "$LEAN/maps/${stem}.wpt"
+		echo "staged waypoint graph: $wpt ($(stat -c %s "$wpt") bytes)"
+	else
+		echo "note: no waypoint graph for ${stem} (data/waypoints/${stem}.wpt); bots steer by look-ahead"
+	fi
 	# Complete menu music/UI + this map's soundscape WAVs (case/valve/substitutes).
 	MAP_AUDIO_ARGS=(--dod "$SRC" --valve "$VALVE" --lean "$LEAN" --map "$bsp")
 	if (( ALL_MAPS_AUDIO )); then
@@ -360,12 +431,45 @@ PY
 		v_bazooka.mdl v_panzerschreck.mdl w_bazooka_rocket.mdl \
 		p_bren.mdl p_stg44.mdl p_spring.mdl p_30cal.mdl p_mg42pr.mdl p_bazooka.mdl p_pschreck.mdl \
 		p_colt.mdl p_luger.mdl p_amerk.mdl p_spade.mdl \
-		p_garand.mdl p_mp40.mdl p_k98.mdl p_tommy.mdl; do
+		v_bar.mdl p_barbu.mdl \
+		p_garand.mdl p_mp40.mdl p_k98.mdl p_tommy.mdl \
+		w_garand.mdl w_spring.mdl w_tommy.mdl w_bar.mdl w_30cal.mdl w_bazooka.mdl w_colt.mdl w_98k.mdl w_scoped98k.mdl \
+		w_mp40.mdl w_mp44.mdl w_mg42.mdl w_pschreck.mdl w_luger.mdl; do
 		if [[ -f "$SRC/models/$m" ]]; then
 			cp -f "$SRC/models/$m" "$LEAN/models/"
 			cap_vm=$((cap_vm + 1))
 		fi
 	done
+	# The British maps (src/dod_weapons.c Dod_AlliesCountryForMap) give the Allies the British kit; stage its models
+	# for those maps only, so the American discs stay as small as they were.
+	case "$stem" in
+		dod_caen|dod_flash|dod_jagd)
+			for m in v_enfield.mdl v_enfield_scoped.mdl v_sten.mdl v_piat.mdl v_webley.mdl v_mills.mdl v_fairbairn.mdl \
+				p_enfield.mdl p_enfields.mdl p_sten.mdl p_piat.mdl p_webley.mdl p_mills.mdl p_fairbairn.mdl \
+				w_mills.mdl w_piat_rocket.mdl w_enfield.mdl w_enfield_scoped.mdl w_sten.mdl w_bren.mdl w_piat.mdl w_webley.mdl; do
+				if [[ -f "$SRC/models/$m" ]]; then
+					cp -f "$SRC/models/$m" "$LEAN/models/"
+					cap_vm=$((cap_vm + 1))
+				fi
+			done
+			echo "staged the British kit MDLs for $stem"
+			;;
+	esac
+	# The paratrooper maps (src/dod_weapons.c Dod_ParatroopersForMap) carry the para guns and knife; DODGC_STAGE_PARAS=1
+	# stages them on any map (for a build that forces dod_paras).
+	case "$stem" in
+		dod_escape|dod_falaise|dod_flugplatz|dod_glider|dod_kraftstoff|dod_jagd|dod_sturm|dod_switch|dod_zalec) stage_paras=1 ;;
+		*) stage_paras="${DODGC_STAGE_PARAS:-0}" ;;
+	esac
+	if [[ "$stage_paras" == 1 ]]; then
+		for m in v_m1carbine.mdl v_greasegun.mdl v_fg42.mdl p_m1carb.mdl p_grease.mdl p_fg42.mdl v_paraknife.mdl p_paraknife.mdl w_m1carb.mdl w_greasegun.mdl w_fg42.mdl; do
+			if [[ -f "$SRC/models/$m" ]]; then
+				cp -f "$SRC/models/$m" "$LEAN/models/"
+				cap_vm=$((cap_vm + 1))
+			fi
+		done
+		echo "staged the paratrooper kit MDLs for $stem"
+	fi
 	echo "staged CapFaces team weapon + grenade MDLs: $cap_vm files"
 
 	if (( FULL_MAP )); then
@@ -430,7 +534,7 @@ PY
 	fi
 fi
 
-# Retail DoD soldier splash tiles (same 800×600 layout as HL1 steam sheet).
+# Retail DoD soldier splash tiles (same 800×600 layout as HL1 menu background sheet).
 mkdir -p "$LEAN/resource/background"
 DOD_BG_SRC=""
 if [[ -f "$SRC/resource/background/800_1_a_loading.tga" ]]; then
@@ -502,6 +606,9 @@ done
 for f in gameui_english.txt valve_english.txt mainui_english.txt; do
 	[[ -f "$VALVE/resource/$f" ]] && cp -f "$VALVE/resource/$f" "$VMIN/resource/"
 done
+# The retail localisation (UTF-16) still names the Steam Networking checkbox; no menu draws it, so the staged copy drops
+# the line, and staging fails if the string is still anywhere in the staged trees (checked as ASCII and UTF-16).
+python3 "$SCRIPT_DIR/strip_steam_strings.py" "$VMIN" "$LEAN" || exit 1
 
 echo "staged lean DoD: $(du -sh "$LEAN" | awk '{print $1}') → $LEAN"
 echo "staged lean valve: $(du -sh "$VMIN" | awk '{print $1}') → $VMIN"

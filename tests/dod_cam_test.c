@@ -94,6 +94,22 @@ static void test_angle_wrap(void)
 	assert(near(DodCam_AngleDelta(350.0f, 10.0f), 20.0f, 0.001f));
 }
 
+static void test_level(void)
+{
+	float a[3] = { 120.0f, 30.0f, 25.0f };
+	DodCam_Level(DODCAM_CHASE_FREE, a);
+	assert(a[0] == 89.0f && a[1] == 30.0f && a[2] == 0.0f);
+	a[0] = -100.0f; a[2] = -40.0f;
+	DodCam_Level(DODCAM_ROAMING, a);
+	assert(a[0] == -89.0f && a[2] == 0.0f);
+	a[0] = 10.0f; a[2] = 12.0f;
+	DodCam_Level(DODCAM_CHASE_LOCKED, a);
+	assert(a[0] == 10.0f && a[2] == 0.0f);
+	a[2] = 12.0f;
+	DodCam_Level(4 /* in-eye keeps the player's view */, a);
+	assert(a[2] == 12.0f);
+}
+
 int main(void)
 {
 	test_passthrough_outside_chase();
@@ -101,5 +117,6 @@ int main(void)
 	test_frame_rate_independent();
 	test_snaps();
 	test_angle_wrap();
+	test_level();
 	return 0;
 }

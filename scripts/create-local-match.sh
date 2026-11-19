@@ -165,7 +165,7 @@ START_TS=$(date +%s)
 READY=0
 while kill -0 "$DPID" 2>/dev/null; do
 	elapsed=$(( $(date +%s) - START_TS ))
-	if rg -a -q 'gc_menu_ready set 1|retail menu steam background ready' "$LOG" 2>/dev/null; then
+	if rg -a -q 'gc_menu_ready set 1|retail menu (steam )?background ready' "$LOG" 2>/dev/null; then
 		READY=1
 		break
 	fi

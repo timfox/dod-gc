@@ -1,0 +1,16 @@
+xash3d-gc hardware handoff
+built_at=2026-11-18T00:08:50Z
+host=ceres
+renderer=REF_GX
+policy=retail-flipper
+loader=swiss
+gamedir=dod
+dol_name=dodgc.dol
+ogc_stack=libogc
+ogc_root=/opt/devkitpro/libogc
+fat_provider=libfat
+elf=OUT/bin/xash
+elf_profile=OUT/bin/xash-dod
+dol=OUT/bin/dodgc.dol
+elf_bytes=42805412
+dol_bytes=6980608

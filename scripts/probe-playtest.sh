@@ -27,7 +27,7 @@ DURATION=45
 NOTE=""
 RECORD=1
 # Menu/hand-off markers only — do NOT include CopyDisp (fires during intro AVI).
-READY_RE='gc_menu_ready set 1|retail menu steam background ready|FATAL|MISSING GAME DATA'
+READY_RE='gc_menu_ready set 1|retail menu (steam )?background ready|FATAL|MISSING GAME DATA'
 ISO="$DODGC_ISO"
 
 while [[ $# -gt 0 ]]; do
@@ -219,7 +219,7 @@ while kill -0 "$DPID" 2>/dev/null; do
 		INTRO_SHOT=1
 		echo "==> shot intro"
 	fi
-	if (( ! MENU_SHOT )) && rg -a -q "gc_menu_ready set 1|retail menu steam background ready" "$LOG" 2>/dev/null; then
+	if (( ! MENU_SHOT )) && rg -a -q "gc_menu_ready set 1|retail menu (steam )?background ready" "$LOG" 2>/dev/null; then
 		sleep 2
 		grab menu
 		sleep 1
@@ -278,7 +278,7 @@ for p in sorted(d.glob('*.png')):
 PY
 )"
 
-KEY_LOG="$(rg -a -n "linked gamedir|FS_Rescan|released unused|intro AVI (play|decoded|progress)|steam background|gc_menu_ready|CopyDisp ok|FATAL|MISSING|Day of Defeat|map |avail=" "$LOG" 2>/dev/null | head -60 || true)"
+KEY_LOG="$(rg -a -n "linked gamedir|FS_Rescan|released unused|intro AVI (play|decoded|progress)|(steam )?background|gc_menu_ready|CopyDisp ok|FATAL|MISSING|Day of Defeat|map |avail=" "$LOG" 2>/dev/null | head -60 || true)"
 
 NOTE_FILE="$DODGC_NOTES/${STAMP}-${SAFE_ROUTE}.md"
 {

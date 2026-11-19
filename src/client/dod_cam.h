@@ -19,6 +19,7 @@ extern "C" {
 
 #define DODCAM_CHASE_LOCKED 1
 #define DODCAM_CHASE_FREE 2
+#define DODCAM_ROAMING 3
 
 #define DODCAM_ORG_RATE 9.0f		/* 1/s: origin catches up in about 0.11 s */
 #define DODCAM_ANG_RATE 14.0f		/* 1/s: angles a little tighter, so aiming feels direct */
@@ -55,6 +56,21 @@ static inline void DodCam_Reset(DodCamState *s)
 {
 	if (s)
 		s->primed = 0;
+}
+
+/* Keep the horizon level. The free cameras take their angles from the spectator's
+ * own view angles, which can carry a roll (strafe lean, damage and punch kicks) or
+ * a pitch past the poles; the chase and roaming views want neither. In-eye keeps
+ * the followed player's own view. Roll is zeroed and pitch clamped to +-89. */
+static inline void DodCam_Level(int mode, float ang[3])
+{
+	if (mode != DODCAM_CHASE_LOCKED && mode != DODCAM_CHASE_FREE && mode != DODCAM_ROAMING)
+		return;
+	ang[2] = 0.0f;
+	if (ang[0] > 89.0f)
+		ang[0] = 89.0f;
+	else if (ang[0] < -89.0f)
+		ang[0] = -89.0f;
 }
 
 /* Smooths org/ang into out_org/out_ang (which may alias the inputs). Modes other

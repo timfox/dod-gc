@@ -75,6 +75,9 @@ typedef struct DodWeaponDef {
 } DodWeaponDef;
 
 const DodWeaponDef *Dod_GetWeaponDef(DodWeaponId id);
+/* The retail world model of a gun lying on the ground ("models/w_garand.mdl"): the view model's name with w_ for v_, except the two that
+ * differ (v_panzerschreck -> w_pschreck, v_m1carbine -> w_m1carb). Returns characters written, 0 if the def has no view model. */
+int Dod_WeaponWorldModel(const DodWeaponDef *def, char *buffer, int size);
 const DodWeaponDef *Dod_FindWeaponDef(const char *classname);
 /* The primary weapon a class is issued, NULL for bad input. */
 const DodWeaponDef *Dod_ClassWeaponDef(DodTeam team, DodClass player_class);
@@ -95,6 +98,72 @@ float Dod_WeaponSpread(const DodWeaponDef *def, int accuracy_flags);
 int Dod_ReloadAmount(const DodWeaponDef *def, int clip, int reserve);
 /* Whether the trigger may fire again: auto always, semi/bolt only on a new pull. */
 int Dod_WeaponMayFire(const DodWeaponDef *def, int trigger_was_held);
+
+/* ---------------------------------------------------------------- Allied country
+ * On the British maps (dod_caen, dod_flash, dod_jagd: info_doddetect detect_allies_country 1) the Allies carry the
+ * British kit: Lee-Enfield, Sten, Bren, scoped Lee-Enfield, PIAT, Webley, Fairbairn knife, Mills bomb. Weapon ids are
+ * scarce (the engine allows 32), and the American guns never appear on those maps, so the British weapons reuse their
+ * ids and class names: Dod_GetWeaponDef returns the British definition for the same id. */
+typedef enum {
+	DOD_COUNTRY_US = 0,
+	DOD_COUNTRY_BRITISH
+} DodAlliesCountry;
+
+/* Paratroopers: a team of paratroopers (info_doddetect detect_allies_paras / detect_axis_paras) carries the para kit the
+ * same way: the Allies' Garand id becomes the M1 Carbine and the Thompson id the Grease Gun, the Axis' Kar98k id the
+ * FG42; both teams use the para knife. Retail sets this per map: dod_escape, falaise, flugplatz, glider and kraftstoff
+ * for both teams, dod_jagd for the Axis, dod_sturm, switch and zalec for the Allies. */
+void Dod_SetParatroopers(int allies, int axis);
+int Dod_TeamIsParatroopers(DodTeam team);
+/* The paratrooper teams of a retail map by name: bit 0 Allies, bit 1 Axis (so 3 = both). */
+int Dod_ParatroopersForMap(const char *mapname);
+
+void Dod_SetAlliesCountry(DodAlliesCountry country);
+DodAlliesCountry Dod_GetAlliesCountry(void);
+/* The Allied country of a retail map, by name; anything else (custom maps included) is American. */
+DodAlliesCountry Dod_AlliesCountryForMap(const char *mapname);
+
+/* ---------------------------------------------------------------- view model animations
+ * The game code sends generic animation numbers; every retail view model orders its sequences differently, so
+ * SendWeaponAnim translates them (tools/gen_viewanims.py names the sequence each role uses in each model). */
+#define DOD_GENERIC_ANIM_IDLE 0
+#define DOD_GENERIC_ANIM_FIRE1 1	/* 1-3: fire variants */
+#define DOD_GENERIC_ANIM_RELOAD 4
+#define DOD_GENERIC_ANIM_DRAW 5
+#define DOD_GENERIC_ANIM_HOLSTER 6
+#define DOD_GENERIC_ANIM_IDLE_EMPTY 7
+#define DOD_GENERIC_ANIM_FIRE_EMPTY 8
+
+typedef enum {
+	DOD_ANIM_IDLE = 0,
+	DOD_ANIM_IDLE_EMPTY,
+	DOD_ANIM_FIRE,		/* variant picks among the model's shoot (or slash) sequences */
+	DOD_ANIM_FIRE_EMPTY,
+	DOD_ANIM_RELOAD,
+	DOD_ANIM_DRAW,
+	DOD_ANIM_HOLSTER,
+	DOD_ANIM_PINPULL,	/* grenades */
+	DOD_ANIM_ROLE_COUNT
+} DodAnimRole;
+
+/* The sequence a retail view model plays for a role, or -1 when the model is unknown or has none. A missing
+ * idle_empty falls back to idle and a missing fire_empty to fire. */
+int Dod_ViewAnim(const char *view_model, DodAnimRole role, int variant);
+
+/* The sounds a retail view model plays inside a sequence (animation event 5004: reload clips, bolt cycling, the draw
+ * rustle). The GameCube DoD route does not run view model events, so the weapon code plays them at these offsets
+ * (tools/gen_viewsounds.py writes the table from the retail models). Only the fire, reload and draw roles carry any. */
+#define DOD_VIEW_SOUND_MAX 8
+typedef struct DodViewSoundEvent {
+	int ms;	/* into the sequence */
+	const char *sound;
+} DodViewSoundEvent;
+/* Fills out[0..count) and returns count (0 when the model has no sound events for the role). */
+int Dod_ViewSounds(const char *view_model, DodAnimRole role, DodViewSoundEvent out[DOD_VIEW_SOUND_MAX]);
+/* The sequence to send for a weapon: `anim` is what the code asked for (the generic number for a DoD gun, the stock
+ * constant for the HL1 crowbar and hand grenade that wear the knife and grenade models). Unchanged when the weapon
+ * or the role is not known. */
+int Dod_RemapAnim(const char *classname, int anim);
 
 #ifdef __cplusplus
 }

@@ -3,8 +3,18 @@
 from __future__ import annotations
 
 import argparse
+import os
+import re
 import shutil
 from pathlib import Path
+
+
+def remove_once(path: Path, old: str) -> None:
+	"""Delete `old` from the file if it is still there (replace_once cannot: an empty
+	replacement is always "already in" the text)."""
+	text = path.read_text()
+	if old in text:
+		path.write_text(text.replace(old, "", 1))
 
 
 def replace_once(path: Path, old: str, new: str) -> None:
@@ -171,6 +181,193 @@ def integrate_weapons(dlls: Path) -> None:
 		'\tUTIL_PrecacheOtherWeapon("weapon_handgrenade");\n'
 		'\t/* DoD guns: ItemInfo and ammo only; models load when granted. */\n'
 		'\tDodWeapons_PrecacheAll();\n')
+	# Every weapon animation goes through here: translate the generic / stock numbers to the sequence the retail
+	# view model actually has (see Dod_RemapAnim), so a draw does not play a reload.
+	replace_once(weapons,
+		'void CBasePlayerWeapon::SendWeaponAnim( int iAnim, int skiplocal, int body )\n{\n',
+		'void CBasePlayerWeapon::SendWeaponAnim( int iAnim, int skiplocal, int body )\n{\n'
+		'\t{\n'
+		'\t\textern int DodGC_RemapWeaponAnim( const char *classname, int anim );\n'
+		'\t\tiAnim = DodGC_RemapWeaponAnim( STRING( pev->classname ), iAnim );\n'
+		'\t}\n')
+
+
+def integrate_trigger_hurt(dlls: Path) -> None:
+	"""trigger_hurt honours DoD's team flags (64 hurts Axis only, 128 Allies only): without it the spawn-protection
+	zones on maps like dod_flash hurt everyone, killing players that spawn inside their own base."""
+	triggers = dlls / "triggers.cpp"
+	replace_once(triggers,
+		'\tif( ( pev->spawnflags & SF_TRIGGER_HURT_NO_CLIENTS ) && pOther->IsPlayer() )\n\t\treturn;\n',
+		'\tif( ( pev->spawnflags & SF_TRIGGER_HURT_NO_CLIENTS ) && pOther->IsPlayer() )\n\t\treturn;\n'
+		'\t{\n'
+		'\t\textern BOOL DodGC_TriggerHurtApplies( int spawnflags, CBaseEntity *pOther );\n'
+		'\t\tif( !DodGC_TriggerHurtApplies( pev->spawnflags, pOther ) )\n'
+		'\t\t\treturn;\t/* a DoD team zone that is not for this player\'s side */\n'
+		'\t}\n')
+
+
+def integrate_default_items(dlls: Path) -> None:
+	"""The Half-Life deathmatch spawn gives every player a crowbar and a 9mm handgun (and precaches/binds their models);
+	in a DoD match the class kit is the only thing handed out, so the stock grant is skipped while DoD rules are active."""
+	rules = dlls / "multiplay_gamerules.cpp"
+	replace_once(rules,
+		'void CHalfLifeMultiplay::PlayerSpawn( CBasePlayer *pPlayer )\n{\n',
+		'extern BOOL DodGC_SkipDefaultItems( void );\n\nvoid CHalfLifeMultiplay::PlayerSpawn( CBasePlayer *pPlayer )\n{\n')
+	replace_once(rules,
+		'\tif( addDefault )\n\t{\n',
+		'\tif( addDefault && !DodGC_SkipDefaultItems() )\n\t{\n')
+
+
+def integrate_voice_menu(dlls: Path) -> None:
+	"""impulse 100 (the Half-Life flashlight, which DoD does not have; the pad's Y button) opens the voice menu in a DoD
+	match: the game decides in DodGC_VoiceMenuImpulse and the flashlight stays for everything else."""
+	replace_once(dlls / "player.cpp",
+		'\tcase 100:\n        // temporary flashlight for level designers\n',
+		'\tcase 100:\n\t\t{\n\t\t\textern BOOL DodGC_VoiceMenuImpulse( CBasePlayer *pPlayer );\n\t\t\tif( DodGC_VoiceMenuImpulse( this ) )\n\t\t\t\tbreak;\n\t\t}\n'
+		'        // temporary flashlight for level designers\n')
+
+
+def integrate_usercmd(dlls: Path) -> None:
+	"""The pad's analog stick moves the player through usercmd.forwardmove without setting IN_FORWARD, so the game cannot see a
+	double tap of forward in pev->button. CmdStart hands every usercmd to the game's DodGC_UserCmd."""
+	replace_once(dlls / "client.cpp",
+		'\tpl->random_seed = random_seed;\n}\n',
+		'\tpl->random_seed = random_seed;\n\t{\n\t\textern void DodGC_UserCmd( CBasePlayer *pPlayer, const struct usercmd_s *cmd );\n\t\tDodGC_UserCmd( pl, cmd );\n\t}\n}\n')
+
+
+def integrate_doddetect(dlls: Path) -> None:
+	"""info_doddetect is linked to a plain point entity in the SDK; the game's CDoDDetect (dod_runtime.cpp) takes the class name to read the
+	respawn factors, so the SDK's link line goes."""
+	replace_once(dlls / "subs.cpp",
+		'LINK_ENTITY_TO_CLASS( info_doddetect, CPointEntity )\n',
+		'/* info_doddetect is linked by the DoD game code (dod_runtime.cpp) */\n')
+
+
+def rename_sounds(path: Path, renames: dict[str, str]) -> None:
+	"""Point every use of a stock HL sound name in `path` at the retail DoD one (idempotent; a missing name is not an error)."""
+	text = path.read_text()
+	new = text
+	for old, retail in renames.items():
+		new = new.replace(f'"{old}"', f'"{retail}"')
+	if new != text:
+		path.write_text(new)
+
+
+def integrate_retail_sounds(hlsdk: Path) -> None:
+	"""The stock HL player, item and fall sounds become the retail DoD ones (the files exist in retail dod/sound; the
+	retail game DLL precaches exactly these names): pain is player/damage1-11, a death player/dmbullo1-3 (the three
+	slots the stock code fills with pl_pain5-7), pickups and drops items/weaponpickup, ammopickup and weapondrop, a
+	hard landing player/pl_fallpain."""
+	dlls = hlsdk / "dlls"
+	player = dlls / "player.cpp"
+	pain = (
+		'\tfloat flRndSound;//sound randomizer\n\n\tflRndSound = RANDOM_FLOAT( 0.0f, 1.0f ); \n\n'
+		'\tif( flRndSound <= 0.33f )\n\t\tEMIT_SOUND( ENT( pev ), CHAN_VOICE, "player/pl_pain5.wav", 1, ATTN_NORM );\n'
+		'\telse if( flRndSound <= 0.66f )\t\n\t\tEMIT_SOUND( ENT( pev ), CHAN_VOICE, "player/pl_pain6.wav", 1, ATTN_NORM );\n'
+		'\telse\n\t\tEMIT_SOUND( ENT( pev ), CHAN_VOICE, "player/pl_pain7.wav", 1, ATTN_NORM );\n')
+	replace_once(player, pain,
+		'\tchar sound[32];\n\t/* retail: one of the eleven player/damage grunts */\n'
+		'\tsnprintf( sound, sizeof( sound ), "player/damage%d.wav", RANDOM_LONG( 1, 11 ) );\n'
+		'\tPRECACHE_SOUND( sound );\n\tEMIT_SOUND( ENT( pev ), CHAN_VOICE, sound, 1, ATTN_NORM );\n')
+	death = (
+		'\t// temporarily using pain sounds for death sounds\n\tswitch( RANDOM_LONG( 1, 5 ) )\n\t{\n'
+		'\tcase 1: \n\t\tEMIT_SOUND( ENT( pev ), CHAN_VOICE, "player/pl_pain5.wav", 1, ATTN_NORM );\n\t\tbreak;\n'
+		'\tcase 2: \n\t\tEMIT_SOUND( ENT( pev ), CHAN_VOICE, "player/pl_pain6.wav", 1, ATTN_NORM );\n\t\tbreak;\n'
+		'\tcase 3: \n\t\tEMIT_SOUND( ENT( pev ), CHAN_VOICE, "player/pl_pain7.wav", 1, ATTN_NORM );\n\t\tbreak;\n\t}\n')
+	replace_once(player, death,
+		'\t{\n\t\tchar sound[32];\n\t\t/* retail: player/dmbullo1-3, every death speaks */\n'
+		'\t\tsnprintf( sound, sizeof( sound ), "player/dmbullo%d.wav", RANDOM_LONG( 1, 3 ) );\n'
+		'\t\tPRECACHE_SOUND( sound );\n\t\tEMIT_SOUND( ENT( pev ), CHAN_VOICE, sound, 1, ATTN_NORM );\n\t}\n')
+	pickups = {"items/gunpickup2.wav": "items/weaponpickup.wav", "items/weapondrop1.wav": "items/weapondrop.wav"}
+	for name in ("items.cpp", "weapons.cpp"):
+		rename_sounds(dlls / name, pickups)
+	rename_sounds(dlls / "weapons.cpp", {"items/9mmclip1.wav": "items/ammopickup.wav"})
+	rename_sounds(dlls / "client.cpp", {
+		"player/pl_pain2.wav": "player/damage1.wav", "player/pl_pain4.wav": "player/damage2.wav",
+		"player/pl_pain5.wav": "player/damage3.wav", "player/pl_pain6.wav": "player/damage4.wav",
+		"player/pl_pain7.wav": "player/damage5.wav", "player/pl_fallpain2.wav": "player/pl_fallpain.wav",
+		"player/pl_fallpain3.wav": "player/pl_fallpain.wav", "items/gunpickup2.wav": "items/weaponpickup.wav"})
+	rename_sounds(hlsdk / "pm_shared" / "pm_shared.c", {"player/pl_fallpain2.wav": "player/pl_fallpain.wav",
+		"player/pl_fallpain3.wav": "player/pl_fallpain.wav"})
+	integrate_retail_footsteps(hlsdk / "pm_shared" / "pm_shared.c")
+
+
+def integrate_pm_caps(hlsdk: Path, engine: Path) -> None:
+	"""playermove_t array caps. The engine (xash3d-gc wscript, XASH_GC_PM_MAX_PHYSENTS / XASH_GC_PM_MAX_MOVEENTS) and the
+	game DLL are separate builds with their own copy of pm_defs.h, and the struct layout must match, so the SDK copy gets
+	the same numbers. Unset leaves the stock 600 / 64."""
+	phys, move = os.environ.get("XASH_GC_PM_MAX_PHYSENTS", ""), os.environ.get("XASH_GC_PM_MAX_MOVEENTS", "")
+	defs = hlsdk / "pm_shared" / "pm_defs.h"
+	if engine and (phys.isdigit() or move.isdigit()) and "GC_PM_MAX_PHYSENTS" not in (engine / "pm_shared" / "pm_defs.h").read_text():
+		raise SystemExit("the engine checkout does not support XASH_GC_PM_MAX_PHYSENTS; merge the engine change first "
+			"or set XASH_GC_PM_MAX_PHYSENTS=stock (the DLL and engine must agree on playermove_t)")
+	if phys.isdigit():
+		text = re.sub(r"#define MAX_PHYSENTS\t\d+", "#define MAX_PHYSENTS\t" + phys, defs.read_text(), count=1)
+		defs.write_text(text)
+	if move.isdigit():
+		text = re.sub(r"#define MAX_MOVEENTS\t\d+", "#define MAX_MOVEENTS\t" + move, defs.read_text(), count=1)
+		defs.write_text(text)
+
+
+def integrate_retail_footsteps(pm: Path) -> None:
+	# Footsteps: retail has wood, gravel and snow floors (pl_wood, pl_gravel, pl_snow) and grass, sand and leaves walk as
+	# dirt; the stock code has no such steps (a wooden floor sounds like concrete).
+	replace_once(pm, "#define STEP_LADDER\t\t8\t\t// climbing ladder\n",
+		"#define STEP_LADDER\t\t8\t\t// climbing ladder\n"
+		"#define STEP_WOOD\t\t9\t\t// retail DoD: wooden floor ('W')\n"
+		"#define STEP_GRAVEL\t\t10\t\t// retail DoD: gravel ('L')\n"
+		"#define STEP_SNOW\t\t11\t\t// retail DoD: snow ('N')\n")
+	replace_once(pm, "\t\tcase CHAR_TEX_SLOSH:\n\t\t\treturn STEP_SLOSH;\n",
+		"\t\tcase CHAR_TEX_SLOSH:\n\t\t\treturn STEP_SLOSH;\n"
+		"\t\tcase 'H':\t// heavy metal\n\t\t\treturn STEP_METAL;\n"
+		"\t\tcase CHAR_TEX_WOOD:\n\t\t\treturn STEP_WOOD;\n"
+		"\t\tcase 'L':\n\t\t\treturn STEP_GRAVEL;\n"
+		"\t\tcase CHAR_TEX_SNOW:\n\t\t\treturn STEP_SNOW;\n"
+		"\t\tcase 'P':\t// grass\n\t\tcase 'A':\t// sand\n\t\tcase 'E':\t// leaves\n\t\t\treturn STEP_DIRT;\n")
+	replace_once(pm, "\tcase STEP_SLOSH:\n\t\tswitch( irand )\n",
+		"\tcase STEP_WOOD:\n\t\tpmove->PM_PlaySound( CHAN_BODY, irand == 0 ? \"player/pl_wood1.wav\" : irand == 1 ? \"player/pl_wood3.wav\" :\n"
+		"\t\t\tirand == 2 ? \"player/pl_wood2.wav\" : \"player/pl_wood4.wav\", fvol, ATTN_NORM, 0, PITCH_NORM );\n\t\tbreak;\n"
+		"\tcase STEP_GRAVEL:\n\t\tpmove->PM_PlaySound( CHAN_BODY, irand == 0 ? \"player/pl_gravel1.wav\" : irand == 1 ? \"player/pl_gravel3.wav\" :\n"
+		"\t\t\tirand == 2 ? \"player/pl_gravel2.wav\" : \"player/pl_gravel4.wav\", fvol, ATTN_NORM, 0, PITCH_NORM );\n\t\tbreak;\n"
+		"\tcase STEP_SNOW:\n\t\tpmove->PM_PlaySound( CHAN_BODY, irand == 0 ? \"player/pl_snow1.wav\" : irand == 1 ? \"player/pl_snow3.wav\" :\n"
+		"\t\t\tirand == 2 ? \"player/pl_snow2.wav\" : \"player/pl_snow4.wav\", fvol, ATTN_NORM, 0, PITCH_NORM );\n\t\tbreak;\n"
+		"\tcase STEP_SLOSH:\n\t\tswitch( irand )\n")
+
+
+def integrate_death_anims(dlls: Path) -> None:
+	"""CBasePlayer::SetAnimation(PLAYER_DIE) picks the death sequence of the stub player.mdl; the DoD body models have their own (die_simple 19 ...
+	die_prone1 29), picked by the game when the player is killed (DodGC_DeathSequence). -1 keeps the stock choice."""
+	replace_once(dlls / "player.cpp",
+		'\t\tanimDesired = LookupActivity( m_Activity );\n\n\t\t// Already using the desired animation?\n',
+		'\t\tanimDesired = LookupActivity( m_Activity );\n'
+		'\t\tif( playerAnim == PLAYER_DIE )\n'
+		'\t\t{\n\t\t\textern int DodGC_DeathSequence( CBasePlayer *pPlayer );\n'
+		'\t\t\tconst int dod_seq = DodGC_DeathSequence( this );\n\t\t\tif( dod_seq >= 0 )\n\t\t\t\tanimDesired = dod_seq;\n\t\t}\n\n'
+		'\t\t// Already using the desired animation?\n')
+
+
+def integrate_body_queue(dlls: Path) -> None:
+	"""The lean route leaves g_pBodyQueueHead NULL, so CopyToBodyQue() returned at once and a dead player vanished
+	with no corpse. DoD keeps the four body-queue edicts (the stock InitBodyQue) so corpses stay until four newer deaths."""
+	replace_once(dlls / "world.cpp",
+		'\tif( !GC_FullActors() )\n\t{\n\t\tg_pBodyQueueHead = NULL;\n\t\treturn;\n\t}\n',
+		'\t/* DoD keeps the four corpse edicts (dod-gc integrate_body_queue). */\n')
+	# Charlie leaves ~23 free edicts with three bots: the stock four corpse edicts cost the fourth bot. Two corpses are kept.
+	replace_once(dlls / "world.cpp",
+		'\t// Reserve 3 more slots for dead bodies\n\tfor( int i = 0; i < 3; i++ )\n',
+		'\t// DoD keeps 2 corpses (edict budget): 1 more slot for dead bodies\n\tfor( int i = 0; i < 1; i++ )\n')
+	# The lean server has no world collision for MOVETYPE_TOSS, so a corpse fell through the floor (and drew black inside it).
+	# It stays where the player died, a unit above that origin.
+	replace_once(dlls / "world.cpp",
+		'\tpevHead->movetype\t= MOVETYPE_TOSS;\n\tpevHead->velocity\t= pev->velocity;\n',
+		'\tpevHead->movetype\t= MOVETYPE_NONE;\n\tpevHead->velocity\t= g_vecZero;\n')
+	# Stock CopyToBodyQue copies neither body nor skin; the DoD body index is class x helmet x head x gear, so body 0 drew black.
+	replace_once(dlls / "world.cpp",
+		'\tpevHead->colormap\t= pev->colormap;\n',
+		'\tpevHead->colormap\t= pev->colormap;\n\tpevHead->body\t\t= pev->body;\n\tpevHead->skin\t\t= pev->skin;\n')
+	replace_once(dlls / "world.cpp",
+		'\tUTIL_SetOrigin( pevHead, pev->origin );\n',
+		'\tUTIL_SetOrigin( pevHead, pev->origin + Vector( 0, 0, 1.0f ) );\n')
 
 
 def integrate_grenades(dlls: Path) -> None:
@@ -215,12 +412,13 @@ def integrate_grenades(dlls: Path) -> None:
 DOD_DLL_SOURCES = (
 	"dod_game.c", "dod_game.h", "dod_runtime.cpp", "dod_runtime.h",
 	"dod_grenade.cpp", "dod_grenade.h", "dod_weapons.c", "dod_weapons.h",
-	"dod_weapon.cpp", "dod_weapon.h", "dod_hud.h",
+	"dod_weapon.cpp", "dod_weapon.h", "dod_viewanims.h", "dod_viewsounds.h", "dod_hud.h", "dod_hud_retail.h",
 	"dod_bots.c", "dod_bots.h", "dod_bot.cpp", "dod_bot.h",
 )
 # Client HUD sources, copied into cl_dll/ (dod_hud.h is shared with the DLL).
 DOD_CLIENT_SOURCES = (
 	("dod_hud.h", "dod_hud.h"),
+	("dod_hud_retail.h", "dod_hud_retail.h"),
 	("client/hud_dod.h", "hud_dod.h"),
 	("client/hud_dod.cpp", "hud_dod.cpp"),
 	("client/dod_cam.h", "dod_cam.h"),
@@ -278,6 +476,11 @@ def integrate_dod_hud(client: Path) -> None:
 	replace_once(client / "entity.cpp",
 		'\t\tgHUD.m_Spectator.AddOverviewEntity( type, ent, modelname );\n\n\t\tif( (	g_iUser1 == OBS_IN_EYE || gHUD.m_Spectator.m_pip->value == INSET_IN_EYE ) &&',
 		'\t\tif( (	g_iUser1 == OBS_IN_EYE || ( gHUD.m_Spectator.m_pip && gHUD.m_Spectator.m_pip->value == INSET_IN_EYE ) ) &&')
+	# The retail clip-ammo graphic needs the held weapon (name, clip, ammo type).
+	replace_once(client / "hud.h",
+		"\tint GetLeanClip( void ) const { return m_pWeapon ? m_pWeapon->iClip : -1; }\n",
+		"\tint GetLeanClip( void ) const { return m_pWeapon ? m_pWeapon->iClip : -1; }\n"
+		"\tconst WEAPON *GetCurrentWeapon( void ) const { return m_pWeapon; }\n")
 	replace_once(hud, "\tm_Menu.Init();\n", "\tm_Menu.Init();\n\tm_Dod.Init();\n")
 	replace_once(hud, "\tm_Menu.VidInit();\n", "\tm_Menu.VidInit();\n\tm_Dod.VidInit();\n")
 	replace_once(client / "hud_redraw.cpp",
@@ -285,6 +488,21 @@ def integrate_dod_hud(client: Path) -> None:
 		"\t\t\tif( m_Menu.m_fMenuDisplayed )\n\t\t\t\tm_Menu.Draw( flTime );\n"
 		"\t\t\t/* DoD match HUD (cl_dodhud): score, clock, flags, round. */\n"
 		"\t\t\tm_Dod.Draw( flTime );\n")
+	# The lean (quality 0) tier is the HUD DoD matches run with: draw the retail
+	# DoD HUD there instead of the Half-Life sprites, menus still on top.
+	replace_once(client / "hud_redraw.cpp",
+		'\t\t\t\tgEngfuncs.Con_Printf( "Xash3D GameCube: lean HUD scrInfo %dx%d\\n",\n'
+		'\t\t\t\t\tm_scrinfo.iWidth, m_scrinfo.iHeight );\n',
+		'\t\t\t\tgEngfuncs.Con_Printf( "Xash3D GameCube: lean HUD scrInfo %dx%d\\n",\n'
+		'\t\t\t\t\tm_scrinfo.iWidth, m_scrinfo.iHeight );\n'
+		'\n'
+		'\t\t\t/* Day of Defeat: the retail HUD replaces the HL lean sprites. */\n'
+		'\t\t\tif( m_Dod.DrawRetail( flTime ) )\n'
+		'\t\t\t{\n'
+		'\t\t\t\tif( m_Menu.m_fMenuDisplayed )\n'
+		'\t\t\t\t\tm_Menu.Draw( flTime );\n'
+		'\t\t\t\treturn 1;\n'
+		'\t\t\t}\n')
 
 
 def integrate_spectator_camera(client: Path) -> None:
@@ -298,6 +516,7 @@ def integrate_spectator_camera(client: Path) -> None:
 		'\t\t{\n'
 		'\t\t\tstatic DodCamState s_dodCam;\n'
 		'\t\t\tDodCam_Smooth( &s_dodCam, g_iUser1, g_iUser2, v_origin, v_angles, pparams->frametime, v_origin, v_angles );\n'
+		'\t\t\tDodCam_Level( g_iUser1, v_angles );\n'
 		'\t\t}\n'
 		'\n'
 		'\t\tif( gHUD.m_Spectator.m_pip->value )\n\t\t\tpparams->nextView = 1;\t// force a second renderer view\n')
@@ -439,6 +658,15 @@ def main() -> int:
 	):
 		integrate_weapon(dlls / filename, class_name, kind, animation, event, legacy_model, models)
 	integrate_grenades(dlls)
+	integrate_trigger_hurt(dlls)
+	integrate_default_items(dlls)
+	integrate_voice_menu(dlls)
+	integrate_usercmd(dlls)
+	integrate_doddetect(dlls)
+	integrate_death_anims(dlls)
+	integrate_retail_sounds(args.hlsdk_dir)
+	integrate_pm_caps(args.hlsdk_dir, args.engine_dir)
+	integrate_body_queue(dlls)
 	integrate_weapons(dlls)
 	integrate_dod_hud(client)
 	integrate_spectator_camera(client)
@@ -488,11 +716,9 @@ def main() -> int:
 		'\tif( !stricmp( gameleaf, "dod" ) && gpGlobals->deathmatch )\n\t\tCVAR_SET_FLOAT( "mp_teamplay", 1 );\n'
 		'\tif( !gpGlobals->deathmatch )\n\t{\n\t\t// generic half-life\n',
 	)
-	replace_once(
-		dlls / "subs.cpp",
-	'LINK_ENTITY_TO_CLASS( dod_control_point, CPointEntity )\n',
-	"",
-	)
+	# The DoD runtime defines these classes; drop the hlsdk stubs so they do not collide.
+	for stub in ("dod_control_point", "dod_control_point_master", "dod_score_ent"):
+		remove_once(dlls / "subs.cpp", f"LINK_ENTITY_TO_CLASS( {stub}, CPointEntity )\n")
 	replace_once(
 		client / "hud.cpp",
 		'int __MsgFunc_VGUIMenu( const char *pszName, int iSize, void *pbuf )\n',

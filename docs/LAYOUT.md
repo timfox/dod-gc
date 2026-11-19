@@ -5,8 +5,8 @@ dod-gc/
   engine/          → symlink to xash3d-gc (build tooling, GX, disc scripts)
   hlsdk-portable/  → symlink to engine's 3rdparty/hlsdk-portable
   content/
-    dod/           → symlink to Steam Half-Life/dod (owned assets)
-    valve/         → symlink to Steam Half-Life/valve (DoD basedir fallback)
+    dod/           → symlink to retail Half-Life/dod (owned assets)
+    valve/         → symlink to retail Half-Life/valve (DoD basedir fallback)
   src/             → local DoD game-mode port (HL1SDK DM → DoD features)
   scripts/         → dod-gc only build / playtest / capture helpers
   out/

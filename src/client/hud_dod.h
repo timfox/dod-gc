@@ -2,11 +2,13 @@
 #define DODGC_HUD_DOD_H
 
 /* Client side of the Day of Defeat HUD. Included from hud.h after CHudBase.
- * Layout and state live in dod_hud.h (host-tested); this class only receives
- * the server's DodHud message and draws the layout. It is off unless the
- * cl_dodhud cvar is set, and loads its one icon sprite the first time it draws. */
+ * Draws the retail DoD 1.3 HUD (dod_hud_retail.h): the status panel with
+ * stamina and health, the objective timer and the dynamic crosshair, from the
+ * retail hud.txt sheets. The match state (clock, flags, scores) arrives in
+ * the server's DodHud message (dod_hud.h). cl_dodhud 0 turns it off. */
 
 #include "dod_hud.h"
+#include "dod_hud_retail.h"
 
 class CHudDod : public CHudBase
 {
@@ -17,14 +19,37 @@ public:
 	int Init( void );
 	int VidInit( void );
 	int Draw( float flTime );
+	/* The retail HUD, for the lean tier's Redraw: returns 1 when it drew and
+	 * the caller should skip its own HUD. */
+	int DrawRetail( float flTime );
 	int MsgFunc_DodHud( const char *pszName, int iSize, void *pbuf );
+	int MsgFunc_DodBoard( const char *pszName, int iSize, void *pbuf );
+	int MsgFunc_DodVoice( const char *pszName, int iSize, void *pbuf );
+	int MsgFunc_DodKill( const char *pszName, int iSize, void *pbuf );
 
 private:
+	void DrawBoard( void );
+	void DrawVoice( void );
+	void DrawKills( void );
+	struct KillLine { char killer[32], victim[32], weapon[24]; int killer_team, victim_team; float time; };
+	KillLine m_kills[5];	/* newest last */
+	int m_nKills;
+	char m_szVoice[200];	/* voice menu lines from the DodVoice message */
+	int m_iVoiceSel;
+	float m_flVoiceTime;
+	int m_fVoiceShown;
+	char m_szBoard[256];	/* scoreboard text from the DodBoard message, lines split by newlines */
+	float m_flBoardTime;	/* client time of the last DodBoard message; the board hides 3 s after it */
+	int m_fBoardShown;
 	DodHudState m_state;
 	float m_flLastUpdate;
+	float m_flTimerBase;	/* client time the clock was last set */
 	int m_fHaveState;
-	HSPRITE m_hIcons;
-	int m_fIconsTried;
+	HSPRITE m_hSheets[DOD_SHEET_COUNT];
+	int m_fSheetsTried;
+	int m_fDrawLogged;
+	char m_szLoggedWeapon[32];
+	unsigned m_fSheetTried;	/* on-use sheets already attempted (bit per sheet) */
 	cvar_t *m_pCvar;
 };
 

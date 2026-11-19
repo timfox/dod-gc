@@ -193,6 +193,7 @@ dodgc_require_content
 	echo "error: missing $DODGC_DOL — build DOL first" >&2
 	exit 1
 }
+bash "$SCRIPT_DIR/check-menu-provenance.sh" --dol "$DODGC_DOL" || exit 1
 
 if (( ! SKIP_STAGE )); then
 	bash "$SCRIPT_DIR/stage-lean-dod.sh" "${STAGE_ARGS[@]+"${STAGE_ARGS[@]}"}"
@@ -202,6 +203,11 @@ LEAN="${DODGC_LEAN_DOD:-$XASH3D_GC_ISO_CACHE/dod-menu-min}"
 VMIN="${DODGC_LEAN_VALVE:-$XASH3D_GC_ISO_CACHE/valve-menu-min}"
 [[ -d "$LEAN" ]] || { echo "error: lean DoD tree missing: $LEAN" >&2; exit 1; }
 [[ -d "$VMIN" ]] || { echo "error: lean valve tree missing: $VMIN" >&2; exit 1; }
+
+# What this disc was built from: the short form goes on the disc (the engine prints it in the boot
+# log), the full report next to the other artifacts.
+bash "$SCRIPT_DIR/build-info.sh" --short > "$LEAN/build-info.txt"
+bash "$SCRIPT_DIR/build-info.sh" > "$DODGC_OUT/build-info.txt"
 
 pack() {
 	local mode=$1
@@ -260,6 +266,8 @@ pack() {
 		{
 			echo "video prog"
 			write_net_config
+			# Extra gamecube.cfg lines before the connect, e.g. "dodgc_master http://10.0.0.1:8080\ninternetservers".
+			[[ -n "${DODGC_EXTRA_CFG:-}" ]] && printf '%b\n' "$DODGC_EXTRA_CFG"
 			echo "connect $CONNECT"
 			# Peer BSP tip path needs -gcmap (high-slot surfaces); without it
 			# Mod_LoadWorld OOMs on planes/surfaces (dual IPC 20261107-005100).

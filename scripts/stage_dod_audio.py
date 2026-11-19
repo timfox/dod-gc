@@ -96,10 +96,25 @@ GRENADE_SFX = {
     "weapons/grenade_hit1.wav": 0.30,
     "weapons/grenade_hit2.wav": 0.30,
     "weapons/grenade_hit3.wav": 0.30,
-    "weapons/debris1.wav": 0.45,
-    "weapons/debris2.wav": 0.45,
-    "weapons/debris3.wav": 0.45,
 }
+
+
+# Retail player and item events the game plays itself (pain and death grunts, pickups, a hard landing) and the side
+# announcers (round start, point captured). Grunts are short; announcers are 1-3 s, so they are staged 8-bit like voices.
+PLAYER_EVENT_SFX = {
+    **{f"player/damage{n}.wav": 0.70 for n in range(1, 12)},
+    **{f"player/dmbullo{n}.wav": 0.70 for n in range(1, 4)},
+    "player/pl_fallpain.wav": 0.70,
+    # footsteps on the floors retail has and the stock code lacked (wood, gravel, snow), and dirt for grass, sand and leaves
+    **{f"player/pl_{kind}{n}.wav": 0.50 for kind in ("wood", "gravel", "snow", "dirt") for n in range(1, 5)},
+    "items/weaponpickup.wav": 0.45,
+    "items/ammopickup.wav": 0.45,
+    "items/weapondrop.wav": 0.45,
+}
+ANNOUNCER_SFX = (
+    [f"player/{side}startround{n}.wav" for side in ("us", "brit", "ger") for n in ("", "2")]
+    + [f"ambience/{side}pointcaptured.wav" for side in ("us", "brit", "ger")]
+)
 
 
 def weapon_table_sounds(table: Path) -> dict[str, float]:
@@ -117,7 +132,49 @@ def weapon_table_sounds(table: Path) -> dict[str, float]:
         if match:
             sounds.setdefault(match.group(1), 0.45)
             sounds.setdefault(match.group(2), 0.60)
+    # The reload, draw and bolt sounds retail plays from the view models' animation events.
+    events = table.with_name("dod_viewsounds.h")
+    if events.is_file():
+        for rel in re.findall(r'"(weapons/[^"]+\.wav)"', events.read_text()):
+            sounds.setdefault(rel, 0.60)
     return sounds
+
+
+# Voice lines are 1-2 s at 22 kHz: 8-bit mono at 11.025 kHz keeps 1.45 s under the 16 KiB ceiling (16-bit would keep 0.74 s).
+VOICE_SECONDS = 1.45
+
+
+def voice_table_sounds(game_source: Path) -> list[str]:
+    """Voice clips named in the g_voices table of src/dod_game.c (one row per command: us, brit and ger base names), as
+    sound paths. The C table is the single source of truth, so staging reads it."""
+    text = game_source.read_text()
+    start = text.index("g_voices[] = {")
+    end = text.index("};", start)
+    sounds: list[str] = []
+    for row in re.findall(r"\{([^{}]*)\}", text[start + len("g_voices[] = "):end]):
+        names = re.findall(r'"([a-z]+)"', row)  # the label has capitals or punctuation, so it is not matched
+        if len(names) == 4:  # cmd, us, brit, ger
+            sounds.extend(f"player/{name}.wav" for name in names[1:])
+    return sounds
+
+
+def stage_voice_sfx(dod_sound: Path, lean_sound: Path, game_source: Path) -> dict:
+    """Stage every voice line of the table as a short 8-bit clip under the lean disc's WAV ceiling."""
+    roots = [dod_sound]
+    index = build_index(roots)
+    staged: list[str] = []
+    missing: list[str] = []
+    total = 0
+    for rel in voice_table_sounds(game_source):
+        src, _how = resolve_source(rel, index, roots, allow_substitute=False)
+        if src is None:
+            missing.append(rel)
+            continue
+        dest = lean_dest(lean_sound, rel)
+        total += lean_tipsafe_wav(src, dest, VOICE_SECONDS, pcm8=True)
+        if dest.is_file():
+            staged.append(rel)
+    return {"files": len(staged), "bytes": total, "missing": missing, "list": staged}
 
 
 def normalize_sound_path(raw: str) -> str:
@@ -315,7 +372,7 @@ def stage_map_sounds(
     }
 
 
-def lean_tipsafe_wav(src: Path, dest: Path, max_seconds: float) -> int:
+def lean_tipsafe_wav(src: Path, dest: Path, max_seconds: float, pcm8: bool = False) -> int:
     """CapFaces listen keeps a 16 KiB memopt WAV ceiling — retail DoD shoots
     are 60–120 KiB @ 22 kHz. Emit 11.025 kHz mono s16 clips that fit."""
     dest.parent.mkdir(parents=True, exist_ok=True)
@@ -335,7 +392,7 @@ def lean_tipsafe_wav(src: Path, dest: Path, max_seconds: float) -> int:
         "-ac",
         "1",
         "-c:a",
-        "pcm_s16le",
+        "pcm_u8" if pcm8 else "pcm_s16le",
         str(dest),
     ]
     try:
@@ -401,6 +458,8 @@ def stage_grenade_sfx(
     missing: list[str] = []
     total = 0
     clips = dict(GRENADE_SFX)
+    clips.update(PLAYER_EVENT_SFX)
+    clips.update({rel: VOICE_SECONDS for rel in ANNOUNCER_SFX})
     if weapon_table is not None and weapon_table.is_file():
         for rel, seconds in weapon_table_sounds(weapon_table).items():
             clips.setdefault(rel, seconds)
@@ -410,11 +469,34 @@ def stage_grenade_sfx(
             missing.append(rel)
             continue
         dest = lean_dest(lean_sound, rel)
-        total += lean_tipsafe_wav(src, dest, max_seconds)
+        total += lean_tipsafe_wav(src, dest, max_seconds, pcm8=rel in ANNOUNCER_SFX)
         if dest.is_file():
             media_root.mkdir(parents=True, exist_ok=True)
             shutil.copy2(dest, media_root / f"sfx_{Path(rel).name.lower()}")
             staged.append(f"{rel} ({how})")
+    return {"files": len(staged), "bytes": total, "missing": missing, "list": staged}
+
+
+# The retail round-end fanfares (the winning side's tune, played to everybody). 21-26 s at 22.05 kHz mono s16 (about 1 MB each): staged whole,
+# unlike the short clips: the engine streams them from ARAM.
+ROUND_END_SFX = ["ambience/uswin.wav", "ambience/britwin.wav", "ambience/germanwin.wav"]
+
+
+def stage_round_end_sfx(dod_sound: Path, lean_sound: Path) -> dict:
+    roots = [dod_sound]
+    index = build_index(roots)
+    staged: list[str] = []
+    missing: list[str] = []
+    total = 0
+    for rel in ROUND_END_SFX:
+        src, _how = resolve_source(rel, index, roots, allow_substitute=False)
+        if src is None:
+            missing.append(rel)
+            continue
+        dest = lean_dest(lean_sound, rel)
+        total += copy_file(src, dest)
+        if dest.is_file():
+            staged.append(rel)
     return {"files": len(staged), "bytes": total, "missing": missing, "list": staged}
 
 
@@ -523,6 +605,20 @@ def main() -> int:
         print(
             f"grenade + gun SFX: files={grenades['files']} ({grenades['bytes'] / 1024:.0f} KiB)"
             + (f" missing={grenades['missing']}" if grenades["missing"] else "")
+        )
+
+        fanfares = stage_round_end_sfx(dod / "sound", lean / "sound")
+        payload["round_end_sfx"] = fanfares
+        print(
+            f"round-end fanfares: files={fanfares['files']} ({fanfares['bytes'] / 1024:.0f} KiB)"
+            + (f" missing={fanfares['missing']}" if fanfares["missing"] else "")
+        )
+
+        voices = stage_voice_sfx(dod / "sound", lean / "sound", Path(__file__).resolve().parent.parent / "src" / "dod_game.c")
+        payload["voice_sfx"] = voices
+        print(
+            f"voice lines: files={voices['files']} ({voices['bytes'] / 1024:.0f} KiB)"
+            + (f" missing={voices['missing']}" if voices["missing"] else "")
         )
 
         if args.core_sfx:

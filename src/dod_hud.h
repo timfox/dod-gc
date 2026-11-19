@@ -21,6 +21,11 @@
 #define DOD_HUD_CELL_ALLIES 1
 #define DOD_HUD_CELL_AXIS 2
 
+/* Weapon variants of the map (bits of DodHudState.kit): the British and paratrooper guns reuse the stock class names. */
+#define DOD_HUD_KIT_BRITISH 1	/* the Allies are British: Enfield, Sten, Bren, PIAT, Webley */
+#define DOD_HUD_KIT_ALLIES_PARA 2	/* M1 Carbine, Grease Gun */
+#define DOD_HUD_KIT_AXIS_PARA 4	/* FG42 */
+
 typedef struct DodHudState {
 	short allies_score;
 	short axis_score;
@@ -35,6 +40,9 @@ typedef struct DodHudState {
 	unsigned char my_team;		/* 0 none, 1 Allies, 2 Axis */
 	unsigned char my_class;		/* DodClass, 0 none */
 	unsigned char grenades;
+	unsigned char respawn;		/* seconds until the next respawn wave for a dead player, 0 otherwise */
+	unsigned char stamina;		/* 0..100: the tube beside the health panel */
+	unsigned char kit;		/* DOD_HUD_KIT_*: which weapon variants this map uses, for the clip graphics */
 } DodHudState;
 
 typedef enum {
