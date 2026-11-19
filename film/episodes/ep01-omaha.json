@@ -83,6 +83,48 @@
   "server_cmds": {
     "dod_charlie": []
   },
+  "narrator": "narrator",
+  "voices": {
+    "narrator": {
+      "design": "Male documentary narrator in his late fifties, deep warm baritone, General American accent, close microphone, unhurried and even",
+      "delivery": "Calm, grave and respectful; measured pace with natural pauses; no theatrics",
+      "language": "English",
+      "mode": "clone"
+    },
+    "sgt": {
+      "design": "American man in his late twenties, gravelly baritone, working-class Midwestern accent, an infantry sergeant used to being heard over noise",
+      "language": "English"
+    },
+    "lt": {
+      "design": "American man in his mid twenties, clear tenor, Northeastern accent, a young officer trying to sound steadier than he feels",
+      "language": "English"
+    },
+    "pvt_a": {
+      "design": "American man about nineteen, light tenor, soft rural Southern accent",
+      "language": "English"
+    },
+    "pvt_b": {
+      "design": "American man about twenty-two, quick mid-range voice, New York City accent",
+      "language": "English"
+    },
+    "pvt_c": {
+      "design": "American man about twenty, husky baritone, flat Midwestern accent",
+      "language": "English"
+    },
+    "pvt_d": {
+      "design": "American man about twenty-four, low rough voice, Pennsylvania accent",
+      "language": "English"
+    },
+    "radio": {
+      "design": "American man in his early twenties, clear mid-range voice, clipped and practised at radio procedure",
+      "delivery": "Fast, level radio voice, slightly raised over background noise",
+      "language": "English"
+    },
+    "de_obs": {
+      "design": "German man in his thirties, low steady voice, standard German",
+      "language": "German"
+    }
+  },
   "sequence": [
     {
       "card": {
@@ -214,6 +256,39 @@
               }
             ]
           }
+        ],
+        "adr": [
+          {
+            "walla": true,
+            "at": 0.4,
+            "dur": 10.5,
+            "voices": [
+              "pvt_a",
+              "pvt_b",
+              "pvt_c",
+              "pvt_d"
+            ],
+            "lines": [
+              "Keep your rifle up!",
+              "Get to the obstacles!",
+              "Move, move!",
+              "Stay with me!",
+              "Don't stop in the water!",
+              "Go!"
+            ],
+            "delivery": "Shouting from waist-deep water, breathless, straining",
+            "fx": "distant",
+            "gain": -17
+          },
+          {
+            "voice": "sgt",
+            "at": 9.0,
+            "text": "Spread out! Don't bunch up!",
+            "delivery": "Shouting hard over gunfire and surf, hoarse, urgent",
+            "fx": "field",
+            "gain": -7,
+            "pan": -0.25
+          }
         ]
       }
     },
@@ -283,6 +358,47 @@
               }
             ]
           }
+        ],
+        "adr": [
+          {
+            "voice": "sgt",
+            "at": 0.6,
+            "text": "Keep moving! Get to the shingle!",
+            "delivery": "Bellowing over machine-gun fire, out of breath from running",
+            "fx": "field",
+            "gain": -8,
+            "pan": 0.2
+          },
+          {
+            "walla": true,
+            "at": 4.0,
+            "dur": 9.0,
+            "voices": [
+              "pvt_b",
+              "pvt_c",
+              "pvt_d",
+              "pvt_a"
+            ],
+            "lines": [
+              "Medic!",
+              "Keep going!",
+              "Get down, get down!",
+              "Up! Go!",
+              "Medic!"
+            ],
+            "delivery": "Desperate shout across open sand, frightened, far away",
+            "fx": "distant",
+            "gain": -19
+          },
+          {
+            "voice": "pvt_a",
+            "at": 12.6,
+            "text": "Come on, come on, keep low!",
+            "delivery": "Panting, scared, urging a buddy on while running",
+            "fx": "field",
+            "gain": -9,
+            "pan": -0.35
+          }
         ]
       }
     },
@@ -337,6 +453,18 @@
                 "pose": "crouch"
               }
             ]
+          }
+        ],
+        "adr": [
+          {
+            "voice": "de_obs",
+            "at": 6.6,
+            "text": "Da unten! Am Strand, links!",
+            "subtitle": "Down there! On the beach, left!",
+            "delivery": "Calling out sharply to a gun crew, tense",
+            "fx": "distant",
+            "gain": -14,
+            "pan": 0.3
           }
         ]
       }
@@ -430,6 +558,25 @@
               }
             ]
           }
+        ],
+        "adr": [
+          {
+            "voice": "lt",
+            "at": 0.2,
+            "text": "We can't stay here.",
+            "delivery": "Said low and close, shaken, trying to steady himself",
+            "fx": "muffled",
+            "gain": -12
+          },
+          {
+            "voice": "sgt",
+            "at": 10.3,
+            "text": "We can't stay here! Up!",
+            "delivery": "Shouting, rallying the men, voice cracking with effort",
+            "fx": "field",
+            "gain": -8,
+            "pan": -0.2
+          }
         ]
       }
     },
@@ -506,6 +653,17 @@
               }
             ]
           }
+        ],
+        "adr": [
+          {
+            "voice": "sgt",
+            "at": 11.3,
+            "text": "Step where I step. Watch for mines.",
+            "delivery": "Low, hoarse and deliberate, out of breath from climbing",
+            "fx": "field",
+            "gain": -9,
+            "pan": 0.15
+          }
         ]
       }
     },
@@ -571,6 +729,16 @@
                 "look": "draw_top"
               }
             ]
+          }
+        ],
+        "adr": [
+          {
+            "voice": "radio",
+            "at": 5.0,
+            "text": "We're on top of the bluff. Over.",
+            "fx": "radio",
+            "gain": -10,
+            "pan": 0.25
           }
         ]
       }
