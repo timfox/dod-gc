@@ -629,6 +629,8 @@ static void PlanBots( void )
 		if( target != last_target ) {
 			last_target = target;
 			BotNote( "target count (maxClients)", target, (int)gpGlobals->maxClients );
+			BotNote( "dod_bots as read (hard cap)", (int)CVAR_GET_FLOAT( "dod_bots" ), DOD_BOT_HARD_CAP );
+			BotNote( "humans (state slots)", humans, g_bot_slots );
 		}
 	}
 	if( bots > target )

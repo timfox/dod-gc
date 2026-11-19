@@ -53,5 +53,11 @@ void DodGC_HumanJoin( CBasePlayer *pPlayer, DodTeam team, DodClass player_class 
 
 /* Publishes the playermove_t layout for the engine's early mismatch check (called from GameDLLInit). */
 void DodGC_RegisterPmLayout( void );
+/* The player model name a side wears on this map ("us-inf", "brit-inf", "axis-para"...). */
+const char *DodGC_BodyModelForTeam( DodTeam team );
+/* Film actors (dod_film_actor.cpp): the film_cast commands and the cast's precache, from the
+ * gamerules constructor; moving the actors, from its Think. */
+void DodFilm_Init( void );
+void DodFilm_Think( void );
 
 #endif

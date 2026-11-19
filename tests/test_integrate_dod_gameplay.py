@@ -417,7 +417,8 @@ class WeaponHookIntegrationTest(unittest.TestCase):
 	def test_new_sources_are_copied_and_built(self):
 		source = SCRIPT.read_text()
 		for name in ("dod_weapons.c", "dod_weapons.h", "dod_weapon.cpp", "dod_weapon.h",
-				"dod_bots.c", "dod_bots.h", "dod_bot.cpp", "dod_bot.h"):
+				"dod_bots.c", "dod_bots.h", "dod_bot.cpp", "dod_bot.h",
+				"dod_film.c", "dod_film.h", "dod_film_actor.cpp"):
 			self.assertIn(f'"{name}"', source)
 		cmake = source.split('dlls / "CMakeLists.txt",')[1].split("wscript")[0]
 		self.assertIn("dod_weapon.cpp", cmake)
@@ -425,6 +426,8 @@ class WeaponHookIntegrationTest(unittest.TestCase):
 		self.assertIn("ant_glob('dod_bots.c')", source)
 		self.assertIn("dod_bots.c", cmake)
 		self.assertIn("dod_bot.cpp", cmake)
+		self.assertIn("ant_glob('dod_film.c')", source)
+		self.assertIn("dod_film_actor.cpp", cmake)
 
 
 class HudIntegrationTest(unittest.TestCase):

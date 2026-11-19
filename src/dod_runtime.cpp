@@ -381,6 +381,11 @@ static const char *DodGC_BodyForTeam( DodTeam team )
 	return NULL;
 }
 
+const char *DodGC_BodyModelForTeam( DodTeam team )
+{
+	return DodGC_BodyForTeam( team );
+}
+
 static void DodGC_ApplyBody( CBasePlayer *pPlayer )
 {
 	const char *body;
@@ -529,6 +534,7 @@ CHalfLifeDoD::CHalfLifeDoD()
 		Dod_SetParatroopers( paras & 1, paras & 2 );
 		ALERT( at_console, "DoD: paratroopers: Allies %s, Axis %s\n", paras & 1 ? "yes" : "no", paras & 2 ? "yes" : "no" );
 	}
+	DodFilm_Init();	/* after the country and paratroopers: they pick the actors' bodies */
 	Dod_ClearObjectives();
 	round_seconds = CVAR_GET_FLOAT( "mp_timelimit" ) * 60.0f;
 	if( round_seconds <= 0.0f )
@@ -1569,6 +1575,7 @@ void CHalfLifeDoD::Think( void )
 	CHalfLifeTeamplay::Think();
 	Dod_Think( gpGlobals->frametime );
 	DodBots_Think();
+	DodFilm_Think();
 	DodGC_SpectatorThink();
 	DodGC_UpdateMovement();
 	DodGC_ManageWeaponBoxes();

@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <string.h>
 
+/* covers: CHudDod::DrawKills  CHudDod::DrawVoice  CHudDod::DrawBoard  CHudDod::DrawRetail */
 #define MAX_EL 40
 
 typedef struct {
