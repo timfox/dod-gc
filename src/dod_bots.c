@@ -1112,7 +1112,7 @@ int Dod_NavSearchStep(DodNav *nav, int budget, float now, int *path, int max_pat
 			float cost, g;
 			if (nav->state[next] == 2)
 				continue;
-			if (nav->edge_blocked_count > 0 && nav->edge_blocked[e])
+			if (nav->edge_blocked_count > 0 && nav->edge_blocked[e] && !nav->ignore_blocked)
 				continue;
 			if (kind == DOD_NAV_JUMP) {
 				/* a jump link that climbs more than a jump (about 45 units, a crouch-jump 62) can never be taken: the bots stall under it */

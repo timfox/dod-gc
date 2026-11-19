@@ -149,7 +149,7 @@ typedef struct DodBotState {
 	int path_len, path_idx;		/* nodes planned, and the one being walked to */
 	int path_goal;			/* goal id the path was planned for */
 	float path_replan;		/* earliest time to plan again */
-	int plan_resume, plan_resume_goal;	/* graph searches of the current plan attempt already done in earlier frames, and for which goal */
+	int plan_resume, plan_resume_goal, plan_ignore_goal;	/* plan_ignore_goal: the objective for which the route may cross blocked edges */	/* graph searches of the current plan attempt already done in earlier frames, and for which goal */
 	float path_best, path_progress_time;	/* closest approach to the current node, and when it improved */
 	int nav_fails;
 	int ladder_dir;			/* +1 climbing up, -1 down, 0 not on a ladder */
@@ -1280,6 +1280,7 @@ static BOOL PlanPath( CBasePlayer *pBot, DodBotState *state )
 					continue;	/* tried in an earlier frame */
 				if( searches > DOD_BOT_PLAN_SEARCHES )
 					goto plan_failed;
+				g_nav.ignore_blocked = state->plan_ignore_goal == state->nav_id + 1;
 				if( !Dod_NavSearchBegin( &g_nav, starts[i], goals[j], pBot->entindex(), gpGlobals->time ) )
 				{
 					state->plan_resume = searches - 1;	/* another bot's search is in flight: wait, the old path (if any) keeps being followed */
@@ -1288,6 +1289,7 @@ static BOOL PlanPath( CBasePlayer *pBot, DodBotState *state )
 					return FALSE;
 				}
 				len = Dod_NavSearchStep( &g_nav, DOD_BOT_PLAN_NODE_BUDGET, gpGlobals->time, tmp, DOD_NAV_MAX_PATH );
+				g_nav.ignore_blocked = 0;
 				if( len == 0 )
 				{
 					state->plan_resume = searches - 1;	/* carry on with this very search next frame */
@@ -1330,6 +1332,14 @@ static BOOL PlanPath( CBasePlayer *pBot, DodBotState *state )
 	}
 plan_failed:
 	state->plan_resume = 0;
+	g_nav.ignore_blocked = 0;
+	if( g_nav.edge_blocked_count > 0 && state->plan_ignore_goal != state->nav_id + 1 )
+	{
+		/* no route round the blocked edges (a solid toggle wall cuts the way): plan through them, the bot walks up to the wall and breaches it */
+		state->plan_ignore_goal = state->nav_id + 1;
+		state->path_replan = gpGlobals->time + 0.03f;
+		return FALSE;
+	}
 	{
 		static int fail_logs;
 		if( fail_logs < 60 )
