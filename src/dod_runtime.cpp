@@ -1253,23 +1253,30 @@ static void DodGC_SpectatorThink( void )
 		CBasePlayer *pSpec = (CBasePlayer *)UTIL_PlayerByIndex( i );
 		const int slot = i <= DOD_SPEC_SLOTS ? i : 0;
 		int count, mode, pick;
-		if( i <= DOD_MAX_PLAYERS && pSpec && pSpec->IsPlayer() && !DodBots_IsBot( pSpec ) && !g_dod_joined[i] ) {
+		/* dod_gc_autojoin "0 ...": a spectator. The engine's own team overlay auto-confirms a join after a few seconds, so wait
+		 * until the human is playing and then turn them into an observer once (the director follows the bots). */
+		if( i <= DOD_MAX_PLAYERS && pSpec && pSpec->IsPlayer() && !DodBots_IsBot( pSpec ) && !g_autojoin_spec_done[i] ) {
 			const char *aj = CVAR_GET_STRING( "dod_gc_autojoin" );
-			int aj_team = 0, aj_class = 0, aj_bots = -1;
+			int aj_team = -1, aj_class = 0, aj_bots = -1;
 			const int aj_n = ( aj && aj[0] ) ? sscanf( aj, "%d %d %d", &aj_team, &aj_class, &aj_bots ) : 0;
-			if( aj_n >= 2 && aj_team == 0 && !g_autojoin_spec_done[i] ) {
-				/* team 0: join as a spectator (the director follows the bots), for a bot-match clip */
+			if( aj_n >= 2 && aj_team == 0 ) {
 				if( g_autojoin_seen[i] == 0.0f ) {
 					g_autojoin_seen[i] = gpGlobals->time;
 					if( aj_n >= 3 && aj_bots >= 0 )
 						CVAR_SET_FLOAT( "dod_bots", (float)aj_bots );
-					CVAR_SET_FLOAT( "dod_spectate", 1.0f );
-				} else if( gpGlobals->time - g_autojoin_seen[i] > 2.0f ) {
-					g_autojoin_seen[i] = 0.0f;
-					g_spec_join_pending[i] = TRUE;
+				} else if( gpGlobals->time - g_autojoin_seen[i] > 8.0f && !pSpec->IsObserver() && g_dod_joined[i] ) {
 					g_autojoin_spec_done[i] = TRUE;
+					g_autojoin_seen[i] = 0.0f;
+					CVAR_SET_FLOAT( "dod_spectate", 1.0f );
+					DodGC_JoinSpectator( pSpec );
 				}
-			} else if( aj_n >= 2 && ( aj_team == DOD_TEAM_ALLIES || aj_team == DOD_TEAM_AXIS ) ) {
+			}
+		}
+		if( i <= DOD_MAX_PLAYERS && pSpec && pSpec->IsPlayer() && !DodBots_IsBot( pSpec ) && !g_dod_joined[i] ) {
+			const char *aj = CVAR_GET_STRING( "dod_gc_autojoin" );
+			int aj_team = 0, aj_class = 0, aj_bots = -1;
+			const int aj_n = ( aj && aj[0] ) ? sscanf( aj, "%d %d %d", &aj_team, &aj_class, &aj_bots ) : 0;
+			if( aj_n >= 2 && ( aj_team == DOD_TEAM_ALLIES || aj_team == DOD_TEAM_AXIS ) ) {
 				if( g_autojoin_seen[i] == 0.0f ) {
 					g_autojoin_seen[i] = gpGlobals->time;
 					/* optional third number: the bot count, set here because a cfg line for dod_bots is overwritten when
