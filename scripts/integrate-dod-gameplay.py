@@ -775,11 +775,14 @@ def main() -> int:
 		'\t\t\treturn new CHalfLifeTeamplay;\n',
 	)
 	# The worldrender listen route skips game.cfg, so mp_teamplay stays 0 and the
-	# game would build vanilla deathmatch rules (no CHalfLifeDoD, no bots).
+	# game would build vanilla deathmatch rules (no CHalfLifeDoD, no bots). mp_teamlist stays the
+	# stock "hgrunt;scientist" too, so every player's side read as no side and everybody (bots and
+	# the human) spawned at the map origin: set both.
 	replace_once(
 		dlls / "gamerules.cpp",
 		'\tif( !gpGlobals->deathmatch )\n\t{\n\t\t// generic half-life\n',
-		'\tif( !stricmp( gameleaf, "dod" ) && gpGlobals->deathmatch )\n\t\tCVAR_SET_FLOAT( "mp_teamplay", 1 );\n'
+		'\tif( !stricmp( gameleaf, "dod" ) && gpGlobals->deathmatch )\n\t{\n\t\tCVAR_SET_FLOAT( "mp_teamplay", 1 );\n'
+		'\t\tCVAR_SET_STRING( "mp_teamlist", "Allies;Axis" );\n\t}\n'
 		'\tif( !gpGlobals->deathmatch )\n\t{\n\t\t// generic half-life\n',
 	)
 	# The DoD runtime defines these classes; drop the hlsdk stubs so they do not collide.
