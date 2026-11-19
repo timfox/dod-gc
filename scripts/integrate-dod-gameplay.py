@@ -300,6 +300,16 @@ def integrate_usercmd(dlls: Path) -> None:
 		'\tpl->random_seed = random_seed;\n\t{\n\t\textern void DodGC_UserCmd( CBasePlayer *pPlayer, const struct usercmd_s *cmd );\n\t\tDodGC_UserCmd( pl, cmd );\n\t}\n}\n')
 
 
+def integrate_film_actors(dlls: Path) -> None:
+	"""Film actors (dod_film_actor.cpp) are always sent to the client. The server picks what to send by the PVS of the
+	player's own origin, but during cine_play the view is the film camera, often far across the map, so a soldier in the
+	shot was never in that PVS and never reached the screen. There are at most 12 of them, only while a film plays."""
+	replace_once(dlls / "client.cpp",
+		'\t\t\t// env_sky is visible always\n\t\t\tif( !FClassnameIs( ent, "env_sky" ) )\n',
+		'\t\t\t// env_sky is visible always, and so are film actors (seen from the film camera, not the player)\n'
+		'\t\t\tif( !FClassnameIs( ent, "env_sky" ) && !FClassnameIs( ent, "film_actor" ) )\n')
+
+
 def integrate_doddetect(dlls: Path) -> None:
 	"""info_doddetect is linked to a plain point entity in the SDK; the game's CDoDDetect (dod_runtime.cpp) takes the class name to read the
 	respawn factors, so the SDK's link line goes."""
@@ -809,6 +819,7 @@ def main() -> int:
 	integrate_default_items(dlls)
 	integrate_voice_menu(dlls)
 	integrate_usercmd(dlls)
+	integrate_film_actors(dlls)
 	integrate_doddetect(dlls)
 	integrate_death_anims(dlls)
 	integrate_retail_sounds(args.hlsdk_dir)

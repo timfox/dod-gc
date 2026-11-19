@@ -182,6 +182,7 @@ static void DodFilm_CastCommand( void )
 		ent->pev->movetype = MOVETYPE_NONE;
 		ent->pev->solid = SOLID_NOT;
 		ent->pev->takedamage = DAMAGE_NO;
+		ent->pev->iuser4 = DODGC_FILM_ACTOR_TAG;
 		SET_MODEL( ent->edict(), model );
 		const char *body = DodGC_BodyModelForTeam( (DodTeam)a->team );
 		DodClass cls = a->player_class > DOD_CLASS_NONE ? (DodClass)a->player_class : DOD_CLASS_RIFLEMAN;
