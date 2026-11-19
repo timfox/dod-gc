@@ -34,6 +34,8 @@ usage: scripts/build-lean-iso.sh [options]
   --dumpeye "x y z [pitch] [yaw]"
                    CapFaces camera override in gamecube.cfg (spawn atlas)
   --tas NAME       stage dod/tas/NAME.tas + gamecube.cfg tas NAME (pad replay)
+  --film DIR       stage a film plan (tools/film/film.py plan): DIR/cine/*.cam onto the disc and
+                   DIR/film-<map>.cfg into listenserver.cfg, so the listen map plays its shots; needs --listen
   --skip-stage     reuse existing lean cache trees
   -h, --help
 
@@ -52,6 +54,7 @@ WORLD_RENDER_EXPLICIT=0
 DUMPFRAMES=0
 DUMPEYE=""
 TAS=""
+FILM=""
 MAP=""
 SMOKE=""
 LISTEN=""
@@ -116,6 +119,11 @@ while [[ $# -gt 0 ]]; do
 			[[ -n "$CONNECT" ]] || { echo "error: --connect needs ADDR" >&2; exit 2; }
 			shift
 			;;
+		--film)
+			FILM="${2:-}"
+			[[ -d "$FILM/cine" ]] || { echo "error: --film needs a plan directory with cine/ (tools/film/film.py plan)" >&2; exit 2; }
+			shift
+			;;
 		--skip-stage) SKIP_STAGE=1 ;;
 		-h|--help) usage; exit 0 ;;
 		*) echo "unknown option: $1" >&2; usage >&2; exit 2 ;;
@@ -152,6 +160,9 @@ if [[ -n "$NET_IP" && $WANT_NET -eq 0 ]]; then
 	WANT_NET=1
 fi
 
+if [[ -n "$FILM" && -z "$LISTEN" ]]; then
+	echo "error: --film requires --listen MAP" >&2; exit 2
+fi
 if (( HEADLESS )) && [[ -z "$LISTEN" ]]; then
 	echo "error: --headless requires --listen" >&2; exit 2
 fi
@@ -203,6 +214,25 @@ LEAN="${DODGC_LEAN_DOD:-$XASH3D_GC_ISO_CACHE/dod-menu-min}"
 VMIN="${DODGC_LEAN_VALVE:-$XASH3D_GC_ISO_CACHE/valve-menu-min}"
 [[ -d "$LEAN" ]] || { echo "error: lean DoD tree missing: $LEAN" >&2; exit 1; }
 [[ -d "$VMIN" ]] || { echo "error: lean valve tree missing: $VMIN" >&2; exit 1; }
+
+# Film plan: camera paths under cine/ and a marked block at the end of listenserver.cfg. Both are
+# cleared on every build, so a disc built without --film carries neither.
+FILM_BEGIN="// >>> film block (build-lean-iso.sh --film)"
+FILM_END="// <<< film block"
+rm -rf "$LEAN/cine"
+if [[ -f "$LEAN/listenserver.cfg" ]]; then
+	awk -v b="$FILM_BEGIN" -v e="$FILM_END" '$0==b{skip=1;next} $0==e{skip=0;next} !skip' \
+		"$LEAN/listenserver.cfg" > "$LEAN/listenserver.cfg.tmp"
+	mv -f "$LEAN/listenserver.cfg.tmp" "$LEAN/listenserver.cfg"
+fi
+if [[ -n "$FILM" ]]; then
+	film_cfg="$FILM/film-$(echo "$LISTEN" | tr '[:upper:]' '[:lower:]').cfg"
+	[[ -f "$film_cfg" ]] || { echo "error: $film_cfg missing: the plan has no shots on $LISTEN" >&2; exit 2; }
+	mkdir -p "$LEAN/cine"
+	cp -f "$FILM"/cine/*.cam "$LEAN/cine/"
+	{ echo "$FILM_BEGIN"; cat "$film_cfg"; echo "$FILM_END"; } >> "$LEAN/listenserver.cfg"
+	echo "==> film: $(ls "$LEAN/cine" | wc -l) camera path(s), session $(basename "$film_cfg")"
+fi
 
 # What this disc was built from: the short form goes on the disc (the engine prints it in the boot
 # log), the full report next to the other artifacts.

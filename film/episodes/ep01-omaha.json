@@ -1,0 +1,84 @@
+{
+  "id": "ep01-omaha",
+  "title": "Omaha: The Morning of 6 June 1944",
+  "logline": "Sample episode for the FilmGc documentary format: the D-Day landing at Omaha Beach, told over scenes rebuilt in Day of Defeat's dod_charlie.",
+  "fps": 30,
+  "aspect": "2.39",
+  "grade": "archival",
+  "sources": [
+    "U.S. Army Center of Military History, Omaha Beachhead (6 June-13 June 1944), American Forces in Action series (1945), CMH Pub 100-11",
+    "American Battle Monuments Commission, Normandy American Cemetery (abmc.gov)",
+    "The National WWII Museum, New Orleans: D-Day and the Normandy campaign overview (nationalww2museum.org)"
+  ],
+  "anchors": {
+    "dod_charlie": {
+      "sea": [-352, -3420, -250],
+      "waterline": [-352, -3168],
+      "beach_mid": [-400, -1800],
+      "shingle": [0, -384],
+      "draw_top": [224, 960],
+      "bunker_w": [-1440, 640],
+      "bunker_e": [1376, 640]
+    }
+  },
+  "server_cmds": {
+    "dod_charlie": []
+  },
+  "sequence": [
+    {"card": {"id": "title", "dur": 7, "style": "title",
+      "kicker": "FilmGc documentary · sample episode",
+      "title": "Omaha",
+      "body": "Normandy, the morning of 6 June 1944",
+      "chapter": "Title"}},
+    {"card": {"id": "note", "dur": 8, "style": "note",
+      "title": "About these pictures",
+      "body": "The scenes in this film are rebuilt in the game Day of Defeat. They are recreations, not the real ground and not archive footage. The film is offered in memory of those who were there."}},
+    {"shot": {"id": "s01_sea", "map": "dod_charlie", "chapter": "The landing",
+      "note": "Establishing crane: from just above the water, rise to show the beach and the bluffs beyond.",
+      "lower_third": "Omaha Beach\nNormandy · 6 June 1944",
+      "camera": {"type": "crane", "at": "sea", "target": "draw_top", "from_height": 40, "to_height": 520, "duration": 19, "fov": 72, "drift": "waterline"},
+      "narration": [
+        {"text": "Before dawn on the sixth of June 1944, the largest seaborne invasion in history was under way off the coast of Normandy."},
+        {"text": "Allied troops would land on five beaches, code-named Utah, Omaha, Gold, Juno and Sword."}
+      ]}},
+    {"shot": {"id": "s02_beach", "map": "dod_charlie",
+      "note": "Low dolly from the waterline up the open sand toward the shingle, the ground the first waves had to cross.",
+      "camera": {"type": "dolly", "start": "waterline", "end": "shingle", "height": 24, "duration": 19, "fov": 68, "pitch": 2},
+      "narration": [
+        {"text": "Omaha, about eight kilometres of sand beneath steep bluffs, was assigned to the United States 1st and 29th Infantry Divisions."},
+        {"text": "The first assault waves came ashore at around half past six in the morning, into heavy fire."}
+      ]}},
+    {"shot": {"id": "s03_shingle", "map": "dod_charlie",
+      "note": "Locked off low at the shingle, looking up at the bluffs; a slow push in.",
+      "camera": {"type": "still", "eye": "shingle", "target": "draw_top", "height": 6, "duration": 19, "fov": 66, "fov_end": 52},
+      "narration": [
+        {"text": "Rough seas, currents and smoke pushed many landing craft away from their planned sectors, and much of the supporting armour never reached the shore."},
+        {"text": "From the bluffs, German positions overlooked the whole length of the beach."}
+      ]}},
+    {"shot": {"id": "s04_draw", "map": "dod_charlie", "chapter": "Up the bluffs",
+      "lower_third": "The bluffs\nPaths and valleys led off the beach",
+      "note": "Dolly up the route from the shingle to the top of the bluff, following the ground.",
+      "camera": {"type": "dolly", "start": "shingle", "end": "draw_top", "height": 40, "duration": 17, "fov": 70, "pitch": -4},
+      "narration": [
+        {"text": "By mid-morning, small groups, often led by junior officers and sergeants, had begun to work their way up the bluffs between the strongpoints."},
+        {"text": "One by one, the defences above the beach were taken."}
+      ]}},
+    {"shot": {"id": "s05_bluff", "map": "dod_charlie", "chapter": "Nightfall",
+      "note": "Slow orbit high over the bluff top, ending on the view back toward the sea.",
+      "camera": {"type": "orbit", "center": "draw_top", "radius": 520, "height": 260, "start_deg": 20, "end_deg": 95, "duration": 16, "fov": 62},
+      "narration": [
+        {"text": "By nightfall the Americans held a beachhead only about two kilometres deep."},
+        {"text": "It had cost them an estimated two thousand four hundred casualties, the heaviest of any D-Day beach."}
+      ]}},
+    {"shot": {"id": "s06_sea_view", "map": "dod_charlie",
+      "note": "From high on the bluff, look out over the beach to the sea; slow pull out, then hold.",
+      "camera": {"type": "still", "eye": "draw_top", "target": "sea", "height": 180, "duration": 15, "fov": 60, "fov_end": 72},
+      "narration": [
+        {"text": "Today the Normandy American Cemetery at Colleville-sur-Mer stands on the bluff above Omaha Beach."},
+        {"text": "More than nine thousand Americans are buried there."}
+      ]}},
+    {"card": {"id": "end", "dur": 9, "style": "note",
+      "title": "In memory of all who served and fell in Normandy",
+      "footer": "Scenes rendered with xash3d-gc using Day of Defeat assets (Valve) from a legally owned copy. Facts: U.S. Army Center of Military History, Omaha Beachhead (1945); American Battle Monuments Commission; The National WWII Museum."}}
+  ]
+}
