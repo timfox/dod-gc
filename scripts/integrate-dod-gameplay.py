@@ -300,6 +300,16 @@ def integrate_usercmd(dlls: Path) -> None:
 		'\tpl->random_seed = random_seed;\n\t{\n\t\textern void DodGC_UserCmd( CBasePlayer *pPlayer, const struct usercmd_s *cmd );\n\t\tDodGC_UserCmd( pl, cmd );\n\t}\n}\n')
 
 
+def integrate_film_actors(dlls: Path) -> None:
+	"""Film actors (dod_film_actor.cpp) are always sent to the client. The server picks what to send by the PVS of the
+	player's own origin, but during cine_play the view is the film camera, often far across the map, so a soldier in the
+	shot was never in that PVS and never reached the screen. There are at most 12 of them, only while a film plays."""
+	replace_once(dlls / "client.cpp",
+		'\t\t\t// env_sky is visible always\n\t\t\tif( !FClassnameIs( ent, "env_sky" ) )\n',
+		'\t\t\t// env_sky is visible always, and so are film actors (seen from the film camera, not the player)\n'
+		'\t\t\tif( !FClassnameIs( ent, "env_sky" ) && !FClassnameIs( ent, "film_actor" ) )\n')
+
+
 def integrate_doddetect(dlls: Path) -> None:
 	"""info_doddetect is linked to a plain point entity in the SDK; the game's CDoDDetect (dod_runtime.cpp) takes the class name to read the
 	respawn factors, so the SDK's link line goes."""
@@ -637,8 +647,12 @@ def integrate_spectator_camera(client: Path) -> None:
 		'\t\tpmtrace_t *tr = gEngfuncs.PM_TraceLine( from, org, PM_TRACELINE_PHYSENTSONLY, 2, ignore );\n'
 		'\t\tcl_entity_t *hit;\n'
 		'\n'
+		'\t\tstatic int s_calls, s_blocked;\n'
+		'\t\tif( ++s_calls % 600 == 1 )\n'
+		'\t\t\tgEngfuncs.Con_Printf( "DODCAM clip calls=%d blocked=%d frac=%.2f contents=%d\\n", s_calls, s_blocked, tr->fraction, gEngfuncs.PM_PointContents( org, NULL ) );\n'
 		'\t\tif( tr->fraction >= 1.0f )\n'
 		'\t\t\treturn;\n'
+		'\t\ts_blocked++;\n'
 		'\t\thit = tr->ent > 0 ? gEngfuncs.GetEntityByIndex( PM_GetPhysEntInfo( tr->ent ) ) : NULL;\n'
 		'\t\tif( !hit || ( hit->curstate.solid == SOLID_BSP && !hit->player ) || tr->ent <= 0 )\n'
 		'\t\t{\n'
@@ -855,6 +869,7 @@ def main() -> int:
 	integrate_default_items(dlls)
 	integrate_voice_menu(dlls)
 	integrate_usercmd(dlls)
+	integrate_film_actors(dlls)
 	integrate_doddetect(dlls)
 	integrate_pm_layout_hook(dlls)
 	integrate_studio_anim_pack(args.hlsdk_dir, args.engine_dir)

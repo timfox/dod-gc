@@ -26,6 +26,10 @@ extern "C" {
 #define DOD_FILM_MAX_KEYS 16
 #define DOD_FILM_NAME 32
 #define DOD_FILM_YAW_TRAVEL 1000.0f	/* yaw "-": face the direction of travel */
+/* Set in an actor's pev->iuser4. The GameCube engine draws studio props on its lean listen
+ * route through a model allowlist that leaves out player bodies; this tag admits the actors
+ * and puts them ahead of the map's props (xash3d-gc engine/client/cl_frame.c, GC_FILM_ACTOR_TAG). */
+#define DODGC_FILM_ACTOR_TAG 0x46494C4D	/* 'FILM' */
 
 typedef enum {
 	DOD_POSE_STAND = 0,

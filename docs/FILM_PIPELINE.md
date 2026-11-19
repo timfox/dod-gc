@@ -24,7 +24,8 @@ film/episodes/<ep>.json ──plan──▶ out/film/<ep>/cine/*.cam + film-<map
 | `tools/film/foley.py` | Foley: the game's own sounds placed under each shot (below). |
 | `tools/film/stamp.py` | Reads the engine's frame stamp off captured images. |
 | `scripts/film-capture.sh` | Plan, build a listen disc per map with `build-lean-iso.sh --film`, run Dolphin with frame dumping until the engine logs `FILM SESSION DONE`, then assemble. |
-| `film/episodes/` | Episodes. `ep01-omaha.json` is the sample: Omaha Beach on 6 June 1944, six shots on `dod_charlie`. |
+| `film/episodes/` | Episodes: `ep01-omaha` (dod_charlie), `ep02-salerno` (dod_avalanche), `ep03-lafiere` (dod_merderet), each with a fact check. `film/SERIES.md` matches the other maps to events. |
+| `tools/film/scout.py` | Renders the real map (BSP, WAD textures, lightmaps) from any camera on the host, for framing shots before capture (below). |
 
 ## Episode format
 
@@ -105,7 +106,8 @@ bot, and a shot can have up to 12 actors.
   precache), and each shot's alias runs `film_cast <shot> <preroll>` before `cine_play`, or `film_cast_clear`
   for a shot with nobody in it. Boards draw the actors where they are at each panel (crouched and prone ones
   low) and the animatic shows them as dots.
-- Pose sequences are looked up by name in the retail model, best guess first; the game logs
+- Pose sequences are looked up by name in the retail model (DoD: dod_walk, dod_jog, dod_crawl for the crouched
+  walk, dod_crouch_idle, prone_idle, prone_forward, die_simple, stand/crouch_rifle_aim); the game logs
   `FILM ACTOR <id> pose <pose>: sequence N (<name>)` so the first capture shows which ones it found.
 
 ## Voice-over and ADR
@@ -164,6 +166,25 @@ tools/film/film.py animatic film/episodes/ep01-omaha.json     # the animatic, no
 
 `--backend placeholder` renders speech-shaped noise of the right length instead, to check timing and the
 mix with no GPU. The models download from Hugging Face on first use (about 9 GB for both).
+
+## Scouting the real map
+
+`tools/film/scout.py` draws what a camera sees in the actual level, on the host, from the map's BSP and its
+WAD textures with the baked lightmaps: about a fifth of a second a frame with numba installed. Use it to
+place cameras before anything goes to Dolphin; the waypoint sketch in the boards cannot show walls, roofs or
+rubble.
+
+```
+export FILM_BSP_DIR=content/dod/maps FILM_WAD_DIR=content/dod      # the defaults on the capture machine
+tools/film/scout.py top  dod_avalanche -o top.png                 # overhead, grid every 512 units, flags and spawns
+tools/film/scout.py view dod_avalanche 220 260 -60 --look -300 -250 -150 --fov 60 -o v.png
+tools/film/scout.py shots film/episodes/ep02-salerno.json         # A, middle and B frame of every shot + contact.jpg
+```
+
+Shot frames mark each actor with a box at his place at that moment (grey when a wall hides his feet). It
+draws brush geometry only: no studio models (trees placed as models, guns, vehicles), sprites, decals, fog or
+sky box, and masked textures (fences, foliage brushes) are cut out at palette index 255. Brush entities
+rendered at zero amount (clip walls, light shafts) are left out, as the game does.
 
 ## Foley from the game
 
