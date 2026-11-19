@@ -26,6 +26,10 @@ static cvar_t dod_rounds = { "dod_rounds", "2", FCVAR_SERVER };
  * to watch the bots fight. dod_spec_auto 1: a director moves the camera between
  * the bots by itself (any manual target pick pauses it for a while). */
 static cvar_t dod_spectate = { "dod_spectate", "0", FCVAR_SERVER };
+/* dod_gc_join "<seconds> <team> <class>" (debug, off when empty; needs dod_spectate 1): the local human, spectating the bots, takes that side
+ * (1 Allies, 2 Axis) and class (1 rifleman .. 6 rocket) once the map has run that many seconds: a human joining a round in progress. */
+static cvar_t dod_gc_join = { "dod_gc_join", "", FCVAR_SERVER };
+static BOOL g_join_done[DOD_MAX_PLAYERS + 1];
 static cvar_t dod_spec_auto = { "dod_spec_auto", "1", FCVAR_SERVER };
 /* Team body models (models/player/<name>/<name>.mdl, split onto the disc as
  * gc_studio/<name>.mdl). A map cfg can switch to us-para/axis-para/brit-inf. */
@@ -481,6 +485,7 @@ CHalfLifeDoD::CHalfLifeDoD()
 		Dod_CvarRegisterKeep( &dod_rounds );
 		Dod_CvarRegisterKeep( &dod_spectate );
 		Dod_CvarRegisterKeep( &dod_spec_auto );
+		Dod_CvarRegisterKeep( &dod_gc_join );
 		Dod_CvarRegisterKeep( &dod_paras );
 		for( int k = 0; k < DOD_LIMIT_CVARS; k++ ) {
 			g_limit_cvar_storage[k].name = g_limit_cvars[k].name;
@@ -535,6 +540,7 @@ CHalfLifeDoD::CHalfLifeDoD()
 	memset( g_spec_last_target, 0, sizeof( g_spec_last_target ) );
 	g_spec_next_think = 0.0f;
 	memset( g_spec_join_pending, 0, sizeof( g_spec_join_pending ) );
+	memset( g_join_done, 0, sizeof( g_join_done ) );
 }
 
 /* The first open class for a side, starting at the one asked for: a bot's pick when limits turn its choice away. */
@@ -1245,6 +1251,17 @@ static void DodGC_SpectatorThink( void )
 		}
 		if( !pSpec || !pSpec->IsPlayer() || !pSpec->IsObserver() || DodBots_IsBot( pSpec ) )
 			continue;
+		if( i <= DOD_MAX_PLAYERS && !g_join_done[i] && CVAR_GET_STRING( "dod_gc_join" )[0] ) {
+			float delay = 0.0f;
+			int team = 0, cls = 0;
+			if( sscanf( CVAR_GET_STRING( "dod_gc_join" ), "%f %d %d", &delay, &team, &cls ) >= 2 && gpGlobals->time >= delay ) {
+				g_join_done[i] = TRUE;
+				ALERT( at_console, "DoD join: the human joins team %d class %d at game time %.1f\n", team, cls, gpGlobals->time );
+				DodGC_HumanJoin( pSpec, team == 2 ? DOD_TEAM_AXIS : DOD_TEAM_ALLIES, (DodClass)( cls >= 1 && cls <= 6 ? cls : 1 ) );
+				ALERT( at_console, "DoD join: human spawned team %s alive %d at %.0f,%.0f,%.0f\n", pSpec->m_szTeamName, (int)pSpec->IsAlive(), pSpec->pev->origin.x, pSpec->pev->origin.y, pSpec->pev->origin.z );
+				continue;
+			}
+		}
 		if( slot && ( pSpec->pev->button & ( IN_ATTACK | IN_ATTACK2 | IN_JUMP ) ) )
 			g_spec_hold_until[slot] = gpGlobals->time + DOD_SPEC_MANUAL_HOLD;
 		mode = pSpec->pev->iuser1;
