@@ -301,20 +301,16 @@ static void DodFilm_CastCommand( void )
 		ALERT( at_console, "FILM CAST %s: no %s, no actors\n", g_film_shot, path );
 		return;
 	}
-	/* LOAD_FILE_FOR_ME null-terminates, but the parser should not trust that. A static
-	 * buffer, not the heap: a failed allocation used to drop the whole cast silently. */
-	static char copy[32768];
-	if( length <= 0 || length >= (int)sizeof( copy ) ) {
-		ALERT( at_console, "FILM CAST %s: %s is %d bytes (the limit is %d), no actors\n", g_film_shot, path,
-			length, (int)sizeof( copy ) - 1 );
+	/* Parsed in place: LOAD_FILE_FOR_ME allocates length + 1 and null-terminates. No copy
+	 * buffer: a static 32 KB one cost the GameCube enough MEM1 that later config reads failed. */
+	if( length <= 0 || text[length] != '\0' ) {
+		ALERT( at_console, "FILM CAST %s: %s is %d bytes and not terminated, no actors\n", g_film_shot, path, length );
 		FREE_FILE( text );
 		return;
 	}
-	memcpy( copy, text, (size_t)length );
-	copy[length] = '\0';
-	FREE_FILE( text );
 	ALERT( at_console, "FILM CAST %s: read %s, %d bytes\n", g_film_shot, path, length );
-	int count = DodFilm_ParseCast( &g_film_cast, copy, err, sizeof( err ) );
+	int count = DodFilm_ParseCast( &g_film_cast, (const char *)text, err, sizeof( err ) );
+	FREE_FILE( text );
 	if( count < 0 ) {
 		ALERT( at_console, "FILM CAST %s: %s: %s\n", g_film_shot, path, err );
 		memset( &g_film_cast, 0, sizeof( g_film_cast ) );
