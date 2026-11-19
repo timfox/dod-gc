@@ -2407,7 +2407,7 @@ static void RunBot( int index, CBasePlayer *pBot )
 	const float dt = gpGlobals->frametime > 0.0f ? gpGlobals->frametime : 0.016f;
 	int msec_value = (int)( dt * 1000.0f );
 	if( msec_value < 1 ) msec_value = 1;
-	if( msec_value > 100 ) msec_value = 100;
+	if( msec_value > 250 ) msec_value = 250;	/* was 100: at 250 ms frames a bot moved 40% of the way each frame, so it crawled and the stuck timers fired on it; the server splits long commands itself */
 	const byte msec = (byte)msec_value;
 	/* pmove clamps to pev->maxspeed; the engine leaves it 0 on some builds, which froze the bots
 	 * in place (fwd=220 commanded, velocity 0). Give the bot a walking speed of its own. */
