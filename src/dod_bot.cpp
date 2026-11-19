@@ -106,7 +106,7 @@ static cvar_t dod_bots_online = { "dod_bots_online", "0", FCVAR_SERVER };
 static cvar_t dod_bot_stage = { "dod_bot_stage", "0", FCVAR_SERVER };
 
 /* The most bots ever; the free slots are the real limit. */
-#define DOD_BOT_HARD_CAP 7
+#define DOD_BOT_HARD_CAP 12
 
 /* Free edicts that must remain before another bot is added (see PlanBots). */
 #define DOD_BOT_EDICT_RESERVE 22
@@ -204,7 +204,7 @@ typedef struct DodBotState {
  * map change and when the last bot leaves; if the heap cannot give it, no bot
  * is added rather than failing later. */
 #if defined( __GAMECUBE__ )
-#define DOD_BOT_MEM_BUDGET 6144
+#define DOD_BOT_MEM_BUDGET 8192
 #else
 #define DOD_BOT_MEM_BUDGET 8192
 #endif
