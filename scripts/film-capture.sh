@@ -114,7 +114,7 @@ OSREPORT = True
 Verbosity = 3
 WriteToFile = True
 INI
-	dodgc_pkill_own_dolphin "${XDG_RUNTIME_DIR:-/tmp}/dodgc-film-"
+	dodgc_pkill_own_dolphin "$USER_DIR"  # only this run's Dolphin: another capture may be running
 	set +e
 	"$DOLPHIN" -u "$USER_DIR" -e "$ISO" >"$LOG" 2>&1 &
 	DPID=$!
