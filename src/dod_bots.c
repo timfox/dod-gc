@@ -1087,6 +1087,14 @@ int Dod_NavPath(DodNav *nav, int from, int to, int *path, int max_path)
 				continue;
 			if (nav->edge_blocked_count > 0 && nav->edge_blocked[e])
 				continue;
+			if (kind == DOD_NAV_JUMP) {
+				/* a jump link that climbs more than a jump (about 45 units, a crouch-jump 62) can never be taken: the bots stall under it */
+				float ax, ay, az, bx, by, bz;
+				Dod_NavNodePos(nav, cur, &ax, &ay, &az);
+				Dod_NavNodePos(nav, next, &bx, &by, &bz);
+				if (bz - az > 56.0f)
+					continue;
+			}
 			cost = nav_dist(nav, cur, next) + 1.0f;
 			if (kind == DOD_NAV_JUMP)
 				cost += 64.0f;
