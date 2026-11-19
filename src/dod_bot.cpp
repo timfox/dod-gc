@@ -244,7 +244,7 @@ static void FreeNav( void )
 /* A solid func_wall_toggle across the way (charlie's shingle walls: the Allies are meant to blow them with satchels at the
  * capture areas, which bots do not do). A bot stuck on one for DOD_BOT_BREACH_DELAY seconds breaches it, as if a satchel went off:
  * the wall's own targetname is fired, which toggles it away like the map's logic would. */
-#define DOD_BOT_BREACH_DELAY 15.0f
+#define DOD_BOT_BREACH_DELAY 6.0f
 
 static void BreachWall( CBasePlayer *pBot, edict_t *wall )
 {
@@ -2306,6 +2306,7 @@ static void RunBot( int index, CBasePlayer *pBot )
 	{
 		/* a mate died here: the team now believes the enemy is near (the killer is not named, so it is a weak lead) */
 		const float dp[3] = { pBot->pev->origin.x, pBot->pev->origin.y, pBot->pev->origin.z };
+		ALERT( at_console, "DoD death: %s (team %d) at %.0f,%.0f,%.0f, game time %.1f\n", STRING( pBot->pev->netname ), (int)TeamOf( pBot ), dp[0], dp[1], dp[2], gpGlobals->time );
 		Dod_IntelReport( &g_intel, TeamOf( pBot ), dp, DOD_INTEL_DEATH, pBot->entindex(), gpGlobals->time, 20.0f );
 	}
 	state->was_alive = pBot->IsAlive();
