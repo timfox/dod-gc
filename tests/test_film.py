@@ -10,7 +10,7 @@ from PIL import Image
 import sys
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from tools.film import campath, film, shots, stamp  # noqa: E402
+from tools.film import actors, campath, film, shots, stamp  # noqa: E402
 
 # The same path xash3d-gc tests/fixtures/cine_path_test.c samples; the numbers below match it.
 DOLLY = """# a test dolly
@@ -175,6 +175,119 @@ class GrammarTests(unittest.TestCase):
         lower = sum(1 for x in range(0, 400, 4) for y in range(110, 200, 4) if im.getpixel((x, y))[0] < 200)
         upper = sum(1 for x in range(0, 400, 4) for y in range(0, 60, 4) if im.getpixel((x, y))[0] < 200)
         self.assertGreater(lower, upper)
+
+
+SAMPLER_C = r"""
+#include "dod_film.h"
+#include <stdio.h>
+#include <stdlib.h>
+int main(int argc, char **argv)
+{
+	static char text[65536];
+	static DodFilmCast cast;
+	char err[96];
+	FILE *f = fopen(argv[1], "rb");
+	size_t n = fread(text, 1, sizeof(text) - 1, f);
+	int i, k;
+	fclose(f);
+	text[n] = 0;
+	if (DodFilm_ParseCast(&cast, text, err, sizeof(err)) < 0) { printf("ERR %s\n", err); return 1; }
+	for (i = 0; i < cast.actor_count; ++i)
+		for (k = 2; k < argc; ++k) {
+			DodFilmSample s;
+			DodFilm_Sample(&cast.actors[i], (float)atof(argv[k]), &s);
+			printf("%s %s %.2f %.2f %.2f %.2f %s %d\n", cast.actors[i].name, argv[k], s.origin[0], s.origin[1],
+				s.origin[2], s.yaw, DodFilm_PoseName(s.pose), s.moving);
+		}
+	return 0;
+}
+"""
+
+
+class ActorTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.g = shots.MapGraph.load("dod_charlie")
+        cls.anchors = json.loads((ROOT / "film" / "episodes" / "ep01-omaha.json").read_text())["anchors"]["dod_charlie"]
+
+    def test_paced_path_hold_and_look(self):
+        cast = actors.build([{"id": "a", "team": "allies", "path": [
+            {"at": [0, -2000, -150], "pose": "run"}, {"at": [0, -1600, -150], "pose": "crouch", "hold": 2},
+            {"t": 6, "pose": "crouch", "look": [400, -1600]}]}], self.g, self.anchors)
+        keys = cast[0]["keys"]
+        self.assertAlmostEqual(keys[1][0], 400 / actors.PACE["run"])     # got there at running pace
+        p, yaw, pose, moving = actors.sample(cast[0], 1.0)
+        self.assertAlmostEqual(p[1], -2000 + actors.PACE["run"], places=3)
+        self.assertTrue(moving)
+        self.assertAlmostEqual(yaw, 90.0, places=3)                        # facing the way it runs
+        self.assertEqual(actors.sample(cast[0], 3.0)[2], "crouch")
+        self.assertAlmostEqual(actors.sample(cast[0], 7.0)[1], 0.0, places=3)   # turned to look at the point
+
+    def test_squad_route_and_limits(self):
+        cast = actors.build([{"id": "s", "team": "allies", "squad": {"count": 3},
+                              "path": [{"at": "waterline", "pose": "run"}, {"at": "shingle", "route": True}]}],
+                            self.g, self.anchors)
+        self.assertEqual([a["id"] for a in cast], ["s", "s_1", "s_2"])
+        for a in cast:
+            self.assertLessEqual(len(a["keys"]), actors.MAX_KEYS)
+            self.assertEqual(sorted(k[0] for k in a["keys"]), [k[0] for k in a["keys"]])
+        # squad members keep apart along the route
+        mid = [actors.sample(a, 6.0)[0] for a in cast]
+        self.assertGreater(min(((mid[i][0] - mid[j][0]) ** 2 + (mid[i][1] - mid[j][1]) ** 2) ** 0.5
+                               for i in range(3) for j in range(i + 1, 3)), 20)
+        bad = [
+            [{"id": "A", "path": [{"at": [0, 0]}]}],
+            [{"id": "a", "team": "nobody", "path": [{"at": [0, 0]}]}],
+            [{"id": "a", "path": [{"at": [0, 0], "pose": "dance"}]}],
+            [{"id": "a", "path": [{"at": [0, 0], "pose": "stand"}, {"at": [500, 0]}]}],   # standing does not travel
+            [{"id": f"a{i}", "path": [{"at": [0, 0]}]} for i in range(actors.MAX_ACTORS + 1)],
+        ]
+        for spec in bad:
+            with self.assertRaises(ValueError):
+                actors.build(spec, self.g, self.anchors)
+
+    def test_episode_casts_and_session(self):
+        ep = film.load_episode(ROOT / "film" / "episodes" / "ep01-omaha.json")
+        tl = film.build_timeline(ep)
+        with tempfile.TemporaryDirectory() as tmp:
+            film.write_plan(ep, tl, Path(tmp))
+            cfg = (Path(tmp) / "film-dod_charlie.cfg").read_text()
+            self.assertIn("film_cast s03_waterline 2; cine_onend film_3; cine_play s03_waterline 2", cfg)
+            self.assertIn('alias film_0 "film_cast_clear;', cfg)             # no actors: the last shot's leave
+            self.assertIn("film_cast_clear; echo FILM SESSION DONE", cfg)
+            self.assertEqual((Path(tmp) / "cine" / "cast-dod_charlie.txt").read_text(), "allies\n")
+            self.assertTrue((Path(tmp) / "cine" / "s04_crossing.act").exists())
+            self.assertFalse((Path(tmp) / "cine" / "s01_dawn.act").exists())
+
+    def test_game_dll_samples_the_same(self):
+        """The cast file the plan writes, parsed and sampled by src/dod_film.c, puts everyone where previs does."""
+        import subprocess
+        ep = film.load_episode(ROOT / "film" / "episodes" / "ep01-omaha.json")
+        tl = film.build_timeline(ep)
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "sampler.c"
+            src.write_text(SAMPLER_C)
+            exe = Path(tmp) / "sampler"
+            subprocess.run(["cc", "-std=c99", "-Wall", "-Werror", "-I", str(ROOT / "src"), str(src),
+                            str(ROOT / "src" / "dod_film.c"), "-o", str(exe), "-lm"], check=True)
+            checked = 0
+            for seg in tl["segments"]:
+                if seg["kind"] != "shot" or not seg["cast"]:
+                    continue
+                act = Path(tmp) / f"{seg['id']}.act"
+                act.write_text(actors.dumps(seg["cast"]))
+                times = [f"{seg['dur'] * k / 7:.3f}" for k in range(8)]
+                out = subprocess.run([str(exe), str(act)] + times, check=True, capture_output=True, text=True).stdout
+                for line in out.splitlines():
+                    name, t, x, y, z, yaw, pose, moving = line.split()
+                    a = next(a for a in seg["cast"] if a["id"] == name)
+                    # the file rounds to 0.1 unit and 1 ms: compare against the rounded keys
+                    p, py, ppose, pm = actors.sample(a, float(t))
+                    self.assertLess(max(abs(float(x) - p[0]), abs(float(y) - p[1]), abs(float(z) - p[2])), 1.0, line)
+                    self.assertLess(abs((float(yaw) - py + 180) % 360 - 180), 1.0, line)
+                    self.assertEqual(pose, ppose, line)
+                    checked += 1
+            self.assertGreater(checked, 50)
 
 
 if __name__ == "__main__":

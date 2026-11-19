@@ -21,7 +21,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from tools.film import campath, shots, stamp  # noqa: E402
+from tools.film import actors, campath, shots, stamp  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
 W, H = 1920, 1080
@@ -88,8 +88,9 @@ def build_timeline(ep, root=ROOT):
             if mapname not in graphs:
                 graphs[mapname] = shots.MapGraph.load(mapname, root)
             path = shots.build(s["camera"], graphs[mapname], anchors.get(mapname, {}))
+            cast = actors.build(s.get("actors"), graphs[mapname], anchors.get(mapname, {}), f"{sid}: ")
             seg = {"kind": "shot", "id": sid, "map": mapname, "dur": path.duration, "path": path, "shot": s,
-                   "frames": int(round(path.duration * fps)) + 1}
+                   "frames": int(round(path.duration * fps)) + 1, "cast": cast}
         else:
             raise ValueError(f"sequence item {i}: needs \"card\" or \"shot\"")
         if seg["id"] in ids:
@@ -134,6 +135,9 @@ def write_plan(ep, timeline, out):
         if s["kind"] == "shot":
             (cine / f"{s['id']}.cam").write_text(campath.dumps(
                 s["path"], f"{ep['id']} {s['id']} on {s['map']}: {s['dur']:.2f} s, {s['frames']} frames at {fps}"))
+            if s["cast"]:
+                (cine / f"{s['id']}.act").write_text(actors.dumps(
+                    s["cast"], f"{ep['id']} {s['id']} on {s['map']}: {len(s['cast'])} actor(s)"))
 
     # one listenserver.cfg block per map: play its shots in order, each chained from the last one's end
     for mapname, group in sessions(timeline).items():
@@ -142,10 +146,14 @@ def write_plan(ep, timeline, out):
         lines += ep.get("server_cmds", {}).get(mapname, [])
         for i, s in enumerate(group):
             nxt = f"film_{i + 1}" if i + 1 < len(group) else "film_end"
-            lines.append(f'alias film_{i} "cine_onend {nxt}; cine_play {s["id"]} {PREROLL:g}"')
-        lines.append(f'alias film_end "echo FILM SESSION DONE {mapname}"')
+            cast = f"film_cast {s['id']} {PREROLL:g}" if s["cast"] else "film_cast_clear"
+            lines.append(f'alias film_{i} "{cast}; cine_onend {nxt}; cine_play {s["id"]} {PREROLL:g}"')
+        lines.append(f'alias film_end "film_cast_clear; echo FILM SESSION DONE {mapname}"')
         lines.append("film_0")
         (out / f"film-{mapname}.cfg").write_text("\n".join(lines) + "\n")
+        # the sides whose player models the map has to precache for the actors
+        sides = sorted({a["team"] for s in group for a in s["cast"]})
+        (cine / f"cast-{mapname}.txt").write_text("".join(f"{t}\n" for t in sides))
 
     # subtitles, chapters, narration script
     srt, n = [], 1
@@ -448,6 +456,9 @@ def assemble(ep, timeline, plan_dir, captures, out_path, burn_subs=False):
     srt = plan_dir / "subtitles.srt"
     cmd = ["ffmpeg", "-v", "error", "-y", "-i", str(video), "-i", str(audio), "-i", str(plan_dir / "chapters.txt")]
     has_subs = srt.exists() and srt.stat().st_size > 0
+    if has_subs and not burn_subs:
+        # every input before any output option: ffmpeg reads options as belonging to the next -i or output
+        cmd += ["-i", str(srt)]
     if burn_subs and has_subs:
         # libass sizes in a 288-line space: about 37 px type at 1080, sitting low (in the bar when letterboxed)
         style = "FontName=DejaVu Serif,FontSize=10,PrimaryColour=&H00E8ECF0,OutlineColour=&H90000000,BorderStyle=1,Outline=0.8,Shadow=0,MarginV=10,MarginL=40,MarginR=40"
@@ -455,7 +466,7 @@ def assemble(ep, timeline, plan_dir, captures, out_path, burn_subs=False):
     else:
         cmd += ["-c:v", "copy"]
     if has_subs and not burn_subs:
-        cmd += ["-i", str(srt), "-map", "3:s", "-c:s", "mov_text", "-metadata:s:s:0", "language=eng"]
+        cmd += ["-map", "3:s", "-c:s", "mov_text", "-metadata:s:s:0", "language=eng"]
     cmd += ["-map", "0:v", "-map", "1:a", "-map_metadata", "2", "-map_chapters", "2",
             "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", "-shortest", str(out_path)]
     run(cmd)
@@ -525,6 +536,12 @@ def preview_session(timeline, mapname, group, out_dir, fps, aspect=16 / 9, size=
             p1 = (cx + L * math.cos(yaw - half), cy - L * math.sin(yaw - half))
             p2 = (cx + L * math.cos(yaw + half), cy - L * math.sin(yaw + half))
             d.polygon([(cx, cy), p1, p2], fill=(240, 230, 200), outline=(255, 255, 255))
+            for (fx, fy, _fz, pose), act in zip(actors.figures(seg["cast"], t), seg["cast"]):
+                ax, ay = top.px((fx, fy))
+                ax, ay = ax + ox, ay + oy
+                col = (120, 150, 80) if act["team"] == "allies" else (150, 150, 160)
+                r = 3 if pose in actors.LOW else 4
+                d.ellipse([ax - r, ay - r, ax + r, ay + r], fill=col, outline=(20, 20, 20))
             d.ellipse([cx - 5, cy - 5, cx + 5, cy + 5], fill=(220, 60, 50))
             # side panel
             px0 = 14 + top.size[0] + 24

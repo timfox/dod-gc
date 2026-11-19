@@ -10,7 +10,7 @@ the boards.
 """
 import math
 
-from . import campath, shots
+from . import actors, campath, shots
 
 PAPER = (244, 240, 230)
 INK = (40, 38, 34)
@@ -106,16 +106,31 @@ def sketch(graph, o, a, fov, w, h, figures=(), sea=None):
             if top:
                 d.line([p[:2], top[:2]], fill=_shade(p[2] + 1200), width=1)
     # stand-in figures (bots on the day): helmet, body, legs at true scale
-    for fx, fy, fz in sorted(figures, key=lambda q: -math.dist(q, o)):
+    # (x, y, z) or (x, y, z, pose): crouched figures are shorter, prone ones lie along the ground
+    for fig in sorted(figures, key=lambda q: -math.dist(q[:3], o)):
+        fx, fy, fz = fig[:3]
+        low = actors.LOW.get(fig[3]) if len(fig) > 3 else None
         feet = lens.project((fx, fy, fz - 36))
-        head = lens.project((fx, fy, fz + 30))
+        head = lens.project((fx, fy, fz + (30 if not low else 4 if low == "crouch" else -24)))
         if not feet or not head:
+            continue
+        if low == "prone":
+            # a body lying flat: a low lump about a player's length wide at that distance
+            span = lens.project((fx, fy, fz + 36))
+            if not span or feet[2] < 120:
+                continue
+            unit = max(2.0, (feet[1] - span[1]) / 72 * 64)
+            if unit > 0.9 * w:
+                continue
+            col = _shade(feet[2] - 600)
+            d.ellipse([feet[0] - unit * 0.5, feet[1] - unit * 0.14, feet[0] + unit * 0.5, feet[1]], fill=col)
+            d.ellipse([feet[0] + unit * 0.42, feet[1] - unit * 0.17, feet[0] + unit * 0.6, feet[1] - unit * 0.01], fill=col)
             continue
         hgt = feet[1] - head[1]
         if hgt < 3 or hgt > 0.9 * h or feet[2] < 120:  # too small to read, or right on the lens
             continue
         cx = (feet[0] + head[0]) / 2
-        wb = hgt * 0.22
+        wb = hgt * (0.22 if not low else 0.34)
         col = _shade(feet[2] - 600)
         d.ellipse([cx - wb * 0.55, head[1], cx + wb * 0.55, head[1] + hgt * 0.16], fill=col)          # helmet
         d.polygon([(cx - wb * 0.6, head[1] + hgt * 0.17), (cx + wb * 0.6, head[1] + hgt * 0.17),
@@ -125,7 +140,7 @@ def sketch(graph, o, a, fov, w, h, figures=(), sea=None):
     return im
 
 
-def _overhead(graph, path, t, size):
+def _overhead(graph, path, t, size, cast=()):
     from PIL import Image, ImageDraw
     (x0, y0, _), (x1, y1, _) = graph.bounds()
     span = max(x1 - x0, y1 - y0) + 300
@@ -148,6 +163,9 @@ def _overhead(graph, path, t, size):
         e = yaw + side * math.radians(fov / 2)
         d.line([q, (q[0] + 26 * math.cos(e), q[1] - 26 * math.sin(e))], fill=INK, width=1)
     d.ellipse([q[0] - 3, q[1] - 3, q[0] + 3, q[1] + 3], fill=INK)
+    for fx, fy, _fz, _pose in actors.figures(cast, t):
+        f = px((fx, fy))
+        d.ellipse([f[0] - 1.5, f[1] - 1.5, f[0] + 1.5, f[1] + 1.5], fill=(90, 120, 60))
     d.rectangle([0, 0, size - 1, size - 1], outline=SOFT)
     return im
 
@@ -228,7 +246,9 @@ def render_sheets(ep, timeline, out_dir, anchors):
             graph = timeline["graphs"][seg["map"]]
             path = seg["path"]
             o, a, fov = campath.sample(path, t)
-            figs = [shots._up(shots.resolve(p, graph, anchors.get(seg["map"], {})), 0) for p in b.get("figures", [])]
+            # the cast where the shot has one; otherwise the board's own stand-ins
+            figs = actors.figures(seg["cast"], t) if seg.get("cast") else \
+                [shots._up(shots.resolve(p, graph, anchors.get(seg["map"], {})), 0) for p in b.get("figures", [])]
             img = sketch(graph, o, a, fov, PW, fh, figs, sea=b.get("sea"))
             pd = ImageDraw.Draw(img)
             # move arrow on the end panel of a camera move
@@ -238,7 +258,7 @@ def render_sheets(ep, timeline, out_dir, anchors):
                 inset = 0.18 if move_label(cam).startswith("Zoom in") else -0.12
                 mx, my = PW * abs(inset), fh * abs(inset)
                 pd.rectangle([mx, my, PW - mx, fh - my], outline=ACCENT, width=2)
-            img.paste(_overhead(graph, path, t, 120), (PW - 128, 8))
+            img.paste(_overhead(graph, path, t, 120, seg.get("cast") or ()), (PW - 128, 8))
             page.paste(img, (x, y))
             d.rectangle([x - 1, y - 1, x + PW, y + fh], outline=INK, width=2)
             # slate
@@ -278,9 +298,17 @@ def render_sheets(ep, timeline, out_dir, anchors):
     return pages
 
 
+def cast_label(cast):
+    """"3 Allies, 1 Axis" for the shot list."""
+    if not cast:
+        return ""
+    n = {t: sum(1 for a in cast if a["team"] == t) for t in actors.TEAMS}
+    return ", ".join(f"{c} {t.capitalize()}" for t, c in n.items() if c)
+
+
 def shot_list(ep, timeline):
     """The boards as a table: what a 1st AD would hand round."""
-    rows = ["| # | Shot | Size | Angle | Lens | Move | Dur | Action |", "|---|---|---|---|---|---|---|---|"]
+    rows = ["| # | Shot | Size | Angle | Lens | Move | Dur | Cast | Action |", "|---|---|---|---|---|---|---|---|---|"]
     n = 0
     for seg in timeline["segments"]:
         if seg["kind"] != "shot":
@@ -293,5 +321,5 @@ def shot_list(ep, timeline):
         move = move_label(cam) + (", handheld" if cam.get("handheld") else "") + \
             (f", dutch {cam['dutch']}°" if cam.get("dutch") else "")
         rows.append(f"| {b.get('no', n)} | `{seg['id']}` | {b.get('size', '')} | {b.get('angle', '')} | {lens} | {move} "
-                    f"| {seg['dur']:.0f}s | {b.get('action', seg['shot'].get('note', ''))} |")
+                    f"| {seg['dur']:.0f}s | {cast_label(seg.get('cast') or [])} | {b.get('action', seg['shot'].get('note', ''))} |")
     return f"# {ep['title']}: shot list\n\n" + "\n".join(rows) + "\n"
