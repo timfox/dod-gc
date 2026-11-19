@@ -1387,7 +1387,7 @@ static BOOL NavTarget( CBasePlayer *pBot, DodBotState *state, Vector *target )
 			*target = Vector( lx, ly, lz );
 			return TRUE;
 		}
-		if( dist < DOD_BOT_NODE_REACH && fabsf( nz - origin.z ) < 72.0f )
+		if( dist < DOD_BOT_NODE_REACH && fabsf( nz - origin.z ) < 40.0f )	/* was 72: a bot under a ledge counted as on it and stalled on the climb */
 		{
 			if( last )
 			{
