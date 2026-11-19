@@ -119,11 +119,13 @@ static float DodFilm_ActorStride( int i )
 	return 0.92f + 0.16f * (float)( ( DodFilm_ActorHash( i ) >> 8 ) & 255u ) / 255.0f;
 }
 
-/* The third-person weapon the actor's class carries (p_*.mdl), or NULL. */
+/* The third-person weapon an actor carries (p_*.mdl), or NULL: the side's rifle for every
+ * class. Each gun model costs the GameCube a file read and a resident mesh, and a cast of 24
+ * asking for every class's gun ran the file pool dry; one per side fits. */
 static const char *DodFilm_WeaponModel( int team, int player_class )
 {
-	DodClass cls = player_class > DOD_CLASS_NONE ? (DodClass)player_class : DOD_CLASS_RIFLEMAN;
-	const DodWeaponDef *def = Dod_ClassWeaponDef( (DodTeam)team, cls );
+	(void)player_class;
+	const DodWeaponDef *def = Dod_ClassWeaponDef( (DodTeam)team, DOD_CLASS_RIFLEMAN );
 	return def && def->player_model && def->player_model[0] ? def->player_model : NULL;
 }
 
@@ -267,9 +269,18 @@ static void DodFilm_FireFx( const DodFilmFx *f )
 
 static void DodFilm_RunFx( float t )
 {
+	static int logs;
 	int first, end = DodFilm_FxDue( &g_film_cast, g_film_fx_clock, t, &first );
-	for( int i = first; i < end; i++ )
+	for( int i = first; i < end; i++ ) {
 		DodFilm_FireFx( &g_film_cast.fx[i] );
+		if( logs < 24 ) {
+			logs++;
+			ALERT( at_console, "FILM FX %s: %d of %d, %s at %.2f s (%.0f %.0f %.0f), fireball %d smoke %d\n", g_film_shot,
+				i + 1, g_film_cast.fx_count, DodFilm_FxName( (DodFilmFxKind)g_film_cast.fx[i].kind ), t,
+				g_film_cast.fx[i].origin[0], g_film_cast.fx[i].origin[1], g_film_cast.fx[i].origin[2],
+				g_sModelIndexFireball, g_sModelIndexSmoke );
+		}
+	}
 	if( t > g_film_fx_clock )
 		g_film_fx_clock = t;
 }
@@ -385,15 +396,18 @@ void DodFilm_Init( void )
 		if( !model[0] )
 			continue;
 		PRECACHE_MODEL( (char *)STRING( ALLOC_STRING( model ) ) );
-		for( int c = DOD_CLASS_NONE + 1; c < DOD_CLASS_COUNT; c++ ) {
-			const char *gun = DodFilm_WeaponModel( team, c );
-			if( gun )
-				PRECACHE_MODEL( (char *)gun );
-		}
+		const char *gun = DodFilm_WeaponModel( team, DOD_CLASS_RIFLEMAN );
+		if( gun )
+			PRECACHE_MODEL( (char *)gun );
 		g_film_precached[team] = 1;
 		ALERT( at_console, "FILM: precached %s for actors\n", model );
 	}
 	FREE_FILE( text );
+}
+
+int DodFilm_IsFilmMap( void )
+{
+	return g_film_precached[DOD_TEAM_ALLIES] || g_film_precached[DOD_TEAM_AXIS];
 }
 
 void DodFilm_Think( void )

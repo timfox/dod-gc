@@ -447,6 +447,14 @@ static void DodGC_ApplyClass( CBasePlayer *pPlayer, DodClass player_class )
 			DodBots_SetGranting( FALSE );
 			return;
 		}
+		/* On a film map the human is the camera. Its kit is five weapon entities, and with
+		 * a scripted cast of 24 on a dense map they ran the GameCube's edicts out (460)
+		 * mid-shot: no kit there. */
+		if( DodFilm_IsFilmMap() && !DodBots_IsBot( pPlayer ) ) {
+			DodBots_SetGranting( FALSE );
+			ALERT( at_console, "FILM: %s is the camera, no kit\n", STRING( pPlayer->pev->netname ) );
+			return;
+		}
 		pPlayer->GiveNamedItem( "weapon_crowbar" );
 		if( sidearm ) {
 			pPlayer->GiveNamedItem( sidearm->classname );
