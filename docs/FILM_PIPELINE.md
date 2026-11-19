@@ -21,6 +21,7 @@ film/episodes/<ep>.json ──plan──▶ out/film/<ep>/cine/*.cam + film-<map
 | `tools/film/film.py` | `plan`, `boards`, `animatic`, `assemble`. |
 | `tools/film/actors.py`, `src/dod_film.c`, `src/dod_film_actor.cpp` | Actors: soldiers placed and moving in a shot (below). |
 | `tools/film/voice.py` | Narration and ADR rendered with a local TTS model (Qwen3-TTS), effects, levels, and the dialogue mix (below). |
+| `tools/film/foley.py` | Foley: the game's own sounds placed under each shot (below). |
 | `tools/film/stamp.py` | Reads the engine's frame stamp off captured images. |
 | `scripts/film-capture.sh` | Plan, build a listen disc per map with `build-lean-iso.sh --film`, run Dolphin with frame dumping until the engine logs `FILM SESSION DONE`, then assemble. |
 | `film/episodes/` | Episodes: `ep01-omaha` (dod_charlie), `ep02-salerno` (dod_avalanche), `ep03-lafiere` (dod_merderet), each with a fact check. `film/SERIES.md` matches the other maps to events. |
@@ -184,6 +185,26 @@ draws brush geometry only: no studio models (trees placed as models, guns, vehic
 sky box, and masked textures (fences, foliage brushes) are cut out at palette index 255. Brush entities
 rendered at zero amount (clip walls, light shafts) are left out, as the game does.
 
+## Foley from the game
+
+`tools/film/foley.py` lays the game's own sounds under a shot: surf and wind beds, MG and rifle fire,
+explosions, footsteps. A shot's `foley` list names sounds by their path under the game's sound folders
+(`weapons/mg42_shoot.wav`), found in the episode's `foley_dirs` (default `content/dod/sound`, then
+`content/valve/sound`, the retail files on the capture machine; never committed).
+
+```json
+"foley": [
+  {"sound": "ambience/waves.wav", "loop": true, "gain": -16, "fade": 1.5},
+  {"sound": ["weapons/mg42_shoot.wav", "weapons/30cal_shoot.wav"], "at": 1, "dur": 10,
+   "every": [1.2, 3.0], "gain": -20, "pan": [-0.6, 0.6], "fx": "distant"},
+  {"sound": "weapons/explode3.wav", "at": 6.5, "gain": -12, "fx": "distant", "rate": 0.8}
+]
+```
+
+`loop` makes a bed for `dur` (default: the rest of the shot); `every: [min, max]` repeats hits at random
+spacing, each picking a sound from the list, a level near `gain` and a place in `pan`'s range; `fx` takes the
+voice effects; `rate` below 1 slows and deepens a sound. Cues are seeded, so a re-assemble sounds the same.
+The foley track ducks under narration and leaves the music alone. A missing sound is a warning.
 ## Clearance: no camera through the map
 
 The engine camera has no collision, so `film.py check <ep>.json` (and every `plan`, which the capture script

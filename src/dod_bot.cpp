@@ -106,13 +106,13 @@ static cvar_t dod_bots_online = { "dod_bots_online", "0", FCVAR_SERVER };
 static cvar_t dod_bot_stage = { "dod_bot_stage", "0", FCVAR_SERVER };
 
 /* The most bots ever; the free slots are the real limit. */
-#define DOD_BOT_HARD_CAP 7
+#define DOD_BOT_HARD_CAP 12	/* measured 2026-11-19 on charlie: a bot costs about 8 KB heap, 3 edicts, 0.07 ms think */
 
 /* Free edicts that must remain before another bot is added (see PlanBots). */
 #define DOD_BOT_EDICT_RESERVE 22
 
 #if defined( __GAMECUBE__ )
-#define DOD_BOT_MAX_SLOTS 10	/* bot state slots; the engine's slot count (XASH_GC_DEFAULT_SLOTS, 3 by default) is the real limit */
+#define DOD_BOT_MAX_SLOTS 16	/* bot state slots; the engine's slot count (XASH_GC_DEFAULT_SLOTS, 3 by default) is the real limit */
 #else
 #define DOD_BOT_MAX_SLOTS 32
 #endif
@@ -204,7 +204,7 @@ typedef struct DodBotState {
  * map change and when the last bot leaves; if the heap cannot give it, no bot
  * is added rather than failing later. */
 #if defined( __GAMECUBE__ )
-#define DOD_BOT_MEM_BUDGET 6144
+#define DOD_BOT_MEM_BUDGET 11560	/* 17 slots of 680 bytes; only maxClients + 1 are allocated */
 #else
 #define DOD_BOT_MEM_BUDGET 8192
 #endif

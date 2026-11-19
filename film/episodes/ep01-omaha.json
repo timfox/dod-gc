@@ -182,7 +182,27 @@
           }
         ],
         "chapter": "The landing",
-        "lower_third": "Omaha Beach\nNormandy \u00b7 6 June 1944"
+        "lower_third": "Omaha Beach\nNormandy \u00b7 6 June 1944",
+        "foley": [
+          {
+            "sound": "ambience/waves.wav",
+            "loop": true,
+            "gain": -13,
+            "fade": 2
+          },
+          {
+            "sound": "ambience/air.wav",
+            "loop": true,
+            "gain": -24,
+            "fade": 3
+          },
+          {
+            "sound": "ambience/artyboom.wav",
+            "at": 5,
+            "gain": -22,
+            "fx": "distant"
+          }
+        ]
       }
     },
     {
@@ -209,6 +229,32 @@
         "narration": [
           {
             "text": "Allied troops would land on five beaches, code-named Utah, Omaha, Gold, Juno and Sword."
+          }
+        ],
+        "foley": [
+          {
+            "sound": "ambience/waves.wav",
+            "loop": true,
+            "gain": -16,
+            "fade": 1
+          },
+          {
+            "sound": "ambience/windy.wav",
+            "loop": true,
+            "gain": -20,
+            "fade": 1
+          },
+          {
+            "sound": "ambience/flyby.wav",
+            "at": 1.5,
+            "gain": -24,
+            "fx": "distant"
+          },
+          {
+            "sound": "ambience/artyboom.wav",
+            "at": 5.5,
+            "gain": -21,
+            "fx": "distant"
           }
         ]
       }
@@ -296,6 +342,72 @@
             "fx": "field",
             "gain": -7,
             "pan": -0.25
+          }
+        ],
+        "foley": [
+          {
+            "sound": "ambience/waves.wav",
+            "loop": true,
+            "gain": -10,
+            "fade": 0.5
+          },
+          {
+            "sound": [
+              "player/pl_wade1.wav",
+              "player/pl_wade2.wav",
+              "player/pl_wade3.wav",
+              "player/pl_wade4.wav"
+            ],
+            "at": 0.3,
+            "every": [
+              0.9,
+              1.6
+            ],
+            "gain": -17,
+            "pan": [
+              -0.4,
+              0.4
+            ]
+          },
+          {
+            "sound": [
+              "weapons/hit_water1.wav",
+              "weapons/hit_water2.wav"
+            ],
+            "at": 1,
+            "every": [
+              1.4,
+              3
+            ],
+            "gain": -19,
+            "pan": [
+              -0.7,
+              0.7
+            ]
+          },
+          {
+            "sound": [
+              "weapons/mg42_shoot.wav",
+              "weapons/mg34_shoot.wav"
+            ],
+            "at": 0.5,
+            "every": [
+              1.6,
+              3.2
+            ],
+            "gain": -21,
+            "pan": [
+              0.2,
+              0.7
+            ],
+            "fx": "distant"
+          },
+          {
+            "sound": "weapons/explodewater.wav",
+            "at": 7.2,
+            "gain": -15,
+            "pan": -0.4,
+            "fx": "distant"
           }
         ]
       }
@@ -413,6 +525,75 @@
             "gain": -9,
             "pan": -0.35
           }
+        ],
+        "foley": [
+          {
+            "sound": "ambience/waves.wav",
+            "loop": true,
+            "gain": -20,
+            "fade": 1
+          },
+          {
+            "sound": [
+              "weapons/mg42_shoot.wav",
+              "weapons/mg34_shoot.wav"
+            ],
+            "at": 0.2,
+            "every": [
+              1.0,
+              2.4
+            ],
+            "gain": -18,
+            "pan": [
+              -0.6,
+              0.6
+            ],
+            "fx": "distant"
+          },
+          {
+            "sound": [
+              "weapons/garand_shoot.wav",
+              "weapons/bar_shoot.wav"
+            ],
+            "at": 2,
+            "every": [
+              2,
+              4
+            ],
+            "gain": -24,
+            "pan": [
+              -0.7,
+              0.7
+            ],
+            "fx": "distant"
+          },
+          {
+            "sound": [
+              "player/pl_dirt1.wav",
+              "player/pl_dirt2.wav",
+              "player/pl_dirt3.wav",
+              "player/pl_dirt4.wav"
+            ],
+            "at": 0.2,
+            "dur": 11,
+            "every": [
+              0.33,
+              0.45
+            ],
+            "gain": -22,
+            "pan": [
+              -0.15,
+              0.15
+            ]
+          },
+          {
+            "sound": "weapons/mortar_hit1.wav",
+            "at": 9.5,
+            "gain": -15,
+            "pan": 0.35,
+            "fx": "distant",
+            "rate": 0.9
+          }
         ]
       }
     },
@@ -479,6 +660,35 @@
             "fx": "distant",
             "gain": -14,
             "pan": 0.3
+          }
+        ],
+        "foley": [
+          {
+            "sound": "ambience/windy.wav",
+            "loop": true,
+            "gain": -15,
+            "fade": 1
+          },
+          {
+            "sound": "weapons/mg42_shoot.wav",
+            "at": 1.5,
+            "dur": 7,
+            "every": [
+              2.2,
+              3.8
+            ],
+            "gain": -17,
+            "pan": [
+              -0.2,
+              0.2
+            ],
+            "fx": "field"
+          },
+          {
+            "sound": "ambience/artyboom.wav",
+            "at": 6,
+            "gain": -24,
+            "fx": "distant"
           }
         ]
       }
@@ -594,6 +804,39 @@
             "gain": -8,
             "pan": -0.2
           }
+        ],
+        "foley": [
+          {
+            "sound": "ambience/waves.wav",
+            "loop": true,
+            "gain": -24,
+            "fx": "muffled",
+            "fade": 1
+          },
+          {
+            "sound": [
+              "weapons/mg42_shoot.wav",
+              "weapons/mg34_shoot.wav"
+            ],
+            "at": 0.5,
+            "every": [
+              1.2,
+              2.6
+            ],
+            "gain": -17,
+            "pan": [
+              -0.5,
+              0.5
+            ],
+            "fx": "muffled"
+          },
+          {
+            "sound": "weapons/explode4.wav",
+            "at": 4,
+            "gain": -13,
+            "fx": "muffled",
+            "rate": 0.85
+          }
         ]
       }
     },
@@ -687,6 +930,55 @@
             "gain": -9,
             "pan": 0.15
           }
+        ],
+        "foley": [
+          {
+            "sound": "ambience/windy.wav",
+            "loop": true,
+            "gain": -22,
+            "fade": 1
+          },
+          {
+            "sound": [
+              "player/pl_gravel1.wav",
+              "player/pl_gravel2.wav",
+              "player/pl_gravel3.wav",
+              "player/pl_gravel4.wav"
+            ],
+            "at": 0.3,
+            "every": [
+              0.55,
+              0.85
+            ],
+            "gain": -19,
+            "pan": [
+              -0.2,
+              0.2
+            ]
+          },
+          {
+            "sound": [
+              "weapons/mg42_shoot.wav",
+              "weapons/mg34_shoot.wav"
+            ],
+            "at": 1,
+            "every": [
+              3,
+              5
+            ],
+            "gain": -26,
+            "pan": [
+              -0.7,
+              0.7
+            ],
+            "fx": "distant"
+          },
+          {
+            "sound": "ambience/nebwerfdist.wav",
+            "at": 8.5,
+            "gain": -24,
+            "fx": "distant"
+          }
         ]
       }
     },
@@ -763,6 +1055,31 @@
             "gain": -10,
             "pan": 0.25
           }
+        ],
+        "foley": [
+          {
+            "sound": "ambience/windy.wav",
+            "loop": true,
+            "gain": -15,
+            "fade": 1
+          },
+          {
+            "sound": [
+              "weapons/mg42_shoot.wav",
+              "weapons/mg34_shoot.wav"
+            ],
+            "at": 1.5,
+            "every": [
+              3,
+              4.5
+            ],
+            "gain": -28,
+            "pan": [
+              -0.8,
+              0.8
+            ],
+            "fx": "distant"
+          }
         ]
       }
     },
@@ -795,7 +1112,22 @@
             "text": "Around three thousand men were killed, wounded or missing, more than on any other D-Day beach."
           }
         ],
-        "chapter": "Nightfall"
+        "chapter": "Nightfall",
+        "foley": [
+          {
+            "sound": "ambience/windy.wav",
+            "loop": true,
+            "gain": -19,
+            "fade": 2
+          },
+          {
+            "sound": "ambience/artyboom.wav",
+            "at": 7,
+            "gain": -25,
+            "fx": "distant",
+            "rate": 0.9
+          }
+        ]
       }
     },
     {
@@ -825,6 +1157,14 @@
           },
           {
             "text": "More than nine thousand Americans are buried there."
+          }
+        ],
+        "foley": [
+          {
+            "sound": "ambience/waves.wav",
+            "loop": true,
+            "gain": -14,
+            "fade": 3
           }
         ]
       }
