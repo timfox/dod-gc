@@ -192,6 +192,10 @@ if [[ ! -s "$BUILD_DATA/maps.lst" ]]; then
 fi
 # Every disc carries its own stamp (the lean route already does).
 bash "$SCRIPT_DIR/build-info.sh" --short > "$BUILD_DATA/build-info.txt"
+# Retail DoD reads what it does not ship from valve/ (blood, explosion and
+# spark sprites, pickup and impact sounds). The disc has no valve directory,
+# so copy those into the staged dod tree; DoD's own files win.
+python3 "$SCRIPT_DIR/stage_valve_fallback.py" --dod "$BUILD_DATA" --valve "$DODGC_CONTENT_VALVE"
 if [[ -d "$DODGC_CONTENT_VALVE" ]]; then
 	mkdir -p "$BUILD_VALVE"
 	rsync -a --delete \
