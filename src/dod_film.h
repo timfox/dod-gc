@@ -1,7 +1,7 @@
 /* Film actors: scripted props for camera shots.
  *
  * An actor is a prop entity wearing a team's player model, not a bot: it costs one
- * edict and no client slot, so a shot can have a dozen soldiers on the GameCube where
+ * edict and no client slot, so a shot can have up to 24 soldiers on the GameCube where
  * the listen server has room for exactly one bot. Each shot has a cast file,
  * cine/<shot>.act, written by a film plan:
  *
@@ -22,7 +22,7 @@
 extern "C" {
 #endif
 
-#define DOD_FILM_MAX_ACTORS 12
+#define DOD_FILM_MAX_ACTORS 24
 #define DOD_FILM_MAX_KEYS 16
 #define DOD_FILM_NAME 32
 #define DOD_FILM_YAW_TRAVEL 1000.0f	/* yaw "-": face the direction of travel */
