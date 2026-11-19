@@ -73,6 +73,31 @@ static inline void DodCam_Level(int mode, float ang[3])
 		ang[0] = -89.0f;
 }
 
+/* A camera that a trace stopped early sits on the wall it hit. Back it off the surface
+ * by `margin` units along the ray so the near plane does not cut into the wall, and never
+ * past the start. start/end are the ray, fraction is the trace's clear fraction (1 = free). */
+static inline void DodCam_PullIn(const float start[3], const float end[3], float fraction,
+	float margin, float out[3])
+{
+	float d[3], len, f;
+	int i;
+
+	for (i = 0; i < 3; i++)
+		d[i] = end[i] - start[i];
+	len = sqrtf(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
+	f = fraction;
+	if (f > 1.0f)
+		f = 1.0f;
+	if (f < 1.0f && len > 0.001f)
+		f -= margin / len;
+	if (f < 0.0f)
+		f = 0.0f;
+	if (f > 1.0f)
+		f = 1.0f;
+	for (i = 0; i < 3; i++)
+		out[i] = start[i] + d[i] * f;
+}
+
 /* Smooths org/ang into out_org/out_ang (which may alias the inputs). Modes other
  * than the two chase cameras pass through untouched and reset the filter. */
 static inline void DodCam_Smooth(DodCamState *s, int mode, int target,

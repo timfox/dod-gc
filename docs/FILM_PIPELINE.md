@@ -32,7 +32,8 @@ film/episodes/<ep>.json ──plan──▶ out/film/<ep>/cine/*.cam + film-<map
   "id": "ep01-omaha", "title": "...", "fps": 30,
   "aspect": "2.39",            // 16:9, 1.85 or 2.39 (letterboxed in a 1920x1080 frame)
   "grade": "archival",         // clean, archival (muted, warm, grain, vignette) or monochrome
-  "music": {"file": "music/bed.wav", "gain": 0.35},          // optional; ducks under narration
+  "music": {"file": "social-media/music/Mournful March.mp3",  // optional; ducks under narration and ADR
+            "gain": 0.3, "start": 0.5, "fade_in": 3, "fade_out": 6},  // file: absolute, next to the plan, or in the repo
   "anchors": {"dod_charlie": {"shingle": [0, -384], "sea": [-352, -3420, -250]}},
   "server_cmds": {"dod_charlie": ["dod_bots 8"]},             // console lines before the shots
   "sequence": [
@@ -206,6 +207,12 @@ These films are about real events in which real people died. Narration states on
 support, with numbers given as estimates where the sources do. Each episode lists its `sources`, opens with
 a note that the scenes are game recreations and not archive footage, and closes with a dedication. No
 gore beyond what the game shows, no glorification, no invented personal stories presented as real.
+
+Each episode keeps a fact check beside it (`film/episodes/<ep>.factcheck.md`): every spoken line, card and
+lower third with the source that supports it, and what changed. Re-check it whenever narration changes.
+
+Music beds come from `social-media/music` (Tim's own tracks, made with Suno, kept out of git); check the
+plan's commercial-use terms before publishing.
 
 Footage uses Valve's Day of Defeat assets from a legally owned copy; check the publishing terms before
 releasing anything outside the project.

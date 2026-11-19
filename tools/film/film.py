@@ -398,6 +398,17 @@ def shot_clip(seg, frames, fps, aspect, grade, work, src_size):
     return out
 
 
+def music_path(name, plan_dir, root=ROOT):
+    """A music file: absolute, else next to the plan, else in the repo (social-media/music is kept out of git)."""
+    p = Path(name)
+    if p.is_absolute():
+        return p
+    for base in (plan_dir, root):
+        if (Path(base) / p).exists():
+            return Path(base) / p
+    raise SystemExit(f"music not found: {name} (looked in {plan_dir} and {root})")
+
+
 def build_audio(ep, timeline, plan_dir, work):
     """Narration and ADR at their times over an optional music bed. The bed ducks under narration and,
     less, under ADR; ADR ducks a little under narration so the voice-over always reads."""
@@ -441,11 +452,14 @@ def build_audio(ep, timeline, plan_dir, work):
 
     voice_bus, adr_bus = bus(nar, "n", "voice"), bus(adr, "a", "adr")
     if music:
-        mp = Path(music["file"]) if Path(music["file"]).is_absolute() else plan_dir / music["file"]
+        mp = music_path(music["file"], plan_dir)
         mi = inputs.count("-i")
-        inputs += ["-stream_loop", "-1", "-i", str(mp)]
-        fc.append(f"[{mi}:a]aresample=48000,volume={music.get('gain', 0.35)},"
-                  f"afade=t=out:st={max(0, dur - 4):.2f}:d=4[bed]")
+        # "start" skips into the track (a lead-in, or a better section); "fade_in" brings the bed up gently
+        inputs += ["-stream_loop", "-1", "-ss", f"{float(music.get('start', 0)):.3f}", "-i", str(mp)]
+        fade_in = float(music.get("fade_in", 0))
+        fc.append(f"[{mi}:a]aresample=48000,aformat=channel_layouts=stereo,volume={music.get('gain', 0.35)},"
+                  + (f"afade=t=in:st=0:d={fade_in:.2f}," if fade_in else "")
+                  + f"afade=t=out:st={max(0, dur - float(music.get('fade_out', 4))):.2f}:d={float(music.get('fade_out', 4)):.2f}[bed]")
     # every bus the bed and ADR key off has to be split once per use
     keys = {"voice": (["adr"] if adr_bus else []) + (["bed"] if music else []),
             "adr": ["bed"] if music else []}
