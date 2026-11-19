@@ -34,6 +34,7 @@ static cvar_t dod_spec_auto = { "dod_spec_auto", "1", FCVAR_SERVER };
  * view model. team 1 Allies / 2 Axis, class 1 rifleman .. 6 (DodClass). */
 static cvar_t dod_gc_autojoin = { "dod_gc_autojoin", "", FCVAR_SERVER };
 static float g_autojoin_seen[DOD_MAX_PLAYERS + 1];
+static BOOL g_autojoin_spec_done[DOD_MAX_PLAYERS + 1];
 /* Team body models (models/player/<name>/<name>.mdl, split onto the disc as
  * gc_studio/<name>.mdl). A map cfg can switch to us-para/axis-para/brit-inf. */
 /* Paratrooper teams: -1 follows the map (Dod_ParatroopersForMap), otherwise a bit mask: 1 Allies, 2 Axis. */
@@ -548,6 +549,7 @@ CHalfLifeDoD::CHalfLifeDoD()
 	g_spec_next_think = 0.0f;
 	memset( g_spec_join_pending, 0, sizeof( g_spec_join_pending ) );
 	memset( g_autojoin_seen, 0, sizeof( g_autojoin_seen ) );
+	memset( g_autojoin_spec_done, 0, sizeof( g_autojoin_spec_done ) );
 }
 
 /* The first open class for a side, starting at the one asked for: a bot's pick when limits turn its choice away. */
@@ -1255,7 +1257,19 @@ static void DodGC_SpectatorThink( void )
 			const char *aj = CVAR_GET_STRING( "dod_gc_autojoin" );
 			int aj_team = 0, aj_class = 0, aj_bots = -1;
 			const int aj_n = ( aj && aj[0] ) ? sscanf( aj, "%d %d %d", &aj_team, &aj_class, &aj_bots ) : 0;
-			if( aj_n >= 2 && ( aj_team == DOD_TEAM_ALLIES || aj_team == DOD_TEAM_AXIS ) ) {
+			if( aj_n >= 2 && aj_team == 0 && !g_autojoin_spec_done[i] ) {
+				/* team 0: join as a spectator (the director follows the bots), for a bot-match clip */
+				if( g_autojoin_seen[i] == 0.0f ) {
+					g_autojoin_seen[i] = gpGlobals->time;
+					if( aj_n >= 3 && aj_bots >= 0 )
+						CVAR_SET_FLOAT( "dod_bots", (float)aj_bots );
+					CVAR_SET_FLOAT( "dod_spectate", 1.0f );
+				} else if( gpGlobals->time - g_autojoin_seen[i] > 2.0f ) {
+					g_autojoin_seen[i] = 0.0f;
+					g_spec_join_pending[i] = TRUE;
+					g_autojoin_spec_done[i] = TRUE;
+				}
+			} else if( aj_n >= 2 && ( aj_team == DOD_TEAM_ALLIES || aj_team == DOD_TEAM_AXIS ) ) {
 				if( g_autojoin_seen[i] == 0.0f ) {
 					g_autojoin_seen[i] = gpGlobals->time;
 					/* optional third number: the bot count, set here because a cfg line for dod_bots is overwritten when
