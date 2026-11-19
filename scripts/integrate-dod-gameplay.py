@@ -329,6 +329,17 @@ def integrate_pm_layout_hook(dlls: Path) -> None:
 		'void DodGC_RegisterPmLayout( void );\nvoid GameDLLInit( void )\n{\n\tDodGC_RegisterPmLayout();\n')
 
 
+def integrate_precache_bodies_hook(dlls: Path) -> None:
+	"""ServerActivate precaches the map's team bodies (DodGC_PrecacheTeamBodies in dod_runtime.cpp), after the entities spawn."""
+	client = dlls / "client.cpp"
+	if "DodGC_PrecacheTeamBodies" in client.read_text():
+		return
+	replace_once(client, "void ServerActivate( edict_t *pEdictList, int edictCount, int clientMax )\n{\n",
+		"void DodGC_PrecacheTeamBodies( void );\nvoid ServerActivate( edict_t *pEdictList, int edictCount, int clientMax )\n{\n")
+	replace_once(client, "\tg_serveractive = 1;\n",
+		"\tg_serveractive = 1;\n#ifdef __GAMECUBE__\n\tDodGC_PrecacheTeamBodies();\n#endif\n")
+
+
 def integrate_studio_anim_pack(hlsdk: Path, engine: Path | None) -> None:
 	"""The client DLL's StudioModelRenderer::StudioGetAnim loads a sequence group with IEngineStudio.LoadCacheFile. For a
 	split DoD model the group is an animation pack (.gca, 3.5 MB), which cannot be read into MEM1 (Host_Error: LoadCacheFile:
@@ -872,6 +883,7 @@ def main() -> int:
 	integrate_film_actors(dlls)
 	integrate_doddetect(dlls)
 	integrate_pm_layout_hook(dlls)
+	integrate_precache_bodies_hook(dlls)
 	integrate_studio_anim_pack(args.hlsdk_dir, args.engine_dir)
 	integrate_death_anims(dlls)
 	integrate_retail_sounds(args.hlsdk_dir)
