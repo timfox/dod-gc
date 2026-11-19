@@ -44,6 +44,10 @@ void CHudDod::InitState( void )
 	m_pCvar = gEngfuncs.pfnGetCvarPointer( "cl_dodhud" );
 	if( !m_pCvar )
 		m_pCvar = gEngfuncs.pfnRegisterVariable( "cl_dodhud", "1", FCVAR_ARCHIVE );
+	/* The engine's lean/probe route (CapFaces, vid_gamecube.c) paints its own TEAM / HP / AMMO bars; it checks this flag so it
+	 * does not draw a second ammo readout over the retail one. */
+	if( !gEngfuncs.pfnGetCvarPointer( "gc_hud_retail" ))
+		gEngfuncs.pfnRegisterVariable( "gc_hud_retail", "0", 0 );
 	HOOK_MESSAGE( DodHud );
 	HOOK_MESSAGE( DodBoard );
 	HOOK_MESSAGE( DodVoice );
@@ -391,6 +395,7 @@ void CHudDod::DrawBoard( void )
 
 int CHudDod::DrawRetail( float flTime )
 {
+	gEngfuncs.Cvar_SetValue( "gc_hud_retail", 0.0f );
 	DodRetailInput in;
 	DodRetailDraw draws[DOD_RETAIL_MAX_DRAWS];
 	DodRetailText spare;
@@ -561,6 +566,7 @@ int CHudDod::DrawRetail( float flTime )
 		gEngfuncs.Con_Printf( "Xash3D GameCube: DoD retail HUD drew %d/%d health=%d timer=%d weapon=%s\n",
 			drawn, count, in.health, in.seconds_left, in.weapon ? in.weapon->key : "-" );
 	}
+	gEngfuncs.Cvar_SetValue( "gc_hud_retail", 1.0f );	/* the retail readout drew this frame: nothing else may draw ammo or health */
 	return 1;
 }
 
