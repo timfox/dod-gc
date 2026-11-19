@@ -537,6 +537,22 @@ CHalfLifeDoD::CHalfLifeDoD()
 		Dod_SetParatroopers( paras & 1, paras & 2 );
 		ALERT( at_console, "DoD: paratroopers: Allies %s, Axis %s\n", paras & 1 ? "yes" : "no", paras & 2 ? "yes" : "no" );
 	}
+#if defined( __GAMECUBE__ )
+	{
+		/* Stock DoD precaches the player models at map start. The engine only promotes a model that is on the server's
+		 * precache list: without this the team body cores (about 79 KB each) were first requested when a player of that
+		 * side drew, after the heap and spill were fragmented ("can't alloc 79049 bytes" with 300 KB free). */
+		const DodTeam teams[2] = { DOD_TEAM_ALLIES, DOD_TEAM_AXIS };
+		for( int t = 0; t < 2; t++ ) {
+			const char *body = DodGC_BodyForTeam( teams[t] );
+			char path[96];
+			if( !body || !body[0] )
+				continue;
+			snprintf( path, sizeof( path ), "models/player/%s/%s.mdl", body, body );
+			PRECACHE_MODEL( path );
+		}
+	}
+#endif
 	DodFilm_Init();	/* after the country and paratroopers: they pick the actors' bodies */
 	Dod_ClearObjectives();
 	round_seconds = CVAR_GET_FLOAT( "mp_timelimit" ) * 60.0f;
