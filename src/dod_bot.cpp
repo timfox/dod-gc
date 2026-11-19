@@ -199,8 +199,7 @@ typedef struct DodBotState {
 	Vector patrol_pos;
 } DodBotState;
 
-/* Per-bot state is heap allocated only while bots exist (the BSS it used to
- * take is MEM1 the menu and map load want). Bounded by a byte budget, freed on
+/* Per-bot state: heap allocated only while bots exist on host builds; a fixed pool on GameCube (see g_bot_pool). Bounded by a byte budget, freed on
  * map change and when the last bot leaves; if the heap cannot give it, no bot
  * is added rather than failing later. */
 #if defined( __GAMECUBE__ )
@@ -209,6 +208,12 @@ typedef struct DodBotState {
 #define DOD_BOT_MEM_BUDGET 8192
 #endif
 static DodBotState *g_bot;
+#if defined( __GAMECUBE__ )
+/* On GameCube the state lives in a fixed pool, not the heap: with 26 KB free but fragmented, the 7.5 KB calloc for
+ * 11 slots failed and a match got no bots at all ("no bot state: out of memory"), and a late join could hit the
+ * same. 11.5 KB of BSS buys bots that always spawn. */
+static DodBotState g_bot_pool[DOD_BOT_MEM_BUDGET / sizeof( DodBotState )];
+#endif
 static int g_bot_slots;		/* entries allocated, indexed by entity index */
 
 static DodBotState *BotState( int index )
@@ -332,8 +337,10 @@ static void FreeBotState( void )
 {
 	FreeNav();
 	Dod_IntelReset( &g_intel );
+#if !defined( __GAMECUBE__ )
 	if( g_bot )
 		free( g_bot );
+#endif
 	g_bot = NULL;
 	g_bot_slots = 0;
 }
@@ -363,7 +370,12 @@ static BOOL EnsureBotState( void )
 		BotNote( "no bot state: too few slots", slots, DOD_BOT_MEM_BUDGET );
 		return FALSE;
 	}
+#if defined( __GAMECUBE__ )
+	memset( g_bot_pool, 0, sizeof( g_bot_pool ) );
+	g_bot = g_bot_pool;
+#else
 	g_bot = (DodBotState *)calloc( slots, sizeof( DodBotState ) );
+#endif
 	if( !g_bot ) {
 		BotNote( "no bot state: out of memory", slots, (int)sizeof( DodBotState ) );
 		return FALSE;
