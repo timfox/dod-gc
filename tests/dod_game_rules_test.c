@@ -5,6 +5,35 @@
 #include <math.h>
 #include <string.h>
 
+static void test_kit_plan(void)
+{
+	int team, cls, human_total = 0, lean_total = 0, classes = 0;
+
+	for (team = DOD_TEAM_ALLIES; team <= DOD_TEAM_AXIS; team++) {
+		for (cls = 0; cls < DOD_CLASS_COUNT; cls++) {
+			DodKitPlan human, lean;
+			int h = Dod_KitPlan((DodTeam)team, (DodClass)cls, 0, &human);
+			int l = Dod_KitPlan((DodTeam)team, (DodClass)cls, 1, &lean);
+
+			if (!Dod_ClassWeaponDef((DodTeam)team, (DodClass)cls)) {
+				assert(h == 0 && l == 0);
+				continue;
+			}
+			classes++;
+			/* a bot keeps exactly its primary weapon, and it is always there to be the active item */
+			assert(lean.primary == 1 && lean.entities == 1 && l == 1);
+			assert(lean.crowbar == 0 && lean.sidearm == 0 && lean.grenade == 0);
+			/* a human keeps the full stock kit: crowbar and primary at least, never fewer than a bot */
+			assert(human.primary == 1 && human.crowbar == 1 && h >= 2 && h <= 4 && h > l);
+			assert(human.entities == human.crowbar + human.sidearm + human.primary + human.grenade);
+			human_total += h;
+			lean_total += l;
+		}
+	}
+	assert(classes > 0 && lean_total == classes && human_total > lean_total);
+	assert(Dod_KitPlan(DOD_TEAM_ALLIES, DOD_CLASS_RIFLEMAN, 1, 0) == 0);
+}
+
 static void test_players_and_weapon_models(void)
 {
 	const DodPlayerState *player;
@@ -1144,6 +1173,7 @@ static void test_british_kit(void)
 
 int main(void)
 {
+	test_kit_plan();
 	test_players_and_weapon_models();
 	test_retail_class_names();
 	test_status_line();
