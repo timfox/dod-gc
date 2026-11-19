@@ -1512,6 +1512,10 @@ BOOL CHalfLifeDoD::FPlayerCanRespawn( CBasePlayer *pPlayer )
 
 int CHalfLifeDoD::DeadPlayerAmmo( CBasePlayer *pPlayer )
 {
+	/* A box with no gun still costs an edict: with both rules off the player drops nothing, so the same edict margin and box limit
+	 * apply here (switch: 12 boxes on the ground against DOD_MAX_BOXES 6, most of them ammo only). */
+	if( gpGlobals->maxEntities - g_engfuncs.pfnNumberOfEntities() < DOD_DROP_EDICT_MARGIN || DodGC_CountBoxes() >= DOD_MAX_BOXES )
+		return GR_PLR_DROP_AMMO_NO;
 	return GR_PLR_DROP_AMMO_ACTIVE;
 }
 
