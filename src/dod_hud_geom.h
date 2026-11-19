@@ -133,7 +133,8 @@ static inline DodRect Dod_HudChatLines(int line_h)
 
 static inline DodRect Dod_HudKeyboard(void)
 {
-	return dod_rect((640 - DOD_OSK_W) / 2, DOD_SAFE_B - DOD_OSK_H, DOD_OSK_W, DOD_OSK_H);
+	/* in_osk.c: top = 480 - height - 26; the panel border adds 2 px on every side */
+	return dod_rect((640 - DOD_OSK_W) / 2 - 2, 480 - 26 - DOD_OSK_H - 2, DOD_OSK_W + 4, DOD_OSK_H + 4);
 }
 
 /* The chat prompt sits directly above the keyboard while chatting, inside the safe area. */
