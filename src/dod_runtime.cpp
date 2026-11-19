@@ -1665,6 +1665,8 @@ private:
 	int m_iAreaNumCap[3];	/* players of a team needed inside to capture */
 	BOOL m_bHasBounds;
 	int m_iPointIndex;
+	BOOL m_bTouchKeys;	/* the map set point_can_allies_touch / point_can_axis_touch */
+	BOOL m_bFixed;	/* a flag that starts owned and has no way to be taken (no capture area, no touch keys): it only counts in the master's tally */
 	int m_iDefaultOwner;
 	int m_iPointsForCap;	/* point_points_for_cap: Score for each player who captures it */
 	int m_iTeamPoints, m_iTimePoints;	/* point_team_points (on capture), point_pointvalue (timed) */
@@ -1684,6 +1686,8 @@ LINK_ENTITY_TO_CLASS( dod_control_point, CDoDControlPoint )
 CDoDControlPoint::CDoDControlPoint()
 {
 	m_iPointIndex = -1;
+	m_bTouchKeys = FALSE;
+	m_bFixed = FALSE;
 	m_iDefaultOwner = DOD_TEAM_UNASSIGNED;
 	m_iPointsForCap = 1;
 	m_iTeamPoints = 0;
@@ -1765,6 +1769,7 @@ void CDoDControlPoint::SetAreaDriven( float capture_seconds )
 	if( m_bAreaDriven )
 		return;
 	m_bAreaDriven = TRUE;
+	m_bFixed = FALSE;
 	if( capture_seconds > 0.0f )
 		Dod_RegisterObjective( m_iPointIndex, DOD_OBJ_CAPTURE_POINT, (DodTeam)m_iDefaultOwner,
 			capture_seconds, DOD_POINT_SCORE_PER_MINUTE );
@@ -1776,6 +1781,8 @@ void CDoDControlPoint::KeyValue( KeyValueData *pkvd )
 {
 	if( FStrEq( pkvd->szKeyName, "point_index" ) ) {
 		m_iPointIndex = atoi( pkvd->szValue ); pkvd->fHandled = TRUE;
+	} else if( FStrEq( pkvd->szKeyName, "point_can_allies_touch" ) || FStrEq( pkvd->szKeyName, "point_can_axis_touch" ) ) {
+		m_bTouchKeys = TRUE; pkvd->fHandled = TRUE;
 	} else if( FStrEq( pkvd->szKeyName, "point_default_owner" ) ) {
 		m_iDefaultOwner = atoi( pkvd->szValue ); pkvd->fHandled = TRUE;
 	} else if( FStrEq( pkvd->szKeyName, "point_points_for_cap" ) ) {
@@ -1805,7 +1812,16 @@ void CDoDControlPoint::Spawn( void )
 {
 	pev->solid = SOLID_NOT;
 	pev->movetype = MOVETYPE_NONE;
-	if( m_iPointIndex < 0 ) m_iPointIndex = 0;
+	if( m_iPointIndex < 0 ) {
+		/* point_index -1 (donner: all five points) means "give me one": every such point used to land on index 0 and count as one point */
+		int id = 16;
+		while( Dod_GetObjective( id ) && id < 31 )
+			id++;
+		m_iPointIndex = id;
+	}
+	m_bFixed = ( m_iDefaultOwner == DOD_TEAM_ALLIES || m_iDefaultOwner == DOD_TEAM_AXIS ) && !m_bTouchKeys;
+	if( m_bFixed )
+		m_iAreaCanCap[0] = m_iAreaCanCap[DOD_TEAM_ALLIES] = m_iAreaCanCap[DOD_TEAM_AXIS] = 0;
 	Dod_RegisterObjective( m_iPointIndex, DOD_OBJ_CAPTURE_POINT,
 		(DodTeam)m_iDefaultOwner, 10.0f, DOD_POINT_SCORE_PER_MINUTE );
 	Dod_SetObjectivePointsForCap( m_iPointIndex, m_iPointsForCap );
@@ -1831,7 +1847,7 @@ void CDoDControlPoint::Think( void )
 		if( objective )
 			ShowOwner( objective->owner );
 	}
-	if( m_bAreaDriven ) {
+	if( m_bAreaDriven || m_bFixed ) {
 		pev->nextthink = gpGlobals->time + 0.25f;
 		return;
 	}
