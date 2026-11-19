@@ -23,6 +23,20 @@ static void test_passthrough_outside_chase(void)
 	assert(o[1] == 2);
 }
 
+static void test_pull_in(void)
+{
+	const float start[3] = { 0, 0, 0 }, end[3] = { 100, 0, 0 };
+	float o[3];
+	DodCam_PullIn(start, end, 1.0f, 8.0f, o);	/* free path: untouched */
+	assert(near(o[0], 100.0f, 0.001f));
+	DodCam_PullIn(start, end, 0.5f, 8.0f, o);	/* wall at 50: stop 8 short */
+	assert(near(o[0], 42.0f, 0.001f) && o[1] == 0 && o[2] == 0);
+	DodCam_PullIn(start, end, 0.05f, 8.0f, o);	/* wall right in front: stay at the start */
+	assert(near(o[0], 0.0f, 0.001f));
+	DodCam_PullIn(start, start, 0.0f, 8.0f, o);	/* zero-length ray */
+	assert(o[0] == 0.0f);
+}
+
 static void test_first_frame_snaps_then_follows(void)
 {
 	DodCamState s;
@@ -113,6 +127,7 @@ static void test_level(void)
 int main(void)
 {
 	test_passthrough_outside_chase();
+	test_pull_in();
 	test_first_frame_snaps_then_follows();
 	test_frame_rate_independent();
 	test_snaps();
