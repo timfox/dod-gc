@@ -73,3 +73,28 @@ Blocked (not an infrastructure problem):
   `server progs` 975 KB, then failure. Something sized from the available heap before `Con_Init` absorbs the gain, so the
   extra 360 KB did not become headroom. Clients fail the same way at the same call after `net ready`.
 - Logs: `output/media/mdt-e6098bf-800e305/`.
+
+### Heap campaign, 2026-11-18 (BBA listen host, dod_flash, direct boot)
+
+Lever stack and what each run showed (network DOL, `XASH_GAMECUBE_LINK_BBA=1`; `build-dodgc.sh` defaults it to 0 and an export does
+not survive between shell calls):
+
+| Stack | Outcome |
+| --- | --- |
+| master e6098bf/800e3053 | `SV_InitGame` OOM, heap_free ~100 B at `server progs` |
+| + XFB 320 wide on match routes + FS arena 128 KiB with `-net` (xash3d-gc#245, stopgap) | passes SV_InitGame, fails in `Mod_LoadWorld` |
+| + durable CMPR hot window 32 KB with `-net` | world loads to MAP READY, 8 entities tip-starved, OOM in client init |
+| + lwIP pools PBUF 8 / MEM 32 KiB (private libogc2, -58 KiB BSS) | all entities spawn, OOM in client init (`cl_efx.c`, cvars) at heap_used ~1.05 MB |
+| + `gx_fifo` 256 -> 128 KiB | "missing BSP faces" Host_Error (FULL CapFaces race, below) |
+| + faces re-ensure after staging release, 320x240 XFB, FIFO 128 (throwaway) | map loads, spawn, OOM again in client init, heap_used 1.18 MB |
+
+Findings:
+- The heap acts like a sponge: every ~130-300 KB freed was used up again before client init, so the shortfall is a budget problem
+  (map load, entity spawn and client init take whatever is free), not one big consumer. Entity spawn goes tip-starved first.
+- FULL CapFaces race (`mod_bmodel.c` ~12232): `Mod_GCEnsureBspLump(LUMP_FACES)` logs "already resident" because the pointer is inside the BSP
+  staging image; `Mod_GCReleaseGcmapPreSurfaceStaging` then frees that image. Appears only when enough heap is free.
+- `XASH_GC_MALLOC_TRACE=1` DOL hung at boot in Dolphin here (no guest output).
+- Dolphin stdout redirected to a file is block-buffered; a run killed at the lock cap loses its log. The launcher uses `stdbuf -oL -eL`.
+- Needed for real maps: a client-init/entity budget the map load cannot eat, FS arena sized per map, CMPR window 32 KB on match routes,
+  smaller lwIP pools, a FIFO size decision, and the 640 XFB kept (so savings must come from ARAM streaming of lumps/entities).
+Logs: `output/media/mdt-*/`.

@@ -9,7 +9,7 @@ RUN="${DODGC_NET_RUN:-${XDG_RUNTIME_DIR:-/tmp}/dodgc-multi-net}"
 TAP_PATH="${DODGC_TAP_PATH:-$RUN/dolphin-tap}"
 DOLPHIN="${DOLPHIN:-$HOME/xash3d-gc-hl1/3rdparty/dolphin/build/Binaries/xash-gc-dolphin}"
 STAMP="${MDT_STAMP:-$(date +%Y%m%d-%H%M%S)}"
-[[ $# -ge 2 ]] || { sed -n 2,6p "$0"; exit 2; }
+[[ $# -ge 1 ]] || { sed -n 2,6p "$0"; exit 2; }
 [[ -S "$TAP_PATH" ]] || { echo "start scripts/multi-dolphin-net.sh start first" >&2; exit 1; }
 QUEUE=/tmp/dolphin-ceres.queue; LOCK=/tmp/dolphin-ceres.lock; ME="multi-dolphin online test"
 if [[ "${MDT_LOCK:-1}" == 1 ]]; then
@@ -52,7 +52,7 @@ ConfirmStop = False
 EOF
 	printf '[Logs]\nBOOT = True\nOSREPORT = True\nOSREPORT_HLE = True\nSP1 = True\n[Options]\nVerbosity = 4\nWriteToFile = True\nWriteToConsole = True\n' > "$u/Config/Logger.ini"
 	printf '[Settings]\nBackend = OGL\nShowFPS = True\n' > "$u/Config/GFX.ini"
-	"$DOLPHIN" -u "$u" -v OGL -e "$iso" >"$RUN/$name.log" 2>&1 &
+	stdbuf -oL -eL "$DOLPHIN" -u "$u" -v OGL -e "$iso" >"$RUN/$name.log" 2>&1 &
 	PIDS+=($!); echo "$name pid=$! iso=$iso ip=10.0.0.$((i+2)) user=$u"
 	[[ $i == 0 ]] && sleep "${MDT_HOST_HEAD_START:-60}"
 	i=$((i+1))
