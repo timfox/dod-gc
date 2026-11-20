@@ -42,6 +42,10 @@ static float g_film_fx_clock;	/* the shot time fx have been fired up to */
 static char g_film_shot[32];
 static int g_film_commands_added;
 static int g_film_precached[4];	/* by DodTeam */
+/* The shot's fireball. zerogxplode.spr (g_sModelIndexFireball) is 193 KB on disc, more than
+ * the GameCube heap has free once a map is up, so it never loaded and no burst drew;
+ * explode1.spr is a fraction of that. 0 falls back to g_sModelIndexFireball. */
+static int g_film_fireball;
 
 static void DodFilm_Clear( void )
 {
@@ -222,7 +226,7 @@ static void DodFilm_FireFx( const DodFilmFx *f )
 			WRITE_COORD( o.x );
 			WRITE_COORD( o.y );
 			WRITE_COORD( o.z + 24.0f * s );
-			WRITE_SHORT( g_sModelIndexFireball );
+			WRITE_SHORT( g_film_fireball ? g_film_fireball : g_sModelIndexFireball );
 			WRITE_BYTE( DodFilm_Byte( 30.0f * s ) );	/* scale * 10, a grenade's */
 			WRITE_BYTE( 15 );
 			WRITE_BYTE( TE_EXPLFLAG_NOSOUND );
@@ -278,7 +282,7 @@ static void DodFilm_RunFx( float t )
 			ALERT( at_console, "FILM FX %s: %d of %d, %s at %.2f s (%.0f %.0f %.0f), fireball %d smoke %d\n", g_film_shot,
 				i + 1, g_film_cast.fx_count, DodFilm_FxName( (DodFilmFxKind)g_film_cast.fx[i].kind ), t,
 				g_film_cast.fx[i].origin[0], g_film_cast.fx[i].origin[1], g_film_cast.fx[i].origin[2],
-				g_sModelIndexFireball, g_sModelIndexSmoke );
+				g_film_fireball ? g_film_fireball : g_sModelIndexFireball, g_sModelIndexSmoke );
 		}
 	}
 	if( t > g_film_fx_clock )
@@ -379,9 +383,11 @@ void DodFilm_Init( void )
 	memset( g_film_ents, 0, sizeof( g_film_ents ) );
 	memset( &g_film_cast, 0, sizeof( g_film_cast ) );
 	memset( g_film_precached, 0, sizeof( g_film_precached ) );
+	g_film_fireball = 0;
 	byte *text = LOAD_FILE_FOR_ME( "cine/cast.txt", &length );
 	if( !text )
 		return;
+	g_film_fireball = PRECACHE_MODEL( "sprites/explode1.spr" );
 	for( int team = DOD_TEAM_ALLIES; team <= DOD_TEAM_AXIS; team++ ) {
 		const char *name = team == DOD_TEAM_AXIS ? "axis" : "allies";
 		const char *hit = strstr( (const char *)text, name );
