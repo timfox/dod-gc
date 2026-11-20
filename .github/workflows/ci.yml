@@ -1,0 +1,85 @@
+name: CI
+# Three checks every pull request and every push to main must pass:
+#   public-tree  this repository is public and game-only (scripts/check-public-tree.sh)
+#   host-tests   the Python and host-side tests under tests/
+#   build-dol    the game DLL and engine link into dodgc.dol (catches a merge that breaks the build)
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  public-tree:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: No private (non-game) files in the tree or in any commit of this change
+        env:
+          EVENT: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: |
+          range=""
+          if [ "$EVENT" = pull_request ]; then
+            range="$PR_BASE..$PR_HEAD"
+          elif [ "$EVENT" = push ] && [ -n "$PUSH_BEFORE" ] && ! echo "$PUSH_BEFORE" | grep -qE '^0+$'; then
+            range="$PUSH_BEFORE..$GITHUB_SHA"
+          fi
+          bash scripts/check-public-tree.sh ${range:+--range "$range"}
+
+  host-tests:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Run host tests
+        run: python3 -m unittest discover -s tests -v
+
+  build-dol:
+    runs-on: ubuntu-24.04
+    container: devkitpro/devkitppc:latest
+    timeout-minutes: 45
+    env:
+      DEVKITPRO: /opt/devkitpro
+      DEVKITPPC: /opt/devkitpro/devkitPPC
+      # The public toolchain image ships libogc (libogc2 is installed on the developer machine only).
+      XASH_GAMECUBE_OGC_STACK: libogc
+      XASH_GAMECUBE_LINK_BBA: '0'
+      # No retail content in CI: the DOL link needs only a liblist.gam to find the game dir.
+      DODGC_CONTENT_DOD: ${{ github.workspace }}/.ci-content/dod
+      DODGC_CONTENT_VALVE: ${{ github.workspace }}/.ci-content/valve
+      DODGC_SKIP_SUBMODULES: 3rdparty/dolphin
+    steps:
+      - name: Host tools
+        run: |
+          apt-get update -qq
+          apt-get install -y -qq --no-install-recommends git python3 ca-certificates make >/dev/null
+      - uses: actions/checkout@v4
+      - name: Fetch the pinned engine and SDK
+        run: |
+          git config --global --add safe.directory '*'
+          bash scripts/fetch-sources.sh
+      - name: Build dodgc.dol
+        run: |
+          mkdir -p "$DODGC_CONTENT_DOD"
+          echo 'game "Day of Defeat"' > "$DODGC_CONTENT_DOD/liblist.gam"
+          bash scripts/build-dodgc.sh --dol-only
+          ls -l out/dodgc.dol
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dodgc-dol-${{ github.sha }}
+          path: |
+            out/dodgc.dol
+            out/gamecube-handoff.txt
+          if-no-files-found: error
+          retention-days: 14
