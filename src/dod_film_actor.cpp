@@ -122,6 +122,17 @@ static int DodFilm_Sequence( CDodFilmActor *ent, int pose )
 	return *slot - 1;
 }
 
+/* A brush entity the renderer never draws: no-draw, or a render mode other than normal with amount 0. */
+static bool DodFilm_UnseenBrush( edict_t *hit )
+{
+	if( !hit || ENTINDEX( hit ) <= 0 )
+		return false;
+	const entvars_t *v = &hit->v;
+	if( v->effects & EF_NODRAW )
+		return true;
+	return v->rendermode != kRenderNormal && v->renderamt < 1.0f;
+}
+
 /* Feet on the floor under (x, y): trace down from a little above the keyed point. The key's
  * z is a standing player's origin (from the waypoints), the fallback when nothing is hit.
  * Between keys an actor moves in a straight line, so over a crest the line runs a little
@@ -136,6 +147,16 @@ static float DodFilm_OriginZ( const float *origin, int pose )
 		Vector start( origin[0], origin[1], origin[2] + ups[i] );
 		Vector end( origin[0], origin[1], origin[2] - 320.0f );
 		UTIL_TraceLine( start, end, ignore_monsters, NULL, &tr );
+		/* Mappers fence obstacles and wire with brush entities that are never drawn (dod_charlie's
+		 * beach obstacles and the wire on the slope each sit in one). A line trace hits them like any
+		 * wall, and an actor crossing one stood on its top, in the air. Look through them for the
+		 * floor a viewer sees. */
+		for( int pass = 0; pass < 4 && DodFilm_UnseenBrush( tr.pHit ) && ( tr.flFraction < 1.0f || tr.fStartSolid ); pass++ ) {
+			edict_t *unseen = tr.pHit;
+			if( !tr.fStartSolid )
+				start = tr.vecEndPos;
+			UTIL_TraceLine( start, end, ignore_monsters, unseen, &tr );
+		}
 		if( tr.fStartSolid || tr.fAllSolid )
 			continue;
 		if( tr.flFraction < 1.0f )
