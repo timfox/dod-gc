@@ -358,6 +358,95 @@ def integrate_weaponbox_null_check(dlls: Path) -> None:
 		"			if( !pWeaponBox )\n				return;	// weaponbox: no edict or private block left\n			pWeaponBox->pev->angles.x = 0;")
 
 
+def integrate_weapon_model_null_check(hlsdk: Path) -> None:
+	"""StudioDrawPlayer merges the weapon model's bones into the player's. When the weapon model is not resident
+	(IEngineStudio.Mod_Extradata gives NULL: a GameCube match with a dozen bots in view and the weapon models unloaded) the next
+	line read m_pStudioHeader->numseq through NULL: a data fault (DAR 0xa4) that ended in libogc's reset screen and froze the match.
+	Skip the weapon then, and say so once per model so the cause (a model that is not loaded) can be fixed in the engine."""
+	renderer = hlsdk / "cl_dll" / "StudioModelRenderer.cpp"
+	if "DodGC_WeaponModelResident" in renderer.read_text():
+		return
+	replace_once(renderer,
+		"int CStudioModelRenderer::StudioDrawPlayer( int flags, entity_state_t *pplayer )\n",
+		"static bool DodGC_WeaponModelResident( int index )\n{\n"
+		"	static int logged[8];\n	static int nlogged;\n"
+		"	model_t *m = IEngineStudio.GetModelByIndex( index );\n"
+		"	if( m && IEngineStudio.Mod_Extradata( m ))\n		return true;\n"
+		"	for( int i = 0; i < nlogged; i++ )\n		if( logged[i] == index )\n			return false;\n"
+		"	if( nlogged < 8 )\n		logged[nlogged++] = index;\n"
+		"	gEngfuncs.Con_Printf( \"DoD weapon model %d (%s) not resident, weapon not drawn\\n\", index, m ? m->name : \"(none)\" );\n"
+		"	return false;\n}\n\n"
+		"int CStudioModelRenderer::StudioDrawPlayer( int flags, entity_state_t *pplayer )\n")
+	replace_once(renderer,
+		"		if( pplayer->weaponmodel )\n		{\n			cl_entity_t saveent = *m_pCurrentEntity;\n\n			model_t *pweaponmodel = IEngineStudio.GetModelByIndex( pplayer->weaponmodel );\n",
+		"		if( pplayer->weaponmodel && DodGC_WeaponModelResident( pplayer->weaponmodel ))\n		{\n			cl_entity_t saveent = *m_pCurrentEntity;\n\n			model_t *pweaponmodel = IEngineStudio.GetModelByIndex( pplayer->weaponmodel );\n")
+
+
+def integrate_gib_null_check(dlls: Path) -> None:
+	"""Every `GetClassPtr( (T *)NULL )` makes its entity with CREATE_ENTITY, which gives no edict at the 460 tip of the GameCube, and
+	the code then read through the NULL edict: a data fault that froze the match (a bot gibbed in CBasePlayer::Killed, a rocket, an
+	explosion's sparks ...). GetClassPtr now returns NULL, and each caller bails out after its call: `return;` in a void function,
+	`return NULL;` in a pointer function, `return 0;` otherwise, `break;` inside a loop. Gibs are cosmetic: they also stop 24 edicts
+	short of the tip so they never eat the reserve the engine keeps for rockets and grenades."""
+	import re
+	cbase = dlls / "cbase.h"
+	if "no edict from CREATE_ENTITY" not in cbase.read_text():
+		replace_once(cbase, "	if( pev == NULL )\n		pev = VARS( CREATE_ENTITY() );\n",
+			"	if( pev == NULL )\n	{\n		edict_t *pentNew = CREATE_ENTITY();\n		if( FNullEnt( pentNew ))\n			return NULL;	// no edict from CREATE_ENTITY (the tip)\n		pev = VARS( pentNew );\n	}\n")
+	plats = dlls / "plats.cpp"
+	if "pTrig" not in plats.read_text():
+		replace_once(plats, "	GetClassPtr( (CPlatTrigger *)NULL )->SpawnInsideTrigger( GetClassPtr( (CFuncPlat *)pevPlatform ) );\n",
+			"	CPlatTrigger *pTrig = GetClassPtr( (CPlatTrigger *)NULL );\n	if( pTrig )\n		pTrig->SpawnInsideTrigger( GetClassPtr( (CFuncPlat *)pevPlatform ) );\n")
+	decl = re.compile(r"^(\s*)(?:[\w:]+\s*\*\s*)?(\w+)\s*=\s*GetClassPtr\(\s*\(\s*(\w+)\s*\*\s*\)\s*NULL\s*\)\s*;\s*$")
+	for path in sorted(dlls.glob("*.cpp")):
+		text = path.read_text()
+		if "GetClassPtr(" not in text or "// no edict" in text:
+			continue
+		lines = text.split("\n")
+		out = []
+		changed = False
+		for i, line in enumerate(lines):
+			m = decl.match(line)
+			if not m:
+				out.append(line)
+				continue
+			indent, name, cls = m.group(1), m.group(2), m.group(3)
+			if cls == "CGib":
+				line = line.replace("GetClassPtr( (CGib *)NULL )", "( gpGlobals->maxEntities - g_engfuncs.pfnNumberOfEntities() < 24 ) ? NULL : GetClassPtr( (CGib *)NULL )")
+			# the function header, and whether a loop encloses the call
+			ind = len(indent.replace("\t", "    "))
+			in_loop = False
+			header = None
+			cur = ind
+			for j in range(i - 1, -1, -1):
+				prev = lines[j]
+				if not prev.strip():
+					continue
+				pind = len(prev[:len(prev) - len(prev.lstrip())].replace("\t", "    "))
+				if pind == 0 and not prev.lstrip().startswith(("{", "}", "#", "/", "*")):
+					header = prev
+					break
+				if pind < cur and prev.strip() != "{":
+					if re.match(r"\s*(for|while)\b", prev):
+						in_loop = True
+					cur = pind
+			bail = "return 0;"
+			if in_loop:
+				bail = "break;"
+			elif header is not None:
+				hm = re.match(r"\s*(.*?)\b[\w:~]+\s*\(", header)
+				rtype = hm.group(1) if hm else ""
+				if "*" in rtype:
+					bail = "return NULL;"
+				elif "void" in rtype.split() and "*" not in rtype:
+					bail = "return;"
+			out.append(line)
+			out.append("%sif( !%s )\n%s\t%s	// no edict" % (indent, name, indent, bail))
+			changed = True
+		if changed:
+			path.write_text("\n".join(out))
+
+
 def integrate_studio_anim_pack(hlsdk: Path, engine: Path | None) -> None:
 	"""The client DLL's StudioModelRenderer::StudioGetAnim loads a sequence group with IEngineStudio.LoadCacheFile. For a
 	split DoD model the group is an animation pack (.gca, 3.5 MB), which cannot be read into MEM1 (Host_Error: LoadCacheFile:
@@ -904,6 +993,8 @@ def main() -> int:
 	integrate_precache_bodies_hook(dlls)
 	integrate_weaponbox_null_check(dlls)
 	integrate_studio_anim_pack(args.hlsdk_dir, args.engine_dir)
+	integrate_weapon_model_null_check(args.hlsdk_dir)
+	integrate_gib_null_check(args.hlsdk_dir / "dlls")
 	integrate_death_anims(dlls)
 	integrate_retail_sounds(args.hlsdk_dir)
 	integrate_pm_caps(args.hlsdk_dir, args.engine_dir)

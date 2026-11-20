@@ -433,6 +433,7 @@ PY
 		p_colt.mdl p_luger.mdl p_amerk.mdl p_spade.mdl \
 		v_bar.mdl p_barbu.mdl \
 		p_garand.mdl p_mp40.mdl p_k98.mdl p_tommy.mdl \
+		p_enfield.mdl p_enfields.mdl p_sten.mdl p_fg42.mdl p_grease.mdl p_m1carb.mdl p_piat.mdl p_webley.mdl \
 		w_garand.mdl w_spring.mdl w_tommy.mdl w_bar.mdl w_30cal.mdl w_bazooka.mdl w_colt.mdl w_98k.mdl w_scoped98k.mdl \
 		w_mp40.mdl w_mp44.mdl w_mg42.mdl w_pschreck.mdl w_luger.mdl; do
 		if [[ -f "$SRC/models/$m" ]]; then
@@ -498,6 +499,7 @@ PY
 				p_garand.mdl p_k98.mdl p_mp40.mdl p_tommy.mdl \
 				p_bar.mdl p_mg34.mdl p_30cal.mdl p_mg42pr.mdl p_bazooka.mdl p_pschreck.mdl \
 				p_bren.mdl p_stg44.mdl p_spring.mdl \
+				p_enfield.mdl p_enfields.mdl p_sten.mdl p_fg42.mdl p_grease.mdl p_m1carb.mdl p_piat.mdl p_webley.mdl \
 				p_colt.mdl p_luger.mdl p_amerk.mdl p_spade.mdl \
 				v_garand.mdl v_98k.mdl v_mp40.mdl v_tommy.mdl \
 				v_bar.mdl v_mg34.mdl v_30cal.mdl v_mg42.mdl v_bazooka.mdl v_panzerschreck.mdl \
