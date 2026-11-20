@@ -109,6 +109,22 @@ class DodGameRulesTests(unittest.TestCase):
             )
             subprocess.run([str(binary)], check=True)
 
+    def test_native_achievements(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            binary = Path(tmp) / "dod-achievements"
+            subprocess.run(
+                [
+                    "cc", "-std=c99", "-Wall", "-Wextra", "-Werror",
+                    "-fsanitize=address,undefined",
+                    "-I", str(ROOT / "src"),
+                    str(ROOT / "src/dod_achievements.c"),
+                    str(ROOT / "tests/dod_achievements_test.c"),
+                    "-o", str(binary),
+                ],
+                check=True,
+            )
+            subprocess.run([str(binary)], check=True)
+
 
 if __name__ == "__main__":
     unittest.main()

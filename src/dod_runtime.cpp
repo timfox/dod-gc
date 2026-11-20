@@ -12,6 +12,7 @@
 #include "dod_hud.h"
 #include "dod_game.h"
 #include "dod_weapons.h"
+#include "dod_achievements.h"
 #include "dod_bot.h"
 #include "dod_bots.h"
 #include "animation.h"
@@ -948,6 +949,10 @@ BOOL CHalfLifeDoD::ClientCommand( CBasePlayer *pPlayer, const char *pcmd )
 			DodGC_Voice( pPlayer, voice, FALSE );
 		return TRUE;
 	}
+	if( FStrEq( pcmd, "dod_achievements" ) ) {
+		DodGC_AchListing( pPlayer );
+		return TRUE;
+	}
 	if( FStrEq( pcmd, "dod_score" ) ) {
 		if( index >= 1 && index <= DOD_MAX_PLAYERS ) {
 			const BOOL showing = g_dod_board_until[index] > gpGlobals->time;
@@ -1142,6 +1147,63 @@ static void DodGC_SendKillFeed( CBasePlayer *pVictim, entvars_t *pKiller, entvar
 	MESSAGE_END();
 }
 
+/* Achievements: the local player's own actions only (the listen-server host, player 1; bots and remote players never count).
+ * The counters are a few hundred bytes and are touched only on a kill, a plant or a death. */
+static DodAchState g_dod_ach;
+
+DodAchState *DodGC_Achievements( void ) { return &g_dod_ach; }
+
+static BOOL DodGC_AchIsLocal( CBasePlayer *pPlayer )
+{
+	return pPlayer && pPlayer->IsPlayer() && ENTINDEX( ENT( pPlayer->pev ) ) == 1 && !DodBots_IsBot( pPlayer )
+		&& !( pPlayer->pev->flags & FL_FAKECLIENT );
+}
+
+static void DodGC_AchAnnounce( CBasePlayer *pPlayer, unsigned int unlocked )
+{
+	int i;
+	for( i = 0; i < DOD_ACH_COUNT; i++ ) {
+		if( !( unlocked & ( 1u << i ) ) )
+			continue;
+		ClientPrint( pPlayer->pev, HUD_PRINTCENTER, UTIL_VarArgs( "Achievement unlocked: %s\n%s", DodAch_Name( (DodAchId)i ), DodAch_Text( (DodAchId)i ) ) );
+		ClientPrint( pPlayer->pev, HUD_PRINTCONSOLE, UTIL_VarArgs( "Achievement unlocked: %s - %s\n", DodAch_Name( (DodAchId)i ), DodAch_Text( (DodAchId)i ) ) );
+	}
+}
+
+static void DodGC_AchOnKill( CBasePlayer *pVictim, entvars_t *pKiller, entvars_t *pInflictor )
+{
+	CBaseEntity *killer = pKiller ? CBaseEntity::Instance( pKiller ) : NULL;
+	if( DodGC_AchIsLocal( pVictim ) )
+		DodAch_LifeReset( &g_dod_ach );
+	if( !killer || !killer->IsPlayer() || killer == pVictim )
+		return;
+	CBasePlayer *kp = (CBasePlayer *)killer;
+	if( !DodGC_AchIsLocal( kp ) || DodGC_TeamForPlayer( kp ) == DodGC_TeamForPlayer( pVictim ) )
+		return;
+	const char *cls = NULL;
+	if( pInflictor && !( pInflictor->flags & FL_CLIENT ) && pInflictor != pKiller )
+		cls = STRING( pInflictor->classname );
+	else if( kp->m_pActiveItem )
+		cls = STRING( kp->m_pActiveItem->pev->classname );
+	const DodTeam kteam = DodGC_TeamForPlayer( kp );
+	const DodPlayerState *st = Dod_GetPlayer( DodGC_PlayerIndex( kp ) );
+	DodAchState *ach = &g_dod_ach;
+	const DodKillWeapon weapon = DodAch_ClassifyKill( cls, kteam == DOD_TEAM_AXIS );
+	DodGC_AchAnnounce( kp, DodAch_RecordKill( ach, weapon, st ? st->player_class : DOD_CLASS_NONE ) );
+}
+
+static void DodGC_AchListing( CBasePlayer *pPlayer )
+{
+	int i;
+	for( i = 0; i < DOD_ACH_COUNT; i++ ) {
+		unsigned int goal, have = DodAch_Progress( &g_dod_ach, (DodAchId)i, &goal );
+		if( goal )
+			ClientPrint( pPlayer->pev, HUD_PRINTCONSOLE, UTIL_VarArgs( "%s %s: %u/%u\n", ( g_dod_ach.unlocked >> i ) & 1u ? "[x]" : "[ ]", DodAch_Name( (DodAchId)i ), have > goal ? goal : have, goal ) );
+		else
+			ClientPrint( pPlayer->pev, HUD_PRINTCONSOLE, UTIL_VarArgs( "%s %s\n", ( g_dod_ach.unlocked >> i ) & 1u ? "[x]" : "[ ]", DodAch_Name( (DodAchId)i ) ) );
+	}
+}
+
 void CHalfLifeDoD::PlayerKilled( CBasePlayer *pVictim, entvars_t *pKiller, entvars_t *pInflictor )
 {
 	const int attacker = pKiller ? ENTINDEX( ENT( pKiller ) ) : 0;
@@ -1149,6 +1211,7 @@ void CHalfLifeDoD::PlayerKilled( CBasePlayer *pVictim, entvars_t *pKiller, entva
 	Dod_NoteDeath( DodGC_PlayerIndex( pVictim ) );
 	DodGC_PickDeathSequence( pVictim, pKiller, pInflictor );
 	DodGC_SendKillFeed( pVictim, pKiller, pInflictor );
+	DodGC_AchOnKill( pVictim, pKiller, pInflictor );
 	CHalfLifeTeamplay::PlayerKilled( pVictim, pKiller, pInflictor );
 }
 
@@ -2501,7 +2564,11 @@ void CDoDCaptureArea::Think( void )
 					if( carrier && carrier->pev->absmin.x <= pev->absmax.x && carrier->pev->absmax.x >= pev->absmin.x
 						&& carrier->pev->absmin.y <= pev->absmax.y && carrier->pev->absmax.y >= pev->absmin.y
 						&& carrier->pev->absmin.z <= pev->absmax.z && carrier->pev->absmax.z >= pev->absmin.z )
+					{
+						if( DodGC_AchIsLocal( carrier ) )
+							DodGC_AchAnnounce( carrier, DodAch_RecordPlant( DodGC_Achievements() ) );
 						o->Consume();
+					}
 				}
 			}
 			m_bStarted = FALSE;
