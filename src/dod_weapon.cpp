@@ -53,7 +53,11 @@ void CDodRocket::Spawn( void )
 
 CDodRocket *CDodRocket::Create( const Vector &origin, const Vector &velocity, entvars_t *pevOwner, float damage )
 {
-	CDodRocket *pRocket = GetClassPtr( (CDodRocket *)NULL );
+	/* No free edict (the GameCube's 460 tip): GetClassPtr would take VARS( NULL ) and fault, which froze the match. No rocket then. */
+	edict_t *pent = CREATE_ENTITY();
+	if( FNullEnt( pent ) )
+		return NULL;
+	CDodRocket *pRocket = GetClassPtr( (CDodRocket *)VARS( pent ) );
 	UTIL_SetOrigin( pRocket->pev, origin );
 	pRocket->Spawn();
 	pRocket->pev->velocity = velocity;
