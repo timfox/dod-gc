@@ -1599,7 +1599,7 @@ static BOOL NavTarget( CBasePlayer *pBot, DodBotState *state, Vector *target )
 			state->stall_jumped = 1;
 			state->jump_until = now + 0.7f;
 			state->want_jump = 1;
-			state->jump_duck = 1;
+			state->jump_duck = 0;	/* the stall hop does not duck: on charlie it fired 130 times on one slope (jumplog) and a hop that clears more only hides the stall */
 			state->path_progress_time = now;
 		}
 		else if( now - state->path_progress_time > DOD_BOT_NODE_STALL )
