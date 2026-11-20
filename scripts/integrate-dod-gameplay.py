@@ -367,7 +367,7 @@ def integrate_weapon_model_null_check(hlsdk: Path) -> None:
 	if "DodGC_WeaponModelResident" in renderer.read_text():
 		return
 	replace_once(renderer,
-		"void CStudioModelRenderer::StudioDrawPlayer( int flags, entity_state_t *pplayer )\n",
+		"int CStudioModelRenderer::StudioDrawPlayer( int flags, entity_state_t *pplayer )\n",
 		"static bool DodGC_WeaponModelResident( int index )\n{\n"
 		"	static int logged[8];\n	static int nlogged;\n"
 		"	model_t *m = IEngineStudio.GetModelByIndex( index );\n"
@@ -376,7 +376,7 @@ def integrate_weapon_model_null_check(hlsdk: Path) -> None:
 		"	if( nlogged < 8 )\n		logged[nlogged++] = index;\n"
 		"	gEngfuncs.Con_Printf( \"DoD weapon model %d (%s) not resident, weapon not drawn\\n\", index, m ? m->name : \"(none)\" );\n"
 		"	return false;\n}\n\n"
-		"void CStudioModelRenderer::StudioDrawPlayer( int flags, entity_state_t *pplayer )\n")
+		"int CStudioModelRenderer::StudioDrawPlayer( int flags, entity_state_t *pplayer )\n")
 	replace_once(renderer,
 		"		if( pplayer->weaponmodel )\n		{\n			cl_entity_t saveent = *m_pCurrentEntity;\n\n			model_t *pweaponmodel = IEngineStudio.GetModelByIndex( pplayer->weaponmodel );\n",
 		"		if( pplayer->weaponmodel && DodGC_WeaponModelResident( pplayer->weaponmodel ))\n		{\n			cl_entity_t saveent = *m_pCurrentEntity;\n\n			model_t *pweaponmodel = IEngineStudio.GetModelByIndex( pplayer->weaponmodel );\n")
