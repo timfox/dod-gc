@@ -565,44 +565,50 @@ def gx_section(data, mo):
 			ni = v[1] if 0 <= v[1] < numnorms else 0
 			out += struct.pack(">BHHhh", 3 * bones.index(bone_of(v)), vi, ni, v[2], v[3])
 
+	def bones_of(verts):
+		need = []
+		for v in verts:
+			if bone_of(v) not in need:
+				need.append(bone_of(v))
+		return need
+
+	def batch_for(mesh_batches, k, need):
+		"""The mesh's batch that takes these bones with the fewest new matrices, or a new one. Draw order
+		inside a mesh does not matter (opaque, depth tested), so any batch of the mesh will do: taking only
+		the current one gave a body 14 batches where 5 hold it, and every batch costs ten matrix loads."""
+		best, best_extra = None, None
+		for batch in mesh_batches:
+			extra = [b for b in need if b not in batch[1]]
+			if len(batch[1]) + len(extra) <= GX_BATCH_BONES and (best is None or len(extra) < len(best_extra)):
+				best, best_extra = batch, extra
+		if best is None:
+			best = [k, list(need), bytearray()]
+			mesh_batches.append(best)
+		else:
+			best[1].extend(best_extra)
+		return best
+
 	for k in range(nummesh):
 		triindex = struct.unpack_from("<5i", data, meshindex + k * MESH_SIZE)[1]
-		cur = None
+		mesh_batches = []
 		for strip, verts in _tricmd_prims(data, triindex):
 			if len(verts) < 3:
 				continue
-			need = []
-			for v in verts:
-				if bone_of(v) not in need:
-					need.append(bone_of(v))
+			need = bones_of(verts)
 			if len(need) <= GX_BATCH_BONES:
-				extra = [b for b in need if cur is None or b not in cur[1]]
-				if cur is None or len(cur[1]) + len(extra) > GX_BATCH_BONES:
-					cur = [k, list(need), bytearray()]
-					batches.append(cur)
-				else:
-					cur[1].extend(extra)
-				emit(cur, GX_STRIP if strip else GX_FAN, verts)
+				emit(batch_for(mesh_batches, k, need), GX_STRIP if strip else GX_FAN, verts)
 				continue
 			# More bones than matrix slots in one strip or fan: as triangles.
-			pending = []
+			runs = []  # [batch, verts] in order, so equal neighbours share one primitive
 			for tri in _prim_triangles(strip, verts):
-				need = []
-				for v in tri:
-					if bone_of(v) not in need:
-						need.append(bone_of(v))
-				extra = [b for b in need if cur is None or b not in cur[1]]
-				if cur is None or len(cur[1]) + len(extra) > GX_BATCH_BONES:
-					if pending:
-						emit(cur, GX_TRIS, pending)
-						pending = []
-					cur = [k, list(need), bytearray()]
-					batches.append(cur)
+				batch = batch_for(mesh_batches, k, bones_of(tri))
+				if runs and runs[-1][0] is batch:
+					runs[-1][1].extend(tri)
 				else:
-					cur[1].extend(extra)
-				pending.extend(tri)
-			if pending:
-				emit(cur, GX_TRIS, pending)
+					runs.append([batch, list(tri)])
+			for batch, tri_verts in runs:
+				emit(batch, GX_TRIS, tri_verts)
+		batches += mesh_batches
 	if not batches:
 		return b""
 	head = 16 + len(batches) * GX_BATCH_SIZE

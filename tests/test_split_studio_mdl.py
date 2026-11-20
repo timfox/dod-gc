@@ -407,7 +407,7 @@ class GxSectionTest(unittest.TestCase):
 				vs = [tuple(tris[p + 1 + 4 * i:p + 5 + 4 * i]) for i in range(abs(n))]
 				prims += [(0,) + t for t in ssm._prim_triangles(n > 0, vs)]
 				p += 1 + abs(n) * 4
-			self.assertEqual(got, prims)
+			self.assertEqual(sorted(got), sorted(prims))
 
 	def test_strip_over_many_bones_splits_into_batches(self):
 		# 24 vertices, each on its own bone, in one strip: more than ten matrices.
@@ -418,7 +418,18 @@ class GxSectionTest(unittest.TestCase):
 		self.assertGreater(nbatch, 1)
 		got = _gx_triangles(gx, bytes(vertbone))
 		vs = [(i, i % 4, i * 2, i * 3) for i in range(24)]
-		self.assertEqual(got, [(0,) + t for t in ssm._prim_triangles(True, vs)])
+		self.assertEqual(sorted(got), sorted((0,) + t for t in ssm._prim_triangles(True, vs)))
+
+	def test_primitives_join_the_batch_that_already_has_their_bones(self):
+		# Strips alternate between two bone groups of ten: two batches, not one per switch.
+		vertbone = list(range(20))
+		cmds = []
+		for rep in range(3):
+			for base in (0, 10):
+				cmds += [10] + [x for i in range(10) for x in (base + i, 0, 0, 0)]
+		gx = ssm.gx_section(_model_with_tricmds(vertbone, cmds + [0]), 0)
+		self.assertEqual(struct.unpack_from(">H", gx, 6)[0], 2)
+		self.assertEqual(len(_gx_triangles(gx, bytes(vertbone))), 6 * 8)
 
 	def test_fan_and_strip_share_a_batch_when_bones_fit(self):
 		vertbone = [0, 1, 2, 3, 4, 5]
