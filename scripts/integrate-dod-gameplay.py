@@ -1008,8 +1008,7 @@ def main() -> int:
 	replace_once(
 		dlls / "CMakeLists.txt",
 		"\tmultiplay_gamerules.cpp\n",
-		"\tmultiplay_gamerules.cpp\n\tdod_game.c\n\tdod_weapons.c\n\tdod_runtime.cpp\n\tdod_grenade.cpp\n\tdod_weapon.cpp\n\tdod_bots.c\n\tdod_bot.cpp\n\tdod_film.c\n\tdod_film_actor.cpp\n\tdod_achievements.c\n",
-		"\tmultiplay_gamerules.cpp\n\tdod_game.c\n\tdod_weapons.c\n\tdod_runtime.cpp\n\tdod_grenade.cpp\n\tdod_weapon.cpp\n\tdod_bots.c\n\tdod_bot.cpp\n\tdod_film.c\n\tdod_film_actor.cpp\n\tdod_grunts.c\n\tdod_grunt.cpp\n",
+		"\tmultiplay_gamerules.cpp\n\tdod_game.c\n\tdod_weapons.c\n\tdod_runtime.cpp\n\tdod_grenade.cpp\n\tdod_weapon.cpp\n\tdod_bots.c\n\tdod_bot.cpp\n\tdod_film.c\n\tdod_film_actor.cpp\n\tdod_achievements.c\n\tdod_grunts.c\n\tdod_grunt.cpp\n",
 	)
 	replace_once(
 		dlls / "wscript",
@@ -1019,7 +1018,7 @@ def main() -> int:
 		"\tsource += bld.path.ant_glob('dod_weapons.c')\n"
 		"\tsource += bld.path.ant_glob('dod_bots.c')\n"
 		"\tsource += bld.path.ant_glob('dod_film.c')\n"
-		"\tsource += bld.path.ant_glob('dod_achievements.c')\n",
+		"\tsource += bld.path.ant_glob('dod_achievements.c')\n"
 		"\tsource += bld.path.ant_glob('dod_grunts.c')\n",
 	)
 	replace_once(
