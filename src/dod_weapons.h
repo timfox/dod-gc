@@ -123,6 +123,11 @@ DodAlliesCountry Dod_GetAlliesCountry(void);
 /* The Allied country of a retail map, by name; anything else (custom maps included) is American. */
 DodAlliesCountry Dod_AlliesCountryForMap(const char *mapname);
 
+/* The sleeve body of a view model for the side holding it: 0 American, 1 British, 2 Axis. The retail models carry a
+ * three-way "sleeve" group in that order; the British guns (Sten, Enfield, Bren, PIAT, Mills) have an empty American
+ * slot, so a British soldier given 0 showed a bare forearm with no cuff. */
+int Dod_ViewSleeveBody(DodTeam team);
+
 /* ---------------------------------------------------------------- view model animations
  * The game code sends generic animation numbers; every retail view model orders its sequences differently, so
  * SendWeaponAnim translates them (tools/gen_viewanims.py names the sequence each role uses in each model). */

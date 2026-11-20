@@ -170,12 +170,14 @@ static void test_world_models(void)
 	int id;
 	Dod_SetAlliesCountry(DOD_COUNTRY_US);
 	Dod_SetParatroopers(0, 0);
+	assert(Dod_ViewSleeveBody(DOD_TEAM_ALLIES) == 0 && Dod_ViewSleeveBody(DOD_TEAM_AXIS) == 2);
 	assert(Dod_WeaponWorldModel(Dod_GetWeaponDef(DOD_WEAPON_GARAND), model, sizeof(model)) > 0 && !strcmp(model, "models/w_garand.mdl"));
 	assert(Dod_WeaponWorldModel(Dod_GetWeaponDef(DOD_WEAPON_PSCHRECK), model, sizeof(model)) > 0 && !strcmp(model, "models/w_pschreck.mdl"));
 	assert(Dod_WeaponWorldModel(Dod_GetWeaponDef(DOD_WEAPON_K98_SCOPED), model, sizeof(model)) > 0 && !strcmp(model, "models/w_scoped98k.mdl"));
 	assert(Dod_WeaponWorldModel(Dod_GetWeaponDef(DOD_WEAPON_THOMPSON), model, sizeof(model)) > 0 && !strcmp(model, "models/w_tommy.mdl"));
 	Dod_SetAlliesCountry(DOD_COUNTRY_BRITISH);
 	assert(Dod_WeaponWorldModel(Dod_GetWeaponDef(DOD_WEAPON_GARAND), model, sizeof(model)) > 0 && !strcmp(model, "models/w_enfield.mdl"));
+	assert(Dod_ViewSleeveBody(DOD_TEAM_ALLIES) == 1 && Dod_ViewSleeveBody(DOD_TEAM_AXIS) == 2);
 	assert(Dod_WeaponWorldModel(Dod_GetWeaponDef(DOD_WEAPON_BAZOOKA), model, sizeof(model)) > 0 && !strcmp(model, "models/w_piat.mdl"));
 	Dod_SetAlliesCountry(DOD_COUNTRY_US);
 	Dod_SetParatroopers(1, 1);
