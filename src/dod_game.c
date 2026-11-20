@@ -645,6 +645,27 @@ int Dod_GetLoadout(DodTeam team, DodClass player_class, DodLoadout *out)
 	return 1;
 }
 
+int Dod_KitPlan(DodTeam team, DodClass player_class, int lean, DodKitPlan *out)
+{
+	const DodWeaponDef *weapon;
+	DodLoadout load;
+
+	if (!out)
+		return 0;
+	memset(out, 0, sizeof(*out));
+	weapon = Dod_ClassWeaponDef(team, player_class);
+	if (!weapon)
+		return 0;
+	out->primary = 1;
+	if (!lean) {
+		out->crowbar = 1;
+		out->sidearm = Dod_ClassSidearmDef(team, player_class) ? 1 : 0;
+		out->grenade = Dod_GetLoadout(team, player_class, &load) && load.grenades > 0 ? 1 : 0;
+	}
+	out->entities = out->crowbar + out->sidearm + out->primary + out->grenade;
+	return out->entities;
+}
+
 static const DodGrenadeDef g_grenades[2] = {
 	{ "models/v_grenade.mdl", "models/p_grenade.mdl", "models/w_grenade.mdl", 5.0f, 100.0f, 250.0f, 800.0f, 4 },
 	{ "models/v_stick.mdl", "models/p_stick.mdl", "models/w_stick.mdl", 5.0f, 100.0f, 250.0f, 800.0f, 4 }

@@ -1,0 +1,1182 @@
+{
+  "id": "ep01-omaha",
+  "title": "Omaha: The Morning of 6 June 1944",
+  "logline": "Sample episode for the FilmGc documentary format: the D-Day landing at Omaha Beach, told over scenes rebuilt in Day of Defeat's dod_charlie.",
+  "fps": 30,
+  "aspect": "2.39",
+  "grade": "archival",
+  "music": {
+    "file": "social-media/music/Mournful March.mp3",
+    "gain": 0.3,
+    "start": 0.5,
+    "fade_in": 3,
+    "fade_out": 6
+  },
+  "sources": [
+    "U.S. Army Center of Military History, Omaha Beachhead (6 June-13 June 1944), American Forces in Action series (1945), CMH Pub 100-11, chapters 2, 4 and 5",
+    "American Battle Monuments Commission, Normandy American Cemetery (abmc.gov)",
+    "The National WWII Museum, New Orleans: D-Day and the Normandy campaign overview (nationalww2museum.org)",
+    "Encyclopaedia Britannica, Omaha Beach (britannica.com)"
+  ],
+  "anchors": {
+    "dod_charlie": {
+      "sea": [
+        -352,
+        -3420,
+        -250
+      ],
+      "waterline": [
+        -352,
+        -3168
+      ],
+      "beach_mid": [
+        -400,
+        -1800
+      ],
+      "shingle": [
+        0,
+        -384
+      ],
+      "draw_top": [
+        224,
+        960
+      ],
+      "bunker_w": [
+        -1440,
+        640
+      ],
+      "bunker_e": [
+        1376,
+        640
+      ],
+      "surf": [
+        -352,
+        -3560,
+        -250
+      ],
+      "obstacles": [
+        -300,
+        -2500
+      ],
+      "wave_l": [
+        -520,
+        -2900
+      ],
+      "wave_c": [
+        -380,
+        -2760
+      ],
+      "wave_r": [
+        -220,
+        -2980
+      ],
+      "crest": [
+        256,
+        800
+      ],
+      "crest_l": [
+        180,
+        860
+      ],
+      "crest_r": [
+        330,
+        830
+      ],
+      "bluff_w_eye": [
+        -1440,
+        640
+      ]
+    }
+  },
+  "server_cmds": {
+    "dod_charlie": []
+  },
+  "narrator": "narrator",
+  "voices": {
+    "narrator": {
+      "design": "Male documentary narrator in his late fifties, deep warm baritone, General American accent, close microphone, unhurried and even",
+      "delivery": "Calm, grave and respectful; measured pace with natural pauses; no theatrics",
+      "language": "English",
+      "mode": "clone"
+    },
+    "sgt": {
+      "design": "American man in his late twenties, gravelly baritone, working-class Midwestern accent, an infantry sergeant used to being heard over noise",
+      "language": "English"
+    },
+    "lt": {
+      "design": "American man in his mid twenties, clear tenor, Northeastern accent, a young officer trying to sound steadier than he feels",
+      "language": "English"
+    },
+    "pvt_a": {
+      "design": "American man about nineteen, light tenor, soft rural Southern accent",
+      "language": "English"
+    },
+    "pvt_b": {
+      "design": "American man about twenty-two, quick mid-range voice, New York City accent",
+      "language": "English"
+    },
+    "pvt_c": {
+      "design": "American man about twenty, husky baritone, flat Midwestern accent",
+      "language": "English"
+    },
+    "pvt_d": {
+      "design": "American man about twenty-four, low rough voice, Pennsylvania accent",
+      "language": "English"
+    },
+    "radio": {
+      "design": "American man in his early twenties, clear mid-range voice, clipped and practised at radio procedure",
+      "delivery": "Fast, level radio voice, slightly raised over background noise",
+      "language": "English"
+    },
+    "de_obs": {
+      "design": "German man in his thirties, low steady voice, standard German",
+      "language": "German"
+    }
+  },
+  "sequence": [
+    {
+      "card": {
+        "id": "title",
+        "dur": 7,
+        "style": "title",
+        "kicker": "FilmGc documentary \u00b7 sample episode",
+        "title": "Omaha",
+        "body": "Normandy, the morning of 6 June 1944",
+        "chapter": "Title"
+      }
+    },
+    {
+      "card": {
+        "id": "note",
+        "dur": 8,
+        "style": "note",
+        "title": "About these pictures",
+        "body": "The scenes in this film are rebuilt in the game Day of Defeat. They are recreations, not the real ground and not archive footage. The film is offered in memory of those who were there."
+      }
+    },
+    {
+      "shot": {
+        "id": "s01_dawn",
+        "map": "dod_charlie",
+        "camera": {
+          "type": "crane",
+          "at": "surf",
+          "target": "draw_top",
+          "from_height": 20,
+          "to_height": 560,
+          "duration": 16,
+          "lens": 24,
+          "drift": "waterline"
+        },
+        "board": {
+          "no": "1",
+          "size": "EWS",
+          "angle": "Rising from water level",
+          "action": "First light. Camera lifts off the surf line and keeps rising until the whole beach and the bluffs behind it fill the frame.",
+          "sound": "Surf, wind, distant engines offshore",
+          "sea": true
+        },
+        "narration": [
+          {
+            "text": "Before dawn on the sixth of June 1944, the largest seaborne invasion in history was under way off the coast of Normandy."
+          }
+        ],
+        "chapter": "The landing",
+        "lower_third": "Omaha Beach\nNormandy \u00b7 6 June 1944",
+        "foley": [
+          {
+            "sound": "ambience/waves.wav",
+            "loop": true,
+            "gain": -13,
+            "fade": 2
+          },
+          {
+            "sound": "ambience/air.wav",
+            "loop": true,
+            "gain": -24,
+            "fade": 3
+          },
+          {
+            "sound": "ambience/artyboom.wav",
+            "at": 5,
+            "gain": -22,
+            "fx": "distant"
+          }
+        ]
+      }
+    },
+    {
+      "shot": {
+        "id": "s02_bluffs",
+        "map": "dod_charlie",
+        "camera": {
+          "type": "still",
+          "eye": "waterline",
+          "target": "draw_top",
+          "height": 60,
+          "duration": 10,
+          "lens": 35,
+          "lens_end": 75
+        },
+        "board": {
+          "no": "2",
+          "size": "WS to MS",
+          "angle": "Eye level",
+          "action": "Slow push in from the water's edge on the bluffs: the ground the whole film is about.",
+          "sound": "Wind; engines growing",
+          "sea": true
+        },
+        "narration": [
+          {
+            "text": "Allied troops would land on five beaches, code-named Utah, Omaha, Gold, Juno and Sword."
+          }
+        ],
+        "foley": [
+          {
+            "sound": "ambience/waves.wav",
+            "loop": true,
+            "gain": -16,
+            "fade": 1
+          },
+          {
+            "sound": "ambience/windy.wav",
+            "loop": true,
+            "gain": -20,
+            "fade": 1
+          },
+          {
+            "sound": "ambience/flyby.wav",
+            "at": 1.5,
+            "gain": -24,
+            "fx": "distant"
+          },
+          {
+            "sound": "ambience/artyboom.wav",
+            "at": 5.5,
+            "gain": -21,
+            "fx": "distant"
+          }
+        ]
+      }
+    },
+    {
+      "shot": {
+        "id": "s03_waterline",
+        "map": "dod_charlie",
+        "camera": {
+          "type": "still",
+          "eye": "waterline",
+          "target": "obstacles",
+          "height": 8,
+          "duration": 12,
+          "lens": 28,
+          "handheld": 0.6,
+          "seed": 3
+        },
+        "board": {
+          "no": "3",
+          "size": "MS",
+          "angle": "Low, at the waterline",
+          "action": "Handheld at knee height in the shallows. Figures wade toward the beach obstacles ahead.",
+          "sound": "Water around the lens, shouting off screen",
+          "sea": true
+        },
+        "narration": [
+          {
+            "text": "Omaha, about six and a half kilometres of sand beneath steep bluffs, was assigned to the United States 1st and 29th Infantry Divisions."
+          }
+        ],
+        "actors": [
+          {
+            "id": "wade",
+            "team": "allies",
+            "class": "rifleman",
+            "squad": {
+              "count": 3,
+              "spacing": 70
+            },
+            "path": [
+              {
+                "at": [
+                  -380,
+                  -2880
+                ],
+                "pose": "walk"
+              },
+              {
+                "at": "obstacles",
+                "pose": "crouch",
+                "hold": 2
+              }
+            ]
+          }
+        ],
+        "adr": [
+          {
+            "walla": true,
+            "at": 0.4,
+            "dur": 10.5,
+            "voices": [
+              "pvt_a",
+              "pvt_b",
+              "pvt_c",
+              "pvt_d"
+            ],
+            "lines": [
+              "Keep your rifle up!",
+              "Get to the obstacles!",
+              "Move, move!",
+              "Stay with me!",
+              "Don't stop in the water!",
+              "Go!"
+            ],
+            "delivery": "Shouting from waist-deep water, breathless, straining",
+            "fx": "distant",
+            "gain": -17
+          },
+          {
+            "voice": "sgt",
+            "at": 9.0,
+            "text": "Spread out! Don't bunch up!",
+            "delivery": "Shouting hard over gunfire and surf, hoarse, urgent",
+            "fx": "field",
+            "gain": -7,
+            "pan": -0.25
+          }
+        ],
+        "foley": [
+          {
+            "sound": "ambience/waves.wav",
+            "loop": true,
+            "gain": -10,
+            "fade": 0.5
+          },
+          {
+            "sound": [
+              "player/pl_wade1.wav",
+              "player/pl_wade2.wav",
+              "player/pl_wade3.wav",
+              "player/pl_wade4.wav"
+            ],
+            "at": 0.3,
+            "every": [
+              0.9,
+              1.6
+            ],
+            "gain": -17,
+            "pan": [
+              -0.4,
+              0.4
+            ]
+          },
+          {
+            "sound": [
+              "weapons/hit_water1.wav",
+              "weapons/hit_water2.wav"
+            ],
+            "at": 1,
+            "every": [
+              1.4,
+              3
+            ],
+            "gain": -19,
+            "pan": [
+              -0.7,
+              0.7
+            ]
+          },
+          {
+            "sound": [
+              "weapons/mg42_shoot.wav",
+              "weapons/mg34_shoot.wav"
+            ],
+            "at": 0.5,
+            "every": [
+              1.6,
+              3.2
+            ],
+            "gain": -21,
+            "pan": [
+              0.2,
+              0.7
+            ],
+            "fx": "distant"
+          },
+          {
+            "sound": "weapons/explodewater.wav",
+            "at": 7.2,
+            "gain": -15,
+            "pan": -0.4,
+            "fx": "distant"
+          }
+        ]
+      }
+    },
+    {
+      "shot": {
+        "id": "s04_crossing",
+        "map": "dod_charlie",
+        "camera": {
+          "type": "dolly",
+          "start": [
+            -60,
+            -3168
+          ],
+          "end": [
+            0,
+            -1700
+          ],
+          "height": 30,
+          "duration": 16,
+          "lens": 32,
+          "pitch": 0,
+          "handheld": 0.3,
+          "seed": 4
+        },
+        "board": {
+          "no": "4",
+          "size": "WS",
+          "angle": "Eye level, tracking",
+          "action": "Tracking forward across the open sand behind the advance, the bluffs never getting closer fast enough.",
+          "sound": "Footfalls in wet sand, MG fire distant"
+        },
+        "narration": [
+          {
+            "text": "The first assault waves came ashore at around half past six in the morning, into heavy fire."
+          }
+        ],
+        "actors": [
+          {
+            "id": "run",
+            "team": "allies",
+            "class": "assault",
+            "squad": {
+              "count": 4,
+              "spacing": 64
+            },
+            "path": [
+              {
+                "at": [
+                  -330,
+                  -2560
+                ],
+                "pose": "run"
+              },
+              {
+                "at": "shingle",
+                "route": true,
+                "pose": "crouch"
+              }
+            ]
+          },
+          {
+            "id": "fallen",
+            "team": "allies",
+            "class": "rifleman",
+            "path": [
+              {
+                "at": [
+                  -250,
+                  -2480
+                ],
+                "pose": "fallen",
+                "yaw": 120
+              }
+            ]
+          }
+        ],
+        "adr": [
+          {
+            "voice": "sgt",
+            "at": 0.6,
+            "text": "Keep moving! Get to the shingle!",
+            "delivery": "Bellowing over machine-gun fire, out of breath from running",
+            "fx": "field",
+            "gain": -8,
+            "pan": 0.2
+          },
+          {
+            "walla": true,
+            "at": 4.0,
+            "dur": 9.0,
+            "voices": [
+              "pvt_b",
+              "pvt_c",
+              "pvt_d",
+              "pvt_a"
+            ],
+            "lines": [
+              "Medic!",
+              "Keep going!",
+              "Get down, get down!",
+              "Up! Go!",
+              "Medic!"
+            ],
+            "delivery": "Desperate shout across open sand, frightened, far away",
+            "fx": "distant",
+            "gain": -19
+          },
+          {
+            "voice": "pvt_a",
+            "at": 12.6,
+            "text": "Come on, come on, keep low!",
+            "delivery": "Panting, scared, urging a buddy on while running",
+            "fx": "field",
+            "gain": -9,
+            "pan": -0.35
+          }
+        ],
+        "foley": [
+          {
+            "sound": "ambience/waves.wav",
+            "loop": true,
+            "gain": -20,
+            "fade": 1
+          },
+          {
+            "sound": [
+              "weapons/mg42_shoot.wav",
+              "weapons/mg34_shoot.wav"
+            ],
+            "at": 0.2,
+            "every": [
+              1.0,
+              2.4
+            ],
+            "gain": -18,
+            "pan": [
+              -0.6,
+              0.6
+            ],
+            "fx": "distant"
+          },
+          {
+            "sound": [
+              "weapons/garand_shoot.wav",
+              "weapons/bar_shoot.wav"
+            ],
+            "at": 2,
+            "every": [
+              2,
+              4
+            ],
+            "gain": -24,
+            "pan": [
+              -0.7,
+              0.7
+            ],
+            "fx": "distant"
+          },
+          {
+            "sound": [
+              "player/pl_dirt1.wav",
+              "player/pl_dirt2.wav",
+              "player/pl_dirt3.wav",
+              "player/pl_dirt4.wav"
+            ],
+            "at": 0.2,
+            "dur": 11,
+            "every": [
+              0.33,
+              0.45
+            ],
+            "gain": -22,
+            "pan": [
+              -0.15,
+              0.15
+            ]
+          },
+          {
+            "sound": "weapons/mortar_hit1.wav",
+            "at": 9.5,
+            "gain": -15,
+            "pan": 0.35,
+            "fx": "distant",
+            "rate": 0.9
+          }
+        ]
+      }
+    },
+    {
+      "shot": {
+        "id": "s05_overlook",
+        "map": "dod_charlie",
+        "camera": {
+          "type": "still",
+          "eye": "bluff_w_eye",
+          "target": "beach_mid",
+          "height": 240,
+          "duration": 10,
+          "lens": 50,
+          "lens_end": 65
+        },
+        "board": {
+          "no": "5",
+          "size": "WS",
+          "angle": "High angle, from the bluff",
+          "action": "Reverse angle from a strongpoint on the bluff, looking down the whole length of open beach.",
+          "sound": "Wind at height; the battle small and far below",
+          "sea": true
+        },
+        "narration": [
+          {
+            "text": "From the bluffs, German positions overlooked the whole length of the beach."
+          }
+        ],
+        "actors": [
+          {
+            "id": "far",
+            "team": "allies",
+            "class": "rifleman",
+            "squad": {
+              "count": 3,
+              "spacing": 80
+            },
+            "path": [
+              {
+                "at": [
+                  -500,
+                  -2300
+                ],
+                "pose": "run"
+              },
+              {
+                "at": [
+                  -300,
+                  -1300
+                ],
+                "pose": "crouch"
+              }
+            ]
+          }
+        ],
+        "adr": [
+          {
+            "voice": "de_obs",
+            "at": 6.6,
+            "text": "Da unten! Am Strand, links!",
+            "subtitle": "Down there! On the beach, left!",
+            "delivery": "Calling out sharply to a gun crew, tense",
+            "fx": "distant",
+            "gain": -14,
+            "pan": 0.3
+          }
+        ],
+        "foley": [
+          {
+            "sound": "ambience/windy.wav",
+            "loop": true,
+            "gain": -15,
+            "fade": 1
+          },
+          {
+            "sound": "weapons/mg42_shoot.wav",
+            "at": 1.5,
+            "dur": 7,
+            "every": [
+              2.2,
+              3.8
+            ],
+            "gain": -17,
+            "pan": [
+              -0.2,
+              0.2
+            ],
+            "fx": "field"
+          },
+          {
+            "sound": "ambience/artyboom.wav",
+            "at": 6,
+            "gain": -24,
+            "fx": "distant"
+          }
+        ]
+      }
+    },
+    {
+      "shot": {
+        "id": "s06_shingle",
+        "map": "dod_charlie",
+        "camera": {
+          "type": "still",
+          "eye": [
+            0,
+            -504
+          ],
+          "target": "draw_top",
+          "height": 4,
+          "duration": 13,
+          "lens": 40,
+          "dutch": -8,
+          "handheld": 0.4,
+          "seed": 6
+        },
+        "board": {
+          "no": "6",
+          "size": "MS",
+          "angle": "Ground level, dutch tilt",
+          "action": "Pinned at the shingle bank, horizon tipped. The bluff fills the top of frame and does not move.",
+          "sound": "Ringing ears; muffled fire"
+        },
+        "narration": [
+          {
+            "text": "Rough seas and currents pushed many landing craft off course. Of twenty-nine swimming tanks launched offshore, twenty-seven sank."
+          }
+        ],
+        "actors": [
+          {
+            "id": "pin_l",
+            "team": "allies",
+            "class": "rifleman",
+            "path": [
+              {
+                "at": [
+                  -20,
+                  420,
+                  60
+                ],
+                "pose": "crouch",
+                "look": "draw_top"
+              }
+            ]
+          },
+          {
+            "id": "pin_r",
+            "team": "allies",
+            "class": "support",
+            "path": [
+              {
+                "at": [
+                  180,
+                  380,
+                  70
+                ],
+                "pose": "prone",
+                "look": "draw_top"
+              }
+            ]
+          },
+          {
+            "id": "lead",
+            "team": "allies",
+            "class": "rifleman",
+            "path": [
+              {
+                "at": [
+                  90,
+                  500,
+                  90
+                ],
+                "pose": "crouch",
+                "look": "draw_top"
+              },
+              {
+                "t": 5,
+                "pose": "crouch_walk"
+              },
+              {
+                "at": [
+                  250,
+                  780,
+                  280
+                ],
+                "pose": "crouch",
+                "look": "crest"
+              }
+            ]
+          }
+        ],
+        "adr": [
+          {
+            "voice": "lt",
+            "at": 0.2,
+            "text": "We can't stay here.",
+            "delivery": "Said low and close, shaken, trying to steady himself",
+            "fx": "muffled",
+            "gain": -12
+          },
+          {
+            "voice": "sgt",
+            "at": 10.3,
+            "text": "We can't stay here! Up!",
+            "delivery": "Shouting, rallying the men, voice cracking with effort",
+            "fx": "field",
+            "gain": -8,
+            "pan": -0.2
+          }
+        ],
+        "foley": [
+          {
+            "sound": "ambience/waves.wav",
+            "loop": true,
+            "gain": -24,
+            "fx": "muffled",
+            "fade": 1
+          },
+          {
+            "sound": [
+              "weapons/mg42_shoot.wav",
+              "weapons/mg34_shoot.wav"
+            ],
+            "at": 0.5,
+            "every": [
+              1.2,
+              2.6
+            ],
+            "gain": -17,
+            "pan": [
+              -0.5,
+              0.5
+            ],
+            "fx": "muffled"
+          },
+          {
+            "sound": "weapons/explode4.wav",
+            "at": 4,
+            "gain": -13,
+            "fx": "muffled",
+            "rate": 0.85
+          }
+        ]
+      }
+    },
+    {
+      "shot": {
+        "id": "s07_draw",
+        "map": "dod_charlie",
+        "camera": {
+          "type": "dolly",
+          "start": [
+            224,
+            100
+          ],
+          "end": [
+            224,
+            700
+          ],
+          "height": 36,
+          "duration": 15,
+          "lens": 28,
+          "pitch": -6,
+          "handheld": 0.45,
+          "seed": 7
+        },
+        "board": {
+          "no": "7",
+          "size": "WS",
+          "angle": "Eye level, climbing",
+          "action": "Handheld climb off the beach up the draw, the slope rising in frame.",
+          "sound": "Breathing, boots on scree"
+        },
+        "narration": [
+          {
+            "text": "From around eight in the morning, small groups, often led by junior officers and sergeants, began to work their way up the bluffs between the strongpoints."
+          }
+        ],
+        "chapter": "Up the bluffs",
+        "lower_third": "The bluffs\nPaths and valleys led off the beach",
+        "actors": [
+          {
+            "id": "climb",
+            "team": "allies",
+            "class": "rifleman",
+            "speed": 95,
+            "squad": {
+              "count": 2,
+              "spacing": 60
+            },
+            "path": [
+              {
+                "at": [
+                  260,
+                  -120,
+                  20
+                ],
+                "pose": "crouch_walk"
+              },
+              {
+                "at": [
+                  224,
+                  480,
+                  82
+                ]
+              },
+              {
+                "at": [
+                  250,
+                  780,
+                  280
+                ]
+              },
+              {
+                "at": [
+                  150,
+                  920,
+                  330
+                ],
+                "pose": "crouch",
+                "look": "draw_top"
+              }
+            ]
+          }
+        ],
+        "adr": [
+          {
+            "voice": "sgt",
+            "at": 11.3,
+            "text": "Step where I step. Watch for mines.",
+            "delivery": "Low, hoarse and deliberate, out of breath from climbing",
+            "fx": "field",
+            "gain": -9,
+            "pan": 0.15
+          }
+        ],
+        "foley": [
+          {
+            "sound": "ambience/windy.wav",
+            "loop": true,
+            "gain": -22,
+            "fade": 1
+          },
+          {
+            "sound": [
+              "player/pl_gravel1.wav",
+              "player/pl_gravel2.wav",
+              "player/pl_gravel3.wav",
+              "player/pl_gravel4.wav"
+            ],
+            "at": 0.3,
+            "every": [
+              0.55,
+              0.85
+            ],
+            "gain": -19,
+            "pan": [
+              -0.2,
+              0.2
+            ]
+          },
+          {
+            "sound": [
+              "weapons/mg42_shoot.wav",
+              "weapons/mg34_shoot.wav"
+            ],
+            "at": 1,
+            "every": [
+              3,
+              5
+            ],
+            "gain": -26,
+            "pan": [
+              -0.7,
+              0.7
+            ],
+            "fx": "distant"
+          },
+          {
+            "sound": "ambience/nebwerfdist.wav",
+            "at": 8.5,
+            "gain": -24,
+            "fx": "distant"
+          }
+        ]
+      }
+    },
+    {
+      "shot": {
+        "id": "s08_crest",
+        "map": "dod_charlie",
+        "camera": {
+          "type": "crane",
+          "at": [
+            400,
+            250
+          ],
+          "target": [
+            256,
+            800,
+            330
+          ],
+          "from_height": 4,
+          "to_height": 110,
+          "duration": 8,
+          "lens": 24
+        },
+        "board": {
+          "no": "8",
+          "size": "MS",
+          "angle": "Low angle, looking up",
+          "action": "From the ground, the camera rises with the figures as they top the crest against the sky.",
+          "sound": "Wind returns; the fire thins"
+        },
+        "narration": [
+          {
+            "text": "Through the day, the strongpoints above the beach began to fall."
+          }
+        ],
+        "actors": [
+          {
+            "id": "top",
+            "team": "allies",
+            "class": "assault",
+            "squad": {
+              "count": 2,
+              "spacing": 80
+            },
+            "path": [
+              {
+                "at": [
+                  300,
+                  620
+                ],
+                "pose": "crouch_walk"
+              },
+              {
+                "at": "crest",
+                "pose": "run"
+              },
+              {
+                "at": [
+                  230,
+                  1000
+                ],
+                "pose": "stand",
+                "look": "draw_top"
+              }
+            ]
+          }
+        ],
+        "adr": [
+          {
+            "voice": "radio",
+            "at": 5.0,
+            "text": "We're on top of the bluff. Over.",
+            "fx": "radio",
+            "gain": -10,
+            "pan": 0.25
+          }
+        ],
+        "foley": [
+          {
+            "sound": "ambience/windy.wav",
+            "loop": true,
+            "gain": -15,
+            "fade": 1
+          },
+          {
+            "sound": [
+              "weapons/mg42_shoot.wav",
+              "weapons/mg34_shoot.wav"
+            ],
+            "at": 1.5,
+            "every": [
+              3,
+              4.5
+            ],
+            "gain": -28,
+            "pan": [
+              -0.8,
+              0.8
+            ],
+            "fx": "distant"
+          }
+        ]
+      }
+    },
+    {
+      "shot": {
+        "id": "s09_nightfall",
+        "map": "dod_charlie",
+        "camera": {
+          "type": "orbit",
+          "center": "draw_top",
+          "radius": 1200,
+          "height": 220,
+          "start_deg": 35,
+          "end_deg": 95,
+          "duration": 15,
+          "lens": 28
+        },
+        "board": {
+          "no": "9",
+          "size": "EWS",
+          "angle": "High, arcing",
+          "action": "A slow arc high over the bluff top as the light goes, ending on the view back to the sea.",
+          "sound": "Evening wind, a single distant gun"
+        },
+        "narration": [
+          {
+            "text": "By nightfall they held a strip at most two and a half kilometres deep."
+          },
+          {
+            "text": "Around three thousand men were killed, wounded or missing, more than on any other D-Day beach."
+          }
+        ],
+        "chapter": "Nightfall",
+        "foley": [
+          {
+            "sound": "ambience/windy.wav",
+            "loop": true,
+            "gain": -19,
+            "fade": 2
+          },
+          {
+            "sound": "ambience/artyboom.wav",
+            "at": 7,
+            "gain": -25,
+            "fx": "distant",
+            "rate": 0.9
+          }
+        ]
+      }
+    },
+    {
+      "shot": {
+        "id": "s10_remembrance",
+        "map": "dod_charlie",
+        "camera": {
+          "type": "still",
+          "eye": "draw_top",
+          "target": "sea",
+          "height": 180,
+          "duration": 16,
+          "lens": 50,
+          "lens_end": 28
+        },
+        "board": {
+          "no": "10",
+          "size": "WS to EWS",
+          "angle": "High, over the beach",
+          "action": "From the top of the bluff, a slow pull out over the empty beach to the sea. Hold, then fade to the dedication.",
+          "sound": "Surf only",
+          "sea": true
+        },
+        "narration": [
+          {
+            "text": "Today the Normandy American Cemetery at Colleville-sur-Mer stands on the bluff above Omaha Beach."
+          },
+          {
+            "text": "More than nine thousand Americans are buried there."
+          }
+        ],
+        "foley": [
+          {
+            "sound": "ambience/waves.wav",
+            "loop": true,
+            "gain": -14,
+            "fade": 3
+          }
+        ]
+      }
+    },
+    {
+      "card": {
+        "id": "end",
+        "dur": 9,
+        "style": "note",
+        "title": "In memory of all who served and fell in Normandy",
+        "footer": "Scenes rendered with xash3d-gc using Day of Defeat assets (Valve) from a legally owned copy. Facts: U.S. Army Center of Military History, Omaha Beachhead (1945); American Battle Monuments Commission; The National WWII Museum."
+      }
+    }
+  ]
+}
