@@ -7,7 +7,7 @@
  *
  *   act 1
  *   actor <name> <allies|axis> [class]
- *   key <t> <x> <y> <z> <yaw|-> <pose>
+ *   key <t> <x> <y> <z> <yaw|-> <pose> [<sequence> [loop|once|upper|upperloop]]
  *   ...
  *   fx <t> <kind> <x> <y> <z> [scale]
  *   fx <t> tracer <x> <y> <z> <x2> <y2> <z2>
@@ -18,7 +18,16 @@
  * of the shot, the same clock as the camera's .cam path. An fx line is a one-off effect
  * at a point (a shell burst, a splash, a smoke puff, a tracer from one point to another),
  * fired by the game when the shot's clock passes its time; fx lines can come anywhere
- * after the header and in any order. This file is engine-free so
+ * after the header and in any order.
+ *
+ * A key can name a sequence of the actor's model to play instead of the pose's own: a
+ * hand signal, a flinch, a death, anything the model has. The pose still sets how high
+ * the actor stands. "loop" (the default) cycles the sequence, "once" plays it from its
+ * first frame when the key is reached and holds the last; "upper" and "upperloop" play
+ * it over the pose's standing legs (an upper-body sequence such as a hand signal or a
+ * reload). Consecutive keys naming the same sequence keep playing it, so a key that
+ * holds a one-shot does not restart it. A model without the sequence plays the pose.
+ * This file is engine-free so
  * the parsing and sampling are host-tested; the entity side is dod_film_actor.cpp. */
 #ifndef DODGC_DOD_FILM_H
 #define DODGC_DOD_FILM_H
@@ -31,6 +40,7 @@ extern "C" {
 #define DOD_FILM_MAX_KEYS 16
 #define DOD_FILM_NAME 32
 #define DOD_FILM_MAX_FX 192
+#define DOD_FILM_MAX_SEQS 64	/* distinct named sequences in one cast file */
 #define DOD_FILM_YAW_TRAVEL 1000.0f	/* yaw "-": face the direction of travel */
 /* Set in an actor's pev->iuser4. The GameCube engine draws studio props on its lean listen
  * route through a model allowlist that leaves out player bodies; this tag admits the actors
@@ -51,11 +61,22 @@ typedef enum {
 	DOD_POSE_COUNT
 } DodFilmPose;
 
+typedef enum {
+	DOD_FILM_PLAY_LOOP = 0,		/* the whole body, cycling */
+	DOD_FILM_PLAY_ONCE,		/* the whole body, once, holding the last frame */
+	DOD_FILM_PLAY_UPPER,		/* over the pose's standing legs, once */
+	DOD_FILM_PLAY_UPPER_LOOP,	/* over the pose's standing legs, cycling */
+	DOD_FILM_PLAY_COUNT
+} DodFilmPlay;
+
 typedef struct {
 	float t;
 	float origin[3];
 	float yaw;		/* degrees, or DOD_FILM_YAW_TRAVEL */
-	DodFilmPose pose;
+	unsigned char pose;	/* DodFilmPose */
+	unsigned char seq;	/* 0: the pose's own sequence; n: the cast's seq_names[n - 1] */
+	unsigned char play;	/* DodFilmPlay, when seq is set */
+	unsigned char pad;	/* the key stays 24 bytes: 64 actors of 16 keys live in MEM1 */
 } DodFilmKey;
 
 typedef struct {
@@ -88,6 +109,8 @@ typedef struct {
 typedef struct {
 	int actor_count;
 	DodFilmActor actors[DOD_FILM_MAX_ACTORS];
+	int seq_count;
+	char seq_names[DOD_FILM_MAX_SEQS][DOD_FILM_NAME];
 	int fx_count;
 	DodFilmFx fx[DOD_FILM_MAX_FX];	/* sorted by time once parsed */
 } DodFilmCast;
@@ -101,6 +124,8 @@ typedef struct {
 	DodFilmPose pose;
 	int moving;
 	float speed;	/* units per second along the current leg */
+	int seq;	/* the key's named sequence (DodFilmKey.seq), 0 for the pose's own */
+	DodFilmPlay play;
 } DodFilmSample;
 
 /* Parse a cast file. Returns the number of actors (0 is a valid, empty cast) or -1
@@ -119,12 +144,23 @@ int DodFilm_FxFromName(const char *name);
 /* Sample an actor at time t (seconds from the shot's first frame). */
 void DodFilm_Sample(const DodFilmActor *actor, float t, DodFilmSample *out);
 
+/* The play mode's name in cast files ("loop", "once", "upper", "upperloop") and back; -1 when unknown. */
+const char *DodFilm_PlayName(DodFilmPlay play);
+int DodFilm_PlayFromName(const char *name);
+
+/* 1 when a sample's sequence cycles: a named sequence by its play mode, otherwise the pose's. */
+int DodFilm_SampleLoops(const DodFilmSample *s);
+
 /* The pose's name in cast files ("stand", "run", ...) and back; -1 when unknown. */
 const char *DodFilm_PoseName(DodFilmPose pose);
 int DodFilm_PoseFromName(const char *name);
 
 /* Height of the actor's origin above the floor for a pose. A player model is drawn
- * from the origin of the player's hull: 36 above the floor standing, 18 crouched. */
+ * from the origin of the player's hull: 36 above the floor standing, 18 crouched.
+ * Fallen is 36: the deaths fall from a standing hull and end with the body at -36
+ * (die_simple and the rest); at 18 every dead man lay half under the ground. A
+ * sequence made for the low hull (the crouched and prone deaths, the corpse poses
+ * deadback, deadsitting, deadstomach) is keyed with a low pose instead. */
 float DodFilm_PoseHeight(DodFilmPose pose);
 
 /* Sequence names to look up in the player model for a pose, best first, NULL-ended.
