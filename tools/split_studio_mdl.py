@@ -493,7 +493,128 @@ def _mesh_blob(data, mo):
 	fields["norminfoindex"] = take(norminfo, numnorms, False)
 	while len(blob) % 32:
 		blob.append(0)
+	gx = gx_section(data, mo)
+	if gx:
+		struct.pack_into(">2I", blob, 4, len(blob), len(gx))
+		blob += gx
 	return bytes(blob), fields, ranges
+
+
+# Display lists for the GameCube's transform unit, appended to a model's blob
+# (blob header: offset and length at bytes 4 and 8). The CPU path transforms
+# and lights every vertex and writes it to the FIFO each frame; with these the
+# engine loads up to ten bone matrices a batch and calls a list whose vertices
+# name their matrix, so Flipper skins and lights the body.
+#   section: "GCGX", u16 version, u16 nbatch, u32 size, u32 0, batches, lists
+#   batch (24 bytes): u16 mesh, u8 nbones, u8 0, u8 bones[10], u16 0,
+#                     u32 list offset (from the section), u32 list size
+#   list vertex (9 bytes): u8 matrix slot * 3, u16 vertex, u16 normal, s16 s, t
+# Lists are padded to 32 bytes with GX no-ops. Arrays are the blob's own
+# big-endian vertices and normals (bone space, 12-byte stride).
+GX_MAGIC = b"GCGX"
+GX_VERSION = 1
+GX_BATCH_BONES = 10
+GX_BATCH_SIZE = 24
+GX_VTXFMT = 5
+GX_STRIP, GX_FAN, GX_TRIS = 0x98, 0xA0, 0x90
+
+
+def _tricmd_prims(data, off):
+	"""[(is_strip, [(vert, norm, s, t), ...]), ...] for one mesh."""
+	prims, p = [], off
+	while True:
+		n = struct.unpack_from("<h", data, p)[0]
+		p += 2
+		if n == 0:
+			return prims
+		verts = [struct.unpack_from("<4h", data, p + 8 * k) for k in range(abs(n))]
+		p += abs(n) * 8
+		prims.append((n > 0, verts))
+
+
+def _prim_triangles(strip, verts):
+	out = []
+	for k in range(len(verts) - 2):
+		if not strip:
+			out.append((verts[0], verts[k + 1], verts[k + 2]))
+		elif k & 1:
+			out.append((verts[k + 1], verts[k], verts[k + 2]))
+		else:
+			out.append((verts[k], verts[k + 1], verts[k + 2]))
+	return out
+
+
+def gx_section(data, mo):
+	"""The GX display-list section for the model at mo, or b"" when it has no geometry."""
+	nummesh, meshindex = _u32(data, mo + 72), _u32(data, mo + 76)
+	numverts, vertinfo = _u32(data, mo + 80), _u32(data, mo + 84)
+	numnorms = _u32(data, mo + 92)
+	if not nummesh or not numverts or not numnorms or numverts > 0xFFFF or numnorms > 0xFFFF:
+		return b""
+	vertbone = data[vertinfo:vertinfo + numverts]
+	batches = []  # [mesh, bones, bytearray]
+
+	def bone_of(v):
+		return vertbone[v[0]] if 0 <= v[0] < numverts else vertbone[0]
+
+	def emit(batch, cmd, verts):
+		bones, out = batch[1], batch[2]
+		out += struct.pack(">BH", cmd | GX_VTXFMT, len(verts))
+		for v in verts:
+			vi = v[0] if 0 <= v[0] < numverts else 0
+			ni = v[1] if 0 <= v[1] < numnorms else 0
+			out += struct.pack(">BHHhh", 3 * bones.index(bone_of(v)), vi, ni, v[2], v[3])
+
+	for k in range(nummesh):
+		triindex = struct.unpack_from("<5i", data, meshindex + k * MESH_SIZE)[1]
+		cur = None
+		for strip, verts in _tricmd_prims(data, triindex):
+			if len(verts) < 3:
+				continue
+			need = []
+			for v in verts:
+				if bone_of(v) not in need:
+					need.append(bone_of(v))
+			if len(need) <= GX_BATCH_BONES:
+				extra = [b for b in need if cur is None or b not in cur[1]]
+				if cur is None or len(cur[1]) + len(extra) > GX_BATCH_BONES:
+					cur = [k, list(need), bytearray()]
+					batches.append(cur)
+				else:
+					cur[1].extend(extra)
+				emit(cur, GX_STRIP if strip else GX_FAN, verts)
+				continue
+			# More bones than matrix slots in one strip or fan: as triangles.
+			pending = []
+			for tri in _prim_triangles(strip, verts):
+				need = []
+				for v in tri:
+					if bone_of(v) not in need:
+						need.append(bone_of(v))
+				extra = [b for b in need if cur is None or b not in cur[1]]
+				if cur is None or len(cur[1]) + len(extra) > GX_BATCH_BONES:
+					if pending:
+						emit(cur, GX_TRIS, pending)
+						pending = []
+					cur = [k, list(need), bytearray()]
+					batches.append(cur)
+				else:
+					cur[1].extend(extra)
+				pending.extend(tri)
+			if pending:
+				emit(cur, GX_TRIS, pending)
+	if not batches:
+		return b""
+	head = 16 + len(batches) * GX_BATCH_SIZE
+	off = (head + 31) & ~31
+	table, lists = bytearray(), bytearray()
+	for mesh, bones, dl in batches:
+		dl += bytes(-len(dl) % 32)
+		table += struct.pack(">HBB10sHII", mesh, len(bones), 0, bytes(bones).ljust(GX_BATCH_BONES, b"\0"),
+			0, off + len(lists), len(dl))
+		lists += dl
+	total = off + len(lists)
+	return GX_MAGIC + struct.pack(">HHII", GX_VERSION, len(batches), total, 0) + bytes(table) + bytes(off - head) + bytes(lists)
 
 
 def stream_meshes(core, pack_path):

@@ -341,5 +341,96 @@ class StreamMeshesTest(unittest.TestCase):
 			ssm.stream_meshes(data, "models/x.gcm")
 
 
+def _gx_triangles(gx, vertbone):
+	"""Decode a GCGX section back to triangles of (vert, norm, s, t), checking every vertex's matrix slot."""
+	assert gx[:4] == ssm.GX_MAGIC
+	version, nbatch, total, _ = struct.unpack_from(">HHII", gx, 4)
+	assert version == ssm.GX_VERSION and total == len(gx) and total % 32 == 0
+	out = []
+	for k in range(nbatch):
+		mesh, nbones, _, bones, _, off, size = struct.unpack_from(">HBB10sHII", gx, 16 + k * ssm.GX_BATCH_SIZE)
+		assert 0 < nbones <= ssm.GX_BATCH_BONES and off % 32 == 0 and size % 32 == 0 and off + size <= total
+		p, end = off, off + size
+		while p < end and gx[p] != 0:
+			cmd, n = struct.unpack_from(">BH", gx, p)
+			assert cmd & 7 == ssm.GX_VTXFMT
+			p += 3
+			verts = []
+			for _ in range(n):
+				slot, vi, ni, vs, vt = struct.unpack_from(">BHHhh", gx, p)
+				p += 9
+				assert slot % 3 == 0 and slot // 3 < nbones
+				assert bones[slot // 3] == vertbone[vi]
+				verts.append((vi, ni, vs, vt))
+			kind = cmd & 0xF8
+			if kind == ssm.GX_TRIS:
+				out += [(mesh,) + tuple(verts[i:i + 3]) for i in range(0, n, 3)]
+			else:
+				out += [(mesh,) + t for t in ssm._prim_triangles(kind == ssm.GX_STRIP, verts)]
+		assert not any(gx[p:end])
+	return out
+
+
+def _model_with_tricmds(vertbone, cmds, numnorms=4):
+	"""A bare mstudiomodel_t + one mesh at offset 0 of a buffer, for gx_section."""
+	buf = bytearray(ssm.MODEL_SIZE)
+	mesh = len(buf)
+	buf += bytearray(ssm.MESH_SIZE)
+	tri = len(buf)
+	buf += struct.pack("<%dh" % len(cmds), *cmds)
+	vinfo = len(buf)
+	buf += bytes(vertbone)
+	struct.pack_into("<5i", buf, mesh, 0, tri, 0, numnorms, 0)
+	struct.pack_into("<i", buf, 72, 1)
+	struct.pack_into("<i", buf, 76, mesh)
+	struct.pack_into("<i", buf, 80, len(vertbone))
+	struct.pack_into("<i", buf, 84, vinfo)
+	struct.pack_into("<i", buf, 92, numnorms)
+	return bytes(buf)
+
+
+class GxSectionTest(unittest.TestCase):
+	def test_blob_carries_a_section_that_draws_the_same_triangles(self):
+		core, want, _ = build_body_model()
+		_, packs = ssm.stream_meshes(core, "models/player/mesh_%s.gcm")
+		(_, pack), = packs.items()
+		for m, (verts, norms, tris, nv, nn) in enumerate(want):
+			off, size = struct.unpack_from(">2I", pack, ssm.PACK_HDR_SIZE + m * 8)
+			blob = pack[off:off + size]
+			gx_off, gx_len = struct.unpack_from(">2I", blob, 4)
+			self.assertEqual(gx_off % 32, 0)
+			self.assertEqual(gx_off + gx_len, len(blob))
+			got = _gx_triangles(blob[gx_off:gx_off + gx_len], bytes([m] * nv))
+			prims, p = [], 0
+			while tris[p]:
+				n = tris[p]
+				vs = [tuple(tris[p + 1 + 4 * i:p + 5 + 4 * i]) for i in range(abs(n))]
+				prims += [(0,) + t for t in ssm._prim_triangles(n > 0, vs)]
+				p += 1 + abs(n) * 4
+			self.assertEqual(got, prims)
+
+	def test_strip_over_many_bones_splits_into_batches(self):
+		# 24 vertices, each on its own bone, in one strip: more than ten matrices.
+		vertbone = list(range(24))
+		cmds = [24] + [x for i in range(24) for x in (i, i % 4, i * 2, i * 3)] + [0]
+		gx = ssm.gx_section(_model_with_tricmds(vertbone, cmds), 0)
+		nbatch = struct.unpack_from(">H", gx, 6)[0]
+		self.assertGreater(nbatch, 1)
+		got = _gx_triangles(gx, bytes(vertbone))
+		vs = [(i, i % 4, i * 2, i * 3) for i in range(24)]
+		self.assertEqual(got, [(0,) + t for t in ssm._prim_triangles(True, vs)])
+
+	def test_fan_and_strip_share_a_batch_when_bones_fit(self):
+		vertbone = [0, 1, 2, 3, 4, 5]
+		cmds = [4, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3,
+			-4, 2, 0, 5, 5, 3, 1, 6, 6, 4, 2, 7, 7, 5, 3, 8, 8, 0]
+		gx = ssm.gx_section(_model_with_tricmds(vertbone, cmds), 0)
+		self.assertEqual(struct.unpack_from(">H", gx, 6)[0], 1)
+		self.assertEqual(len(_gx_triangles(gx, bytes(vertbone))), 4)
+
+	def test_empty_model_has_no_section(self):
+		self.assertEqual(ssm.gx_section(bytes(ssm.MODEL_SIZE), 0), b"")
+
+
 if __name__ == "__main__":
 	unittest.main()
