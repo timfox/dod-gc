@@ -22,6 +22,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+static void DodGC_AchListing( CBasePlayer *pPlayer );
+
 /* Round length when mp_timelimit is 0, and how many rounds win a match. */
 static cvar_t dod_roundtime = { "dod_roundtime", "600", FCVAR_SERVER };
 static cvar_t dod_rounds = { "dod_rounds", "2", FCVAR_SERVER };
