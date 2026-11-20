@@ -180,6 +180,7 @@ typedef struct DodBotState {
 	float next_unseen_log, last_fire;
 	/* one engagement: from sighting to losing the target for a second (see the log in RunBot) */
 	float eng_start, eng_dist0, eng_dist_min;
+	int fetching;		/* the goal is an object to pick up (satchel) before the point that needs it */
 	float group_wait_until;	/* attackers going to a point that needs several players hold back until the group is together */
 	int eng_frames, eng_fired, eng_why_far, eng_why_react, eng_why_aim, eng_why_pause, eng_why_reload, eng_why_noammo;
 	char eng_weapon[16];
@@ -1208,6 +1209,28 @@ static void PickGoal( CBasePlayer *pBot, DodBotState *state )
 	state->goal = views[i].center;
 	state->goal_mins = views[i].mins;
 	state->goal_maxs = views[i].maxs;
+	{
+		/* a point that wants a carried object (charlie's TNT areas): fetch the nearest object first, then take it to the point */
+		int fetch = 0;
+		Vector opos;
+		if( views[i].object_group && kind == DOD_BOT_GOAL_ATTACK && my_team >= DOD_TEAM_ALLIES && my_team <= DOD_TEAM_AXIS &&
+			!DodGC_PlayerCarriesGroup( pBot, views[i].object_group ) && DodGC_NearestObject( my_team, views[i].object_group, pBot->pev->origin, &opos ) )
+		{
+			state->goal = opos;
+			state->goal_mins = opos - Vector( 40, 40, 40 );
+			state->goal_maxs = opos + Vector( 40, 40, 40 );
+			fetch = 1;
+		}
+		if( fetch != state->fetching )
+		{
+			ALERT( at_console, "DoD bot %s: %s for point %d\n", STRING( pBot->pev->netname ), fetch ? "goes to pick up the charge" : "carries the charge", id );
+			state->fetching = fetch;
+			state->arrived = 0;
+			state->path_len = 0;
+			state->path_replan = 0.0f;
+			state->next_think = 0.0f;
+		}
+	}
 	state->has_goal = 1;
 	{
 		const int held_now = views[i].owner == my_team;
