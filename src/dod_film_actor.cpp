@@ -30,7 +30,8 @@ class CDodFilmActor : public CBaseAnimating
 public:
 	int m_actor;		/* index into g_film_cast.actors */
 	int m_pose;		/* the pose whose sequence is set, -1 for none yet */
-	float m_phase;		/* sequence frame, 0..256 */
+	float m_phase;		/* sequence frame, 0..256 (the gait's, when there is one) */
+	int m_gait;		/* the legs' sequence under an upper-body aim sequence, 0 for none */
 };
 
 static DodFilmCast g_film_cast;
@@ -197,6 +198,36 @@ static const char *DodFilm_WeaponModel( int team, int player_class )
 	return def && def->player_model && def->player_model[0] ? def->player_model : NULL;
 }
 
+/* A rifleman as DoD draws a player: the legs walk a gait sequence under the rifle's upper-body
+ * aim grid (both hands on the gun, head and chest following the grid's pitch). The gait
+ * sequences' own upper body is a placeholder slump: played whole, every actor looked at his
+ * boots and his left hand hung off the stock. Returns the upper sequence and sets *gait (0 for
+ * none); -1 keeps the pose's own single sequence (lying down, prone, falling). */
+static int DodFilm_Layered( CDodFilmActor *ent, int pose, int *gait )
+{
+	const int axis = g_film_cast.actors[ent->m_actor].team == DOD_TEAM_AXIS;
+	const char *upper = NULL, *legs = NULL;
+	*gait = 0;
+	switch( pose ) {
+	case DOD_POSE_STAND:       upper = axis ? "stand_bolt_aim" : "stand_rifle_aim";   legs = "dod_idle1"; break;
+	case DOD_POSE_WALK:        upper = axis ? "stand_bolt_aim" : "stand_rifle_aim";   legs = "dod_walk"; break;
+	case DOD_POSE_RUN:         upper = axis ? "stand_bolt_aim" : "stand_rifle_aim";   legs = "dod_jog"; break;
+	case DOD_POSE_AIM:         upper = axis ? "stand_bolt_aim" : "stand_rifle_aim";   break;
+	case DOD_POSE_CROUCH:      upper = axis ? "crouch_bolt_aim" : "crouch_rifle_aim"; legs = "dod_crouch_idle"; break;
+	case DOD_POSE_CROUCH_WALK: upper = axis ? "crouch_bolt_aim" : "crouch_rifle_aim"; legs = "dod_crawl"; break;
+	case DOD_POSE_CROUCH_AIM:  upper = axis ? "crouch_bolt_aim" : "crouch_rifle_aim"; break;
+	default: return -1;
+	}
+	const int u = ent->LookupSequence( upper );
+	if( u < 0 )
+		return -1;
+	if( legs ) {
+		const int g = ent->LookupSequence( legs );
+		*gait = g > 0 && g < 0x8000 ? g : 0;
+	}
+	return u;
+}
+
 static void DodFilm_Place( int i, float t, float dt )
 {
 	CDodFilmActor *ent = g_film_ents[i];
@@ -207,7 +238,16 @@ static void DodFilm_Place( int i, float t, float dt )
 	s.pose = DodFilm_GaitPose( s.pose, s.moving, s.speed );
 	Vector origin( s.origin[0], s.origin[1], DodFilm_OriginZ( s.origin, s.pose ) );
 	UTIL_SetOrigin( ent->pev, origin );
-	ent->pev->angles = Vector( 0.0f, s.yaw, 0.0f );
+	/* Where he looks. The player models' sequences blend on the view pitch, and a blend left at 0 is
+	 * the bottom of that range: every actor stared at his boots. Level,
+	 * drifting a few degrees on his own slow cycle; a man standing or crouching at rest also turns his
+	 * body a little to look round. Aiming and moving men keep their line. */
+	const float own = DodFilm_ActorPhase( i ) * 0.0245f;	/* 0..2pi from his 0..256 phase */
+	float pitch = 4.0f * sinf( t * 0.37f + own );
+	float yaw = s.yaw;
+	if( !s.moving && ( s.pose == DOD_POSE_STAND || s.pose == DOD_POSE_CROUCH ) )
+		yaw += 14.0f * sinf( t * 0.21f + own * 1.7f );
+	ent->pev->angles = Vector( 0.0f, yaw, 0.0f );
 	if( ent->m_pose != (int)s.pose ) {
 		/* Hit: an actor that goes down during the shot bleeds as it falls. One that
 		 * starts the shot lying there does not. */
@@ -216,8 +256,18 @@ static void DodFilm_Place( int i, float t, float dt )
 			const Vector back( -cosf( yaw ), -sinf( yaw ), 0.35f );
 			DodFilm_Blood( origin + Vector( 0, 0, 20.0f ), back, 1.0f );
 		}
-		ent->pev->sequence = DodFilm_Sequence( ent, s.pose );
-		ent->ResetSequenceInfo();
+		int gait = 0;
+		const int upper = DodFilm_Layered( ent, s.pose, &gait );
+		if( upper >= 0 && gait > 0 ) {
+			/* The legs set the pace: their cycle rate and ground speed. */
+			ent->pev->sequence = gait;
+			ent->ResetSequenceInfo();
+			ent->pev->sequence = upper;
+		} else {
+			ent->pev->sequence = upper >= 0 ? upper : DodFilm_Sequence( ent, s.pose );
+			ent->ResetSequenceInfo();
+		}
+		ent->m_gait = upper >= 0 ? gait : 0;
 		ent->m_pose = s.pose;
 		/* A looping pose starts at the actor's own point in the cycle, so a squad that
 		 * starts walking together does not step in lockstep. One-shot poses start at 0. */
@@ -236,6 +286,14 @@ static void DodFilm_Place( int i, float t, float dt )
 		ent->m_phase = fmodf( ent->m_phase, 256.0f );
 	else if( ent->m_phase > 255.0f )
 		ent->m_phase = 255.0f;
+	/* The aim grid: torso yaw along the row (blending[0]), pitch down the column (blending[1]),
+	 * 127 the middle of each; +45 degrees up is 0, -45 down is 255. Level, drifting a few degrees. */
+	ent->pev->blending[0] = 127;
+	ent->pev->blending[1] = (byte)( 127.0f - pitch / 90.0f * 255.0f );
+	/* The legs' gait for the engine (r_studio.c, film actors): controller[2] and the low bits of
+	 * controller[3], flagged by bit 7. The player models have no bone controllers. */
+	ent->pev->controller[2] = (byte)( ent->m_gait & 0xff );
+	ent->pev->controller[3] = ent->m_gait ? (byte)( 0x80 | ( ( ent->m_gait >> 8 ) & 0x7f ) ) : 0;
 	ent->pev->frame = ent->m_phase;
 	ent->pev->framerate = 0.0f;	/* the frame is set here every server frame */
 	ent->pev->animtime = gpGlobals->time;
@@ -470,6 +528,7 @@ static void DodFilm_CastCommand( void )
 		ent->pev->weaponmodel = gun ? MAKE_STRING( gun ) : 0;	/* a reused actor may have carried another */
 		ent->m_actor = i;
 		ent->m_pose = -1;
+		ent->m_gait = 0;
 		ent->m_phase = 0.0f;
 		g_film_ents[i] = ent;
 		DodFilm_Place( i, gpGlobals->time - g_film_start, 0.0f );
