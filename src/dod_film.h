@@ -156,7 +156,11 @@ const char *DodFilm_PoseName(DodFilmPose pose);
 int DodFilm_PoseFromName(const char *name);
 
 /* Height of the actor's origin above the floor for a pose. A player model is drawn
- * from the origin of the player's hull: 36 above the floor standing, 18 crouched. */
+ * from the origin of the player's hull: 36 above the floor standing, 18 crouched.
+ * Fallen is 36: the deaths fall from a standing hull and end with the body at -36
+ * (die_simple and the rest); at 18 every dead man lay half under the ground. A
+ * sequence made for the low hull (the crouched and prone deaths, the corpse poses
+ * deadback, deadsitting, deadstomach) is keyed with a low pose instead. */
 float DodFilm_PoseHeight(DodFilmPose pose);
 
 /* Sequence names to look up in the player model for a pose, best first, NULL-ended.

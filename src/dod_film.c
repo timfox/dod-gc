@@ -54,7 +54,6 @@ float DodFilm_PoseHeight(DodFilmPose pose)
 	case DOD_POSE_CROUCH_AIM:
 	case DOD_POSE_PRONE:
 	case DOD_POSE_CRAWL:
-	case DOD_POSE_FALLEN:
 		return 18.0f;
 	default:
 		return 36.0f;

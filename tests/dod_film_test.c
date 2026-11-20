@@ -134,6 +134,7 @@ static void test_poses(void)
 	}
 	assert(DodFilm_PoseFromName("moonwalk") == -1);
 	assert(DodFilm_PoseHeight(DOD_POSE_STAND) == 36 && DodFilm_PoseHeight(DOD_POSE_CROUCH) == 18);
+	assert(DodFilm_PoseHeight(DOD_POSE_FALLEN) == 36 && DodFilm_PoseHeight(DOD_POSE_PRONE) == 18);
 	assert(DodFilm_PoseLoops(DOD_POSE_RUN) && !DodFilm_PoseLoops(DOD_POSE_FALLEN));
 	/* the gait follows the motion */
 	assert(DodFilm_GaitPose(DOD_POSE_CROUCH, 1, 70.0f) == DOD_POSE_CROUCH_WALK);
