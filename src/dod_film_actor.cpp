@@ -123,15 +123,25 @@ static int DodFilm_Sequence( CDodFilmActor *ent, int pose )
 }
 
 /* Feet on the floor under (x, y): trace down from a little above the keyed point. The key's
- * z is a standing player's origin (from the waypoints), the fallback when nothing is hit. */
+ * z is a standing player's origin (from the waypoints), the fallback when nothing is hit.
+ * Between keys an actor moves in a straight line, so over a crest the line runs a little
+ * under the ground: there the trace starts higher, up to 64 units (a man is not lifted onto
+ * anything taller, such as a beach obstacle). Over a dip the line runs above the ground, so
+ * the floor is looked for up to 320 units down, not left hanging in the air. */
 static float DodFilm_OriginZ( const float *origin, int pose )
 {
-	TraceResult tr;
-	Vector start( origin[0], origin[1], origin[2] + 24.0f );
-	Vector end( origin[0], origin[1], origin[2] - 160.0f );
-	UTIL_TraceLine( start, end, ignore_monsters, NULL, &tr );
-	if( !tr.fAllSolid && !tr.fStartSolid && tr.flFraction < 1.0f )
-		return tr.vecEndPos.z + DodFilm_PoseHeight( (DodFilmPose)pose );
+	static const float ups[] = { 24.0f, 64.0f };
+	for( unsigned i = 0; i < sizeof( ups ) / sizeof( ups[0] ); i++ ) {
+		TraceResult tr;
+		Vector start( origin[0], origin[1], origin[2] + ups[i] );
+		Vector end( origin[0], origin[1], origin[2] - 320.0f );
+		UTIL_TraceLine( start, end, ignore_monsters, NULL, &tr );
+		if( tr.fStartSolid || tr.fAllSolid )
+			continue;
+		if( tr.flFraction < 1.0f )
+			return tr.vecEndPos.z + DodFilm_PoseHeight( (DodFilmPose)pose );
+		break;
+	}
 	return origin[2] - 36.0f + DodFilm_PoseHeight( (DodFilmPose)pose );
 }
 
