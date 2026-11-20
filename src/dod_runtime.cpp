@@ -483,14 +483,16 @@ static void DodGC_ApplyClass( CBasePlayer *pPlayer, DodClass player_class )
 			DodBots_SetGranting( FALSE );
 			return;
 		}
-		/* A bot gets only its primary weapon (Dod_KitPlan lean): every weapon is an edict and a bot never
-		 * switches, throws or drops. The primary comes last either way, so it is the best weapon and is
-		 * the active item at spawn. */
-		DodKitPlan kit;
-		Dod_KitPlan( team, player_class, DodBots_IsBot( pPlayer ) ? 1 : 0, &kit );
-		if( kit.crowbar )
-			pPlayer->GiveNamedItem( "weapon_crowbar" );
-		if( sidearm && kit.sidearm ) {
+		/* On a film map the human is the camera. Its kit is five weapon entities, and with
+		 * a scripted cast of 24 on a dense map they ran the GameCube's edicts out (460)
+		 * mid-shot: no kit there. */
+		if( DodFilm_IsFilmMap() && !DodBots_IsBot( pPlayer ) ) {
+			DodBots_SetGranting( FALSE );
+			ALERT( at_console, "FILM: %s is the camera, no kit\n", STRING( pPlayer->pev->netname ) );
+			return;
+		}
+		pPlayer->GiveNamedItem( "weapon_crowbar" );
+		if( sidearm ) {
 			pPlayer->GiveNamedItem( sidearm->classname );
 			pPlayer->GiveAmmo( sidearm->reserve, sidearm->ammo, sidearm->ammo_max );
 		}

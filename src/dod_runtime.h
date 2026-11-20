@@ -59,5 +59,7 @@ const char *DodGC_BodyModelForTeam( DodTeam team );
  * gamerules constructor; moving the actors, from its Think. */
 void DodFilm_Init( void );
 void DodFilm_Think( void );
+/* True on a map a film plan precached actors for (cine/cast.txt): the human there is a camera. */
+int DodFilm_IsFilmMap( void );
 
 #endif

@@ -42,6 +42,10 @@ static float g_film_fx_clock;	/* the shot time fx have been fired up to */
 static char g_film_shot[32];
 static int g_film_commands_added;
 static int g_film_precached[4];	/* by DodTeam */
+/* The shot's fireball. zerogxplode.spr (g_sModelIndexFireball) is 193 KB on disc, more than
+ * the GameCube heap has free once a map is up, so it never loaded and no burst drew;
+ * explode1.spr is a fraction of that. 0 falls back to g_sModelIndexFireball. */
+static int g_film_fireball;
 
 static void DodFilm_Clear( void )
 {
@@ -119,11 +123,13 @@ static float DodFilm_ActorStride( int i )
 	return 0.92f + 0.16f * (float)( ( DodFilm_ActorHash( i ) >> 8 ) & 255u ) / 255.0f;
 }
 
-/* The third-person weapon the actor's class carries (p_*.mdl), or NULL. */
+/* The third-person weapon an actor carries (p_*.mdl), or NULL: the side's rifle for every
+ * class. Each gun model costs the GameCube a file read and a resident mesh, and a cast of 24
+ * asking for every class's gun ran the file pool dry; one per side fits. */
 static const char *DodFilm_WeaponModel( int team, int player_class )
 {
-	DodClass cls = player_class > DOD_CLASS_NONE ? (DodClass)player_class : DOD_CLASS_RIFLEMAN;
-	const DodWeaponDef *def = Dod_ClassWeaponDef( (DodTeam)team, cls );
+	(void)player_class;
+	const DodWeaponDef *def = Dod_ClassWeaponDef( (DodTeam)team, DOD_CLASS_RIFLEMAN );
 	return def && def->player_model && def->player_model[0] ? def->player_model : NULL;
 }
 
@@ -220,7 +226,7 @@ static void DodFilm_FireFx( const DodFilmFx *f )
 			WRITE_COORD( o.x );
 			WRITE_COORD( o.y );
 			WRITE_COORD( o.z + 24.0f * s );
-			WRITE_SHORT( g_sModelIndexFireball );
+			WRITE_SHORT( g_film_fireball ? g_film_fireball : g_sModelIndexFireball );
 			WRITE_BYTE( DodFilm_Byte( 30.0f * s ) );	/* scale * 10, a grenade's */
 			WRITE_BYTE( 15 );
 			WRITE_BYTE( TE_EXPLFLAG_NOSOUND );
@@ -267,9 +273,18 @@ static void DodFilm_FireFx( const DodFilmFx *f )
 
 static void DodFilm_RunFx( float t )
 {
+	static int logs;
 	int first, end = DodFilm_FxDue( &g_film_cast, g_film_fx_clock, t, &first );
-	for( int i = first; i < end; i++ )
+	for( int i = first; i < end; i++ ) {
 		DodFilm_FireFx( &g_film_cast.fx[i] );
+		if( logs < 24 ) {
+			logs++;
+			ALERT( at_console, "FILM FX %s: %d of %d, %s at %.2f s (%.0f %.0f %.0f), fireball %d smoke %d\n", g_film_shot,
+				i + 1, g_film_cast.fx_count, DodFilm_FxName( (DodFilmFxKind)g_film_cast.fx[i].kind ), t,
+				g_film_cast.fx[i].origin[0], g_film_cast.fx[i].origin[1], g_film_cast.fx[i].origin[2],
+				g_film_fireball ? g_film_fireball : g_sModelIndexFireball, g_sModelIndexSmoke );
+		}
+	}
 	if( t > g_film_fx_clock )
 		g_film_fx_clock = t;
 }
@@ -290,20 +305,16 @@ static void DodFilm_CastCommand( void )
 		ALERT( at_console, "FILM CAST %s: no %s, no actors\n", g_film_shot, path );
 		return;
 	}
-	/* LOAD_FILE_FOR_ME null-terminates, but the parser should not trust that. A static
-	 * buffer, not the heap: a failed allocation used to drop the whole cast silently. */
-	static char copy[32768];
-	if( length <= 0 || length >= (int)sizeof( copy ) ) {
-		ALERT( at_console, "FILM CAST %s: %s is %d bytes (the limit is %d), no actors\n", g_film_shot, path,
-			length, (int)sizeof( copy ) - 1 );
+	/* Parsed in place: LOAD_FILE_FOR_ME allocates length + 1 and null-terminates. No copy
+	 * buffer: a static 32 KB one cost the GameCube enough MEM1 that later config reads failed. */
+	if( length <= 0 || text[length] != '\0' ) {
+		ALERT( at_console, "FILM CAST %s: %s is %d bytes and not terminated, no actors\n", g_film_shot, path, length );
 		FREE_FILE( text );
 		return;
 	}
-	memcpy( copy, text, (size_t)length );
-	copy[length] = '\0';
-	FREE_FILE( text );
 	ALERT( at_console, "FILM CAST %s: read %s, %d bytes\n", g_film_shot, path, length );
-	int count = DodFilm_ParseCast( &g_film_cast, copy, err, sizeof( err ) );
+	int count = DodFilm_ParseCast( &g_film_cast, (const char *)text, err, sizeof( err ) );
+	FREE_FILE( text );
 	if( count < 0 ) {
 		ALERT( at_console, "FILM CAST %s: %s: %s\n", g_film_shot, path, err );
 		memset( &g_film_cast, 0, sizeof( g_film_cast ) );
@@ -311,7 +322,7 @@ static void DodFilm_CastCommand( void )
 	}
 	float preroll = CMD_ARGC() > 2 ? (float)atof( CMD_ARGV( 2 ) ) : 0.0f;
 	g_film_start = gpGlobals->time + ( preroll > 0.0f ? preroll : 0.0f );
-	g_film_last = gpGlobals->time;
+	g_film_last = gpGlobals->time - g_film_start;	/* shot time, as DodFilm_Think keeps it */
 	g_film_fx_clock = gpGlobals->time - g_film_start;	/* minus the preroll: an fx at 0 fires on the first frame */
 	if( g_film_fx_clock >= 0.0f )
 		g_film_fx_clock = -0.001f;
@@ -372,9 +383,11 @@ void DodFilm_Init( void )
 	memset( g_film_ents, 0, sizeof( g_film_ents ) );
 	memset( &g_film_cast, 0, sizeof( g_film_cast ) );
 	memset( g_film_precached, 0, sizeof( g_film_precached ) );
+	g_film_fireball = 0;
 	byte *text = LOAD_FILE_FOR_ME( "cine/cast.txt", &length );
 	if( !text )
 		return;
+	g_film_fireball = PRECACHE_MODEL( (char *)"sprites/explode1.spr" );
 	for( int team = DOD_TEAM_ALLIES; team <= DOD_TEAM_AXIS; team++ ) {
 		const char *name = team == DOD_TEAM_AXIS ? "axis" : "allies";
 		const char *hit = strstr( (const char *)text, name );
@@ -385,26 +398,41 @@ void DodFilm_Init( void )
 		if( !model[0] )
 			continue;
 		PRECACHE_MODEL( (char *)STRING( ALLOC_STRING( model ) ) );
-		for( int c = DOD_CLASS_NONE + 1; c < DOD_CLASS_COUNT; c++ ) {
-			const char *gun = DodFilm_WeaponModel( team, c );
-			if( gun )
-				PRECACHE_MODEL( (char *)gun );
-		}
+		const char *gun = DodFilm_WeaponModel( team, DOD_CLASS_RIFLEMAN );
+		if( gun )
+			PRECACHE_MODEL( (char *)gun );
 		g_film_precached[team] = 1;
 		ALERT( at_console, "FILM: precached %s for actors\n", model );
 	}
 	FREE_FILE( text );
 }
 
+int DodFilm_IsFilmMap( void )
+{
+	return g_film_precached[DOD_TEAM_ALLIES] || g_film_precached[DOD_TEAM_AXIS];
+}
+
+/* Seconds into the shot. The engine's cine_clock cvar is the camera's locked film clock
+ * (negative in preroll); server time can fall behind it when frames render slowly, which
+ * left effects unfired and actors behind the camera. Server time when no shot plays. */
+static float DodFilm_ShotTime( void )
+{
+	const float clock = CVAR_GET_FLOAT( "cine_clock" );
+	if( clock > -50000.0f )
+		return clock;
+	return gpGlobals->time - g_film_start;
+}
+
 void DodFilm_Think( void )
 {
 	if( !g_film_cast.actor_count && !g_film_cast.fx_count )
 		return;
-	float dt = gpGlobals->time - g_film_last;
-	g_film_last = gpGlobals->time;
+	const float t = DodFilm_ShotTime();
+	float dt = t - g_film_last;
+	g_film_last = t;
 	if( dt < 0.0f || dt > 0.5f )
 		dt = 0.0f;
 	for( int i = 0; i < g_film_cast.actor_count; i++ )
-		DodFilm_Place( i, gpGlobals->time - g_film_start, dt );
-	DodFilm_RunFx( gpGlobals->time - g_film_start );
+		DodFilm_Place( i, t, dt );
+	DodFilm_RunFx( t );
 }

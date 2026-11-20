@@ -49,7 +49,7 @@ static void test_errors(void)
 	assert(DodFilm_ParseCast(&cast, "act 1\nactor a axis\n", err, sizeof(err)) < 0);
 	assert(strstr(err, "no keys"));
 	{
-		char big[2048] = "act 1\n";
+		char big[4096] = "act 1\n";
 		int i;
 		for (i = 0; i <= DOD_FILM_MAX_ACTORS; ++i)
 			strcat(big, "actor x allies\nkey 0 0 0 0 0 stand\n");
