@@ -383,21 +383,68 @@ def integrate_weapon_model_null_check(hlsdk: Path) -> None:
 
 
 def integrate_gib_null_check(dlls: Path) -> None:
-	"""A gib made at the edict tip (460 on the GameCube) takes GetClassPtr( NULL ) through CREATE_ENTITY, which gives no edict, and the
-	next line read through it: a data fault that froze the match (a bot gibbed in CBasePlayer::Killed). No gib then."""
-	combat = dlls / "combat.cpp"
-	effects = dlls / "effects.cpp"
-	if "no edict for the gib" in combat.read_text():
-		return
-	g = "CGib *pGib = GetClassPtr( (CGib *)NULL );\n"
-	replace_once(combat, "	for( i = 0; i < cGibs; i++ )\n	{\n		" + g,
-		"	for( i = 0; i < cGibs; i++ )\n	{\n		" + g + "		if( !pGib )\n			break;	// no edict for the gib\n")
-	replace_once(combat, "void CGib::SpawnHeadGib( entvars_t *pevVictim )\n{\n	" + g,
-		"void CGib::SpawnHeadGib( entvars_t *pevVictim )\n{\n	" + g + "	if( !pGib )\n		return;\n")
-	replace_once(combat, "	for( cSplat = 0; cSplat < cGibs; cSplat++ )\n	{\n		" + g,
-		"	for( cSplat = 0; cSplat < cGibs; cSplat++ )\n	{\n		" + g + "		if( !pGib )\n			break;\n")
-	replace_once(effects, "		return NULL;\n\n	" + g, "		return NULL;\n\n	" + g + "	if( !pGib )\n		return NULL;\n")
-	replace_once(effects, "CGib *CEnvShooter::CreateGib( void )\n{\n	" + g, "CGib *CEnvShooter::CreateGib( void )\n{\n	" + g + "	if( !pGib )\n		return NULL;\n")
+	"""Every `GetClassPtr( (T *)NULL )` makes its entity with CREATE_ENTITY, which gives no edict at the 460 tip of the GameCube, and
+	the code then read through the NULL edict: a data fault that froze the match (a bot gibbed in CBasePlayer::Killed, a rocket, an
+	explosion's sparks ...). GetClassPtr now returns NULL, and each caller bails out after its call: `return;` in a void function,
+	`return NULL;` in a pointer function, `return 0;` otherwise, `break;` inside a loop. Gibs are cosmetic: they also stop 24 edicts
+	short of the tip so they never eat the reserve the engine keeps for rockets and grenades."""
+	import re
+	cbase = dlls / "cbase.h"
+	if "no edict from CREATE_ENTITY" not in cbase.read_text():
+		replace_once(cbase, "	if( pev == NULL )\n		pev = VARS( CREATE_ENTITY() );\n",
+			"	if( pev == NULL )\n	{\n		edict_t *pentNew = CREATE_ENTITY();\n		if( FNullEnt( pentNew ))\n			return NULL;	// no edict from CREATE_ENTITY (the tip)\n		pev = VARS( pentNew );\n	}\n")
+	plats = dlls / "plats.cpp"
+	if "pTrig" not in plats.read_text():
+		replace_once(plats, "	GetClassPtr( (CPlatTrigger *)NULL )->SpawnInsideTrigger( GetClassPtr( (CFuncPlat *)pevPlatform ) );\n",
+			"	CPlatTrigger *pTrig = GetClassPtr( (CPlatTrigger *)NULL );\n	if( pTrig )\n		pTrig->SpawnInsideTrigger( GetClassPtr( (CFuncPlat *)pevPlatform ) );\n")
+	decl = re.compile(r"^(\s*)(?:[\w:]+\s*\*\s*)?(\w+)\s*=\s*GetClassPtr\(\s*\(\s*(\w+)\s*\*\s*\)\s*NULL\s*\)\s*;\s*$")
+	for path in sorted(dlls.glob("*.cpp")):
+		text = path.read_text()
+		if "GetClassPtr(" not in text or "// no edict" in text:
+			continue
+		lines = text.split("\n")
+		out = []
+		changed = False
+		for i, line in enumerate(lines):
+			m = decl.match(line)
+			if not m:
+				out.append(line)
+				continue
+			indent, name, cls = m.group(1), m.group(2), m.group(3)
+			if cls == "CGib":
+				line = line.replace("GetClassPtr( (CGib *)NULL )", "( gpGlobals->maxEntities - g_engfuncs.pfnNumberOfEntities() < 24 ) ? NULL : GetClassPtr( (CGib *)NULL )")
+			# the function header, and whether a loop encloses the call
+			ind = len(indent.replace("\t", "    "))
+			in_loop = False
+			header = None
+			cur = ind
+			for j in range(i - 1, -1, -1):
+				prev = lines[j]
+				if not prev.strip():
+					continue
+				pind = len(prev[:len(prev) - len(prev.lstrip())].replace("\t", "    "))
+				if pind == 0 and not prev.lstrip().startswith(("{", "}", "#", "/", "*")):
+					header = prev
+					break
+				if pind < cur and prev.strip() != "{":
+					if re.match(r"\s*(for|while)\b", prev):
+						in_loop = True
+					cur = pind
+			bail = "return 0;"
+			if in_loop:
+				bail = "break;"
+			elif header is not None:
+				hm = re.match(r"\s*(.*?)\b[\w:~]+\s*\(", header)
+				rtype = hm.group(1) if hm else ""
+				if "*" in rtype:
+					bail = "return NULL;"
+				elif "void" in rtype.split() and "*" not in rtype:
+					bail = "return;"
+			out.append(line)
+			out.append("%sif( !%s )\n%s\t%s	// no edict" % (indent, name, indent, bail))
+			changed = True
+		if changed:
+			path.write_text("\n".join(out))
 
 
 def integrate_studio_anim_pack(hlsdk: Path, engine: Path | None) -> None:
