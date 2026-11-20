@@ -2,6 +2,7 @@
 
 #include <assert.h>
 #include <math.h>
+#include <stdio.h>
 #include <string.h>
 
 static int near(float a, float b, float eps)
@@ -147,8 +148,60 @@ static void test_poses(void)
 	assert(DodFilm_GaitPose(DOD_POSE_FALLEN, 1, 200.0f) == DOD_POSE_FALLEN);
 }
 
+static void test_named_sequences(void)
+{
+	DodFilmCast cast;
+	DodFilmSample s;
+	char err[96];
+	const char *text =
+		"act 1\n"
+		"actor a allies\n"
+		"key 0 0 0 0 - crouch hs_move_out upper\n"
+		"key 2 0 0 0 - crouch hs_move_out upper\n"
+		"key 2 0 0 0 - run\n"
+		"key 4 200 0 0 - crouch limpingwalk\n"
+		"key 6 200 0 0 - fallen dieforward once\n"
+		"actor b axis\n"
+		"key 0 0 0 0 - crouch limpingwalk loop\n";
+	assert(DodFilm_ParseCast(&cast, text, err, sizeof(err)) == 2);
+	/* names are shared across the cast */
+	assert(cast.seq_count == 3 && !strcmp(cast.seq_names[0], "hs_move_out") && !strcmp(cast.seq_names[2], "dieforward"));
+	assert(cast.actors[0].keys[0].seq == 1 && cast.actors[0].keys[0].play == DOD_FILM_PLAY_UPPER);
+	assert(cast.actors[0].keys[2].seq == 0);
+	assert(cast.actors[0].keys[3].seq == 2 && cast.actors[0].keys[3].play == DOD_FILM_PLAY_LOOP);
+	assert(cast.actors[1].keys[0].seq == 2);
+	assert(sizeof(DodFilmKey) == 24);
+	/* the sample carries the key's sequence: held through the signal, cleared for the run */
+	DodFilm_Sample(&cast.actors[0], 1.0f, &s);
+	assert(s.seq == 1 && s.play == DOD_FILM_PLAY_UPPER && !DodFilm_SampleLoops(&s) && s.pose == DOD_POSE_CROUCH);
+	DodFilm_Sample(&cast.actors[0], 3.0f, &s);
+	assert(s.seq == 0 && s.pose == DOD_POSE_RUN && s.moving && DodFilm_SampleLoops(&s));
+	DodFilm_Sample(&cast.actors[0], 5.0f, &s);
+	assert(s.seq == 2 && DodFilm_SampleLoops(&s));
+	DodFilm_Sample(&cast.actors[0], 9.0f, &s);
+	assert(s.seq == 3 && s.play == DOD_FILM_PLAY_ONCE && !DodFilm_SampleLoops(&s) && s.pose == DOD_POSE_FALLEN);
+	/* errors */
+	assert(DodFilm_ParseCast(&cast, "act 1\nactor a axis\nkey 0 0 0 0 - stand cower sometimes\n", err, sizeof(err)) < 0);
+	assert(strstr(err, "play"));
+	{
+		char big[8192] = "act 1\n";
+		int i;
+		for (i = 0; i <= DOD_FILM_MAX_SEQS; ++i) {
+			char line[64];
+			if (i % DOD_FILM_MAX_KEYS == 0)
+				strcat(big, "actor x allies\n");
+			snprintf(line, sizeof(line), "key %d 0 0 0 - stand s%d\n", i, i);
+			strcat(big, line);
+		}
+		assert(DodFilm_ParseCast(&cast, big, err, sizeof(err)) < 0);
+		assert(strstr(err, "named sequences"));
+	}
+	assert(DodFilm_PlayFromName(DodFilm_PlayName(DOD_FILM_PLAY_UPPER_LOOP)) == DOD_FILM_PLAY_UPPER_LOOP);
+}
+
 int main(void)
 {
+	test_named_sequences();
 	test_parse();
 	test_errors();
 	test_sample();

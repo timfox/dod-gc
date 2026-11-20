@@ -71,6 +71,42 @@ int DodFilm_PoseLoops(DodFilmPose pose)
 	return pose != DOD_POSE_FALLEN;
 }
 
+static const char *const play_names[DOD_FILM_PLAY_COUNT] = { "loop", "once", "upper", "upperloop" };
+
+const char *DodFilm_PlayName(DodFilmPlay play)
+{
+	return play >= 0 && play < DOD_FILM_PLAY_COUNT ? play_names[play] : "?";
+}
+
+int DodFilm_PlayFromName(const char *name)
+{
+	int i;
+	for (i = 0; i < DOD_FILM_PLAY_COUNT; ++i)
+		if (!strcmp(name, play_names[i]))
+			return i;
+	return -1;
+}
+
+int DodFilm_SampleLoops(const DodFilmSample *s)
+{
+	if (s->seq)
+		return s->play == DOD_FILM_PLAY_LOOP || s->play == DOD_FILM_PLAY_UPPER_LOOP;
+	return DodFilm_PoseLoops(s->pose);
+}
+
+/* The cast's number for a sequence name (1-based), adding it when new; 0 when the table is full. */
+static int seq_slot(DodFilmCast *cast, const char *name)
+{
+	int i;
+	for (i = 0; i < cast->seq_count; ++i)
+		if (!strcmp(cast->seq_names[i], name))
+			return i + 1;
+	if (cast->seq_count >= DOD_FILM_MAX_SEQS)
+		return 0;
+	snprintf(cast->seq_names[cast->seq_count], sizeof(cast->seq_names[0]), "%s", name);
+	return ++cast->seq_count;
+}
+
 /* The pose an actor is shown in: the keyed stance, with the gait its motion needs. A leg keyed
  * "crouch" that covers ground plays the crouch walk, not a still crouch gliding over the floor; a
  * stop keyed "run" stands. Fast legs run whatever the stance (a crouch walk at run pace slides). */
@@ -234,7 +270,7 @@ int DodFilm_ParseCast(DodFilmCast *cast, const char *text, char *err, int err_si
 			if (!cur)
 				return set_err(err, err_size, lineno, "key before any actor");
 			if (ntok < 7)
-				return set_err(err, err_size, lineno, "key needs t x y z yaw pose");
+				return set_err(err, err_size, lineno, "key needs t x y z yaw pose [sequence [play]]");
 			if (cur->key_count >= DOD_FILM_MAX_KEYS)
 				return set_err(err, err_size, lineno, "too many keys for one actor");
 			pose = DodFilm_PoseFromName(tok[6]);
@@ -246,7 +282,19 @@ int DodFilm_ParseCast(DodFilmCast *cast, const char *text, char *err, int err_si
 			k->origin[1] = (float)atof(tok[3]);
 			k->origin[2] = (float)atof(tok[4]);
 			k->yaw = strcmp(tok[5], "-") ? (float)atof(tok[5]) : DOD_FILM_YAW_TRAVEL;
-			k->pose = (DodFilmPose)pose;
+			k->pose = (unsigned char)pose;
+			k->seq = 0;
+			k->play = DOD_FILM_PLAY_LOOP;
+			k->pad = 0;
+			if (ntok >= 8) {
+				int slot = seq_slot(cast, tok[7]), play = DOD_FILM_PLAY_LOOP;
+				if (!slot)
+					return set_err(err, err_size, lineno, "too many named sequences");
+				if (ntok >= 9 && (play = DodFilm_PlayFromName(tok[8])) < 0)
+					return set_err(err, err_size, lineno, "unknown play (loop, once, upper, upperloop)");
+				k->seq = (unsigned char)slot;
+				k->play = (unsigned char)play;
+			}
 			if (cur->key_count > 0 && k->t < cur->keys[cur->key_count - 1].t)
 				return set_err(err, err_size, lineno, "keys out of time order");
 			cur->key_count++;
@@ -340,7 +388,9 @@ void DodFilm_Sample(const DodFilmActor *actor, float t, DodFilmSample *out)
 		const DodFilmKey *k = &actor->keys[0];
 		memcpy(out->origin, k->origin, sizeof(out->origin));
 		out->yaw = key_yaw(actor, 0);
-		out->pose = k->pose;
+		out->pose = (DodFilmPose)k->pose;
+		out->seq = k->seq;
+		out->play = (DodFilmPlay)k->play;
 		return;
 	}
 	for (i = 0; i + 1 < actor->key_count; ++i) {
@@ -353,7 +403,9 @@ void DodFilm_Sample(const DodFilmActor *actor, float t, DodFilmSample *out)
 			int c;
 			for (c = 0; c < 3; ++c)
 				out->origin[c] = a->origin[c] + (b->origin[c] - a->origin[c]) * u;
-			out->pose = a->pose;
+			out->pose = (DodFilmPose)a->pose;
+			out->seq = a->seq;
+			out->play = (DodFilmPlay)a->play;
 			out->moving = dist >= 1.0f && span > 0.0f;
 			out->speed = out->moving ? dist / span : 0.0f;
 			if (a->yaw != DOD_FILM_YAW_TRAVEL)
@@ -367,6 +419,8 @@ void DodFilm_Sample(const DodFilmActor *actor, float t, DodFilmSample *out)
 		const DodFilmKey *k = &actor->keys[actor->key_count - 1];
 		memcpy(out->origin, k->origin, sizeof(out->origin));
 		out->yaw = key_yaw(actor, actor->key_count - 1);
-		out->pose = k->pose;
+		out->pose = (DodFilmPose)k->pose;
+		out->seq = k->seq;
+		out->play = (DodFilmPlay)k->play;
 	}
 }
