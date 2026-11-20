@@ -679,6 +679,13 @@ static int nav_be16s(const unsigned char *p)
 	return v >= 32768 ? v - 65536 : v;
 }
 
+static void *(*s_nav_alloc)(size_t bytes);
+
+void Dod_NavSetAllocator(void *(*alloc)(size_t bytes))
+{
+	s_nav_alloc = alloc;
+}
+
 int Dod_NavLoad(DodNav *nav, const unsigned char *data, int len)
 {
 	int i, total = 0;
@@ -701,12 +708,16 @@ int Dod_NavLoad(DodNav *nav, const unsigned char *data, int len)
 		const size_t n = (size_t)nav->node_count;
 		const size_t bits = ((size_t)(nav->edge_count > 0 ? nav->edge_count : 1) + 7) / 8;
 		const size_t size = n * (2 * sizeof(float) + 3 * sizeof(short) + 1) + (n + 1) * sizeof(unsigned short) + bits;
-		unsigned char *b = (unsigned char *)malloc(size);
+		unsigned char *b = s_nav_alloc ? (unsigned char *)s_nav_alloc(size) : NULL;
+		const int external = b != NULL;
+		if (!b)
+			b = (unsigned char *)malloc(size);
 		if (!b) {
 			memset(nav, 0, sizeof(*nav));
 			return 0;
 		}
 		nav->block = b;
+		nav->block_external = external;
 		nav->g = (float *)b; b += n * sizeof(float);
 		nav->f = (float *)b; b += n * sizeof(float);
 		nav->first = (unsigned short *)b; b += (n + 1) * sizeof(unsigned short);
@@ -739,7 +750,8 @@ void Dod_NavFree(DodNav *nav)
 {
 	if (!nav)
 		return;
-	free(nav->block);
+	if (!nav->block_external)
+		free(nav->block);
 	memset(nav, 0, sizeof(*nav));
 }
 

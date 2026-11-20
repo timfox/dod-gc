@@ -97,6 +97,10 @@ if (( ! ISO_ONLY )); then
 	# Set XASH_GAMECUBE_LINK_BBA=1 for Ethernet/net probes only.
 	export XASH_GAMECUBE_LINK_BBA="${XASH_GAMECUBE_LINK_BBA:-0}"
 	cd "$DODGC_ENGINE"
+	# The integrate step patches the SDK's pm_defs.h (XASH_GC_PM_MAX_*) so the game archives match the engine built below.
+	# The patch is only needed while the archives compile; restore the stock header on every exit so a patched SDK tree is
+	# never left behind to pair with a differently built engine (boots crash in PM_InitTextureTypes).
+	trap 'python3 "$SCRIPT_DIR/integrate-dod-gameplay.py" --hlsdk-dir "$DODGC_HLSDK" --restore-pm-caps >/dev/null 2>&1 || true' EXIT
 	python3 "$SCRIPT_DIR/integrate-dod-gameplay.py" \
 		--hlsdk-dir "$DODGC_HLSDK" --engine-dir "$DODGC_ENGINE"
 
@@ -117,6 +121,9 @@ if (( ! ISO_ONLY )); then
 			[[ "${DODGC_ALLOW_STALE_HLSDK:-0}" == 1 ]] || exit 1
 		}
 	fi
+
+	# The archives are built: put the stock header back now (the EXIT trap above covers a failed build).
+	python3 "$SCRIPT_DIR/integrate-dod-gameplay.py" --hlsdk-dir "$DODGC_HLSDK" --restore-pm-caps
 
 	SDK_SOURCE="${HLSDK_GAMECUBE_FALLBACK_SOURCE:-$DODGC_ENGINE/OUT/hlsdk-gamecube}"
 	if [[ ! -s "$SDK_PRIVATE/dod/cl_dlls/libclient_gamecube_ppc.a" ]] \

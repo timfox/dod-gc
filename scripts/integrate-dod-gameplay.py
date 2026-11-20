@@ -318,6 +318,69 @@ def integrate_doddetect(dlls: Path) -> None:
 		'/* info_doddetect is linked by the DoD game code (dod_runtime.cpp) */\n')
 
 
+def integrate_pm_layout_hook(dlls: Path) -> None:
+	"""GameDLLInit publishes the playermove_t layout (DodGC_RegisterPmLayout in dod_runtime.cpp) so the engine can stop with a clear
+	message when the game DLL and the engine were built with different XASH_GC_PM_MAX_* values."""
+	game = dlls / "game.cpp"
+	text = game.read_text()
+	if "DodGC_RegisterPmLayout" in text:
+		return
+	replace_once(game, 'void GameDLLInit( void )\n{\n',
+		'void DodGC_RegisterPmLayout( void );\nvoid GameDLLInit( void )\n{\n\tDodGC_RegisterPmLayout();\n')
+
+
+def integrate_precache_bodies_hook(dlls: Path) -> None:
+	"""ServerActivate precaches the map's team bodies (DodGC_PrecacheTeamBodies in dod_runtime.cpp), after the entities spawn."""
+	client = dlls / "client.cpp"
+	if "DodGC_PrecacheTeamBodies" in client.read_text():
+		return
+	replace_once(client, "void ServerActivate( edict_t *pEdictList, int edictCount, int clientMax )\n{\n",
+		"void DodGC_PrecacheTeamBodies( void );\nvoid ServerActivate( edict_t *pEdictList, int edictCount, int clientMax )\n{\n")
+	replace_once(client, "\tg_serveractive = 1;\n",
+		"\tg_serveractive = 1;\n#ifdef __GAMECUBE__\n\tDodGC_PrecacheTeamBodies();\n#endif\n")
+
+
+def integrate_weaponbox_null_check(dlls: Path) -> None:
+	"""CBaseEntity::Create returns NULL when the engine has no edict or no private block left (a crowded GameCube match), and
+	the stock weapon box code writes through the result: a dead player or a dropped gun then wrote through a NULL pointer. Skip the
+	drop instead."""
+	player = dlls / "player.cpp"
+	text = player.read_text()
+	if "weaponbox: no edict" in text:
+		return
+	replace_once(player,
+		"	CWeaponBox *pWeaponBox = (CWeaponBox *)CBaseEntity::Create( \"weaponbox\", pev->origin, pev->angles, edict() );\n\n	pWeaponBox->pev->angles.x = 0;",
+		"	CWeaponBox *pWeaponBox = (CWeaponBox *)CBaseEntity::Create( \"weaponbox\", pev->origin, pev->angles, edict() );\n"
+		"	if( !pWeaponBox )\n		return;	// weaponbox: no edict or private block left, drop nothing\n\n	pWeaponBox->pev->angles.x = 0;")
+	replace_once(player,
+		"			CWeaponBox *pWeaponBox = (CWeaponBox *)CBaseEntity::Create( \"weaponbox\", pev->origin + gpGlobals->v_forward * 10, pev->angles, edict() );\n			pWeaponBox->pev->angles.x = 0;",
+		"			CWeaponBox *pWeaponBox = (CWeaponBox *)CBaseEntity::Create( \"weaponbox\", pev->origin + gpGlobals->v_forward * 10, pev->angles, edict() );\n"
+		"			if( !pWeaponBox )\n				return;	// weaponbox: no edict or private block left\n			pWeaponBox->pev->angles.x = 0;")
+
+
+def integrate_studio_anim_pack(hlsdk: Path, engine: Path | None) -> None:
+	"""The client DLL's StudioModelRenderer::StudioGetAnim loads a sequence group with IEngineStudio.LoadCacheFile. For a
+	split DoD model the group is an animation pack (.gca, 3.5 MB), which cannot be read into MEM1 (Host_Error: LoadCacheFile:
+	can't load models/player/anim_*.gca on the first bot). The engine (engine_studio_api_t.GCGetAnim) fetches a sequence
+	from the pack in ARAM; the DLL uses it for any group with a pack. Needs an engine with the member."""
+	if engine is not None and "GCGetAnim" not in (engine / "common" / "r_studioint.h").read_text():
+		raise SystemExit("the engine checkout has no engine_studio_api_t.GCGetAnim; merge the engine change first "
+			"(the client DLL's studio renderer would try to read a 3.5 MB animation pack into MEM1)")
+	api = hlsdk / "common" / "r_studioint.h"
+	replace_once(api,
+		"	void		( *StudioRenderShadow )( int iSprite, float *p1, float *p2, float *p3, float *p4 );\n} engine_studio_api_t;",
+		"	void		( *StudioRenderShadow )( int iSprite, float *p1, float *p2, float *p3, float *p4 );\n\n"
+		"	// GameCube extension (xash3d-gc common/r_studioint.h): a sequence of a split model from its animation pack\n"
+		"	void		*( *GCGetAnim )( void *phdr, void *submodel, void *pseqdesc );\n} engine_studio_api_t;")
+	replace_once(hlsdk / "cl_dll" / "StudioModelRenderer.cpp",
+		"	if( pseqdesc->seqgroup == 0 )\n	{\n		return (mstudioanim_t *)( (byte *)m_pStudioHeader + pseqdesc->animindex );\n	}\n\n	paSequences",
+		"	if( pseqdesc->seqgroup == 0 )\n	{\n		return (mstudioanim_t *)( (byte *)m_pStudioHeader + pseqdesc->animindex );\n	}\n\n"
+		"	/* GameCube: a sequence group that is an animation pack (.gca) is streamed from ARAM by the engine. */\n"
+		"	if( IEngineStudio.GCGetAnim && strstr( pseqgroup->name, \".gca\" ))\n"
+		"	{\n		mstudioanim_t *packed = (mstudioanim_t *)IEngineStudio.GCGetAnim( m_pStudioHeader, m_pSubModel, pseqdesc );\n"
+		"		if( packed )\n			return packed;\n	}\n\n	paSequences")
+
+
 def rename_sounds(path: Path, renames: dict[str, str]) -> None:
 	"""Point every use of a stock HL sound name in `path` at the retail DoD one (idempotent; a missing name is not an error)."""
 	text = path.read_text()
@@ -382,6 +445,18 @@ def integrate_pm_caps(hlsdk: Path, engine: Path) -> None:
 	if move.isdigit():
 		text = re.sub(r"#define MAX_MOVEENTS\t\d+", "#define MAX_MOVEENTS\t" + move, defs.read_text(), count=1)
 		defs.write_text(text)
+
+
+def restore_pm_caps(hlsdk: Path) -> None:
+	"""Put the SDK's pm_defs.h back to the stock 600 / 64. The patch in integrate_pm_caps is only needed while the game archives
+	are compiled; the archives keep the layout they were built with, so the source tree is restored right after and never left
+	patched. A patched tree pairs only with an engine built with the same XASH_GC_PM_MAX_* values (a mismatch crashes in
+	PM_InitTextureTypes: playermove_t differs between the game DLL and the engine)."""
+	defs = hlsdk / "pm_shared" / "pm_defs.h"
+	text = defs.read_text()
+	text = re.sub(r"#define MAX_PHYSENTS\t\d+", "#define MAX_PHYSENTS\t600", text, count=1)
+	text = re.sub(r"#define MAX_MOVEENTS\t\d+", "#define MAX_MOVEENTS\t64", text, count=1)
+	defs.write_text(text)
 
 
 def integrate_retail_footsteps(pm: Path) -> None:
@@ -683,7 +758,11 @@ def main() -> int:
 	parser = argparse.ArgumentParser()
 	parser.add_argument("--hlsdk-dir", required=True, type=Path)
 	parser.add_argument("--engine-dir", type=Path)
+	parser.add_argument("--restore-pm-caps", action="store_true", help="restore the SDK pm_defs.h to the stock 600/64 and exit")
 	args = parser.parse_args()
+	if args.restore_pm_caps:
+		restore_pm_caps(args.hlsdk_dir)
+		return 0
 	root = Path(__file__).resolve().parent.parent
 	dlls = args.hlsdk_dir / "dlls"
 	client = args.hlsdk_dir / "cl_dll"
@@ -821,6 +900,10 @@ def main() -> int:
 	integrate_usercmd(dlls)
 	integrate_film_actors(dlls)
 	integrate_doddetect(dlls)
+	integrate_pm_layout_hook(dlls)
+	integrate_precache_bodies_hook(dlls)
+	integrate_weaponbox_null_check(dlls)
+	integrate_studio_anim_pack(args.hlsdk_dir, args.engine_dir)
 	integrate_death_anims(dlls)
 	integrate_retail_sounds(args.hlsdk_dir)
 	integrate_pm_caps(args.hlsdk_dir, args.engine_dir)

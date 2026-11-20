@@ -15,7 +15,9 @@
 #include "dod_bot.h"
 #include "dod_bots.h"
 #include "animation.h"
+#include "pm_defs.h"
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -31,6 +33,21 @@ static cvar_t dod_spectate = { "dod_spectate", "0", FCVAR_SERVER };
 static cvar_t dod_gc_join = { "dod_gc_join", "", FCVAR_SERVER };
 static BOOL g_join_done[DOD_MAX_PLAYERS + 1];
 static cvar_t dod_spec_auto = { "dod_spec_auto", "1", FCVAR_SERVER };
+/* dod_gc_autojoin "<team> <class>" (debug, off when empty): the local human takes that side and class a couple of
+ * seconds after connecting, with the steps the menus take, so an automated run (no pad) gets a playable human and a
+ * view model. team 1 Allies / 2 Axis, class 1 rifleman .. 6 (DodClass). */
+static cvar_t dod_gc_autojoin = { "dod_gc_autojoin", "", FCVAR_SERVER };
+/* dod_gc_autotele "<x> <y> <z>" (test only, off when empty): a few seconds after the human has joined, park them there in
+ * noclip, so a packet-size or view test can look from a chosen open spot instead of the team spawn. */
+static cvar_t dod_gc_autotele = { "dod_gc_autotele", "", FCVAR_SERVER };
+/* dod_gc_boxstress (debug, default 0, never in a shipped cfg): every death drops a gun and ammo box whatever the edict margin and box limit say,
+ * and a box is also created every 3 s at the first player. The engine reads the same cvar: 1 starves the private-data slab for weapon boxes
+ * (the fixed pool serves them), 2 takes the pool away too (the scratch fallback and the freed edict fire). */
+static cvar_t dod_gc_boxstress = { "dod_gc_boxstress", "0", FCVAR_SERVER };
+static float g_autotele_seen[DOD_MAX_PLAYERS + 1];
+static BOOL g_autotele_done[DOD_MAX_PLAYERS + 1];
+static float g_autojoin_seen[DOD_MAX_PLAYERS + 1];
+static BOOL g_autojoin_spec_done[DOD_MAX_PLAYERS + 1];
 /* Team body models (models/player/<name>/<name>.mdl, split onto the disc as
  * gc_studio/<name>.mdl). A map cfg can switch to us-para/axis-para/brit-inf. */
 /* Paratrooper teams: -1 follows the map (Dod_ParatroopersForMap), otherwise a bit mask: 1 Allies, 2 Axis. */
@@ -403,6 +420,25 @@ static void DodGC_ApplyBody( CBasePlayer *pPlayer )
 	ALERT( at_console, "DoD body %s -> %s\n", STRING( pPlayer->pev->netname ), body );
 }
 
+#if defined( __GAMECUBE__ )
+/* Called from ServerActivate (scripts/integrate-dod-gameplay.py hooks it), after the map's entities have spawned and
+ * before the server goes active: precaching the bodies in the gamerules constructor loaded them ahead of the entities
+ * and left caen 34 KB short, so every func_wall of the map was skipped (kept=0 skipped=289). Stock DoD precaches the
+ * player models at map start; the engine promotes only precached models (Mod_GCPromoteMapModels). */
+void DodGC_PrecacheTeamBodies( void )
+{
+	const DodTeam teams[2] = { DOD_TEAM_ALLIES, DOD_TEAM_AXIS };
+	for( int t = 0; t < 2; t++ ) {
+		const char *body = DodGC_BodyForTeam( teams[t] );
+		char path[96];
+		if( !body || !body[0] )
+			continue;
+		snprintf( path, sizeof( path ), "models/player/%s/%s.mdl", body, body );
+		PRECACHE_MODEL( path );
+	}
+}
+#endif
+
 static int g_dod_weaponlist_resent[DOD_MAX_PLAYERS + 1];
 
 static void DodGC_ApplyClass( CBasePlayer *pPlayer, DodClass player_class )
@@ -465,7 +501,7 @@ static void DodGC_ApplyClass( CBasePlayer *pPlayer, DodClass player_class )
 			pPlayer->GiveNamedItem( weapon->classname );
 			pPlayer->GiveAmmo( weapon->reserve, weapon->ammo, weapon->ammo_max );
 		}
-		if( Dod_GetLoadout( team, player_class, &load ) && load.grenades > 0 ) {
+		if( kit.grenade && Dod_GetLoadout( team, player_class, &load ) && load.grenades > 0 ) {
 			/* The weapon spawns with one grenade; top up to the loadout. */
 			pPlayer->GiveNamedItem( "weapon_handgrenade" );
 			if( load.grenades > 1 && Dod_GetGrenade( team, &grenade ) )
@@ -484,6 +520,19 @@ static void DodGC_ApplyClass( CBasePlayer *pPlayer, DodClass player_class )
 	DodGC_ClearMenu( pPlayer );
 }
 
+/* Publish this DLL's playermove_t layout (size and array caps, from its own copy of pm_defs.h) so the engine can compare
+ * it with its own before PM_Init runs. A mismatch (the DLL built with another XASH_GC_PM_MAX_PHYSENTS / MAX_MOVEENTS than
+ * the engine) used to crash in PM_InitTextureTypes; the engine now stops with a message that names both layouts. Called
+ * from GameDLLInit (integrate-dod-gameplay.py hooks it in). */
+void DodGC_RegisterPmLayout( void )
+{
+	static char layout[32];
+	static cvar_t gc_pm_layout_dll = { "gc_pm_layout_dll", layout, 0 };
+
+	snprintf( layout, sizeof( layout ), "%d,%d,%d", (int)sizeof( playermove_t ), MAX_PHYSENTS, MAX_MOVEENTS );
+	CVAR_REGISTER( &gc_pm_layout_dll );
+}
+
 CHalfLifeDoD::CHalfLifeDoD()
 {
 	DodBots_Init();
@@ -493,6 +542,9 @@ CHalfLifeDoD::CHalfLifeDoD()
 		Dod_CvarRegisterKeep( &dod_rounds );
 		Dod_CvarRegisterKeep( &dod_spectate );
 		Dod_CvarRegisterKeep( &dod_spec_auto );
+		Dod_CvarRegisterKeep( &dod_gc_autojoin );
+		Dod_CvarRegisterKeep( &dod_gc_autotele );
+		Dod_CvarRegisterKeep( &dod_gc_boxstress );
 		Dod_CvarRegisterKeep( &dod_gc_join );
 		Dod_CvarRegisterKeep( &dod_paras );
 		for( int k = 0; k < DOD_LIMIT_CVARS; k++ ) {
@@ -548,6 +600,10 @@ CHalfLifeDoD::CHalfLifeDoD()
 	memset( g_spec_last_target, 0, sizeof( g_spec_last_target ) );
 	g_spec_next_think = 0.0f;
 	memset( g_spec_join_pending, 0, sizeof( g_spec_join_pending ) );
+	memset( g_autojoin_seen, 0, sizeof( g_autojoin_seen ) );
+	memset( g_autotele_seen, 0, sizeof( g_autotele_seen ) );
+	memset( g_autotele_done, 0, sizeof( g_autotele_done ) );
+	memset( g_autojoin_spec_done, 0, sizeof( g_autojoin_spec_done ) );
 	memset( g_join_done, 0, sizeof( g_join_done ) );
 }
 
@@ -1261,6 +1317,60 @@ static void DodGC_SpectatorThink( void )
 		CBasePlayer *pSpec = (CBasePlayer *)UTIL_PlayerByIndex( i );
 		const int slot = i <= DOD_SPEC_SLOTS ? i : 0;
 		int count, mode, pick;
+		/* dod_gc_autojoin "0 ...": a spectator. The engine's own team overlay auto-confirms a join after a few seconds, so wait
+		 * until the human is playing and then turn them into an observer once (the director follows the bots). */
+		if( i <= DOD_MAX_PLAYERS && pSpec && pSpec->IsPlayer() && !DodBots_IsBot( pSpec ) && !g_autojoin_spec_done[i] ) {
+			const char *aj = CVAR_GET_STRING( "dod_gc_autojoin" );
+			int aj_team = -1, aj_class = 0, aj_bots = -1;
+			const int aj_n = ( aj && aj[0] ) ? sscanf( aj, "%d %d %d", &aj_team, &aj_class, &aj_bots ) : 0;
+			if( aj_n >= 2 && aj_team == 0 ) {
+				if( g_autojoin_seen[i] == 0.0f ) {
+					g_autojoin_seen[i] = gpGlobals->time;
+					if( aj_n >= 3 && aj_bots >= 0 )
+						CVAR_SET_FLOAT( "dod_bots", (float)aj_bots );
+				} else if( gpGlobals->time - g_autojoin_seen[i] > 8.0f && !pSpec->IsObserver() && g_dod_joined[i] ) {
+					g_autojoin_spec_done[i] = TRUE;
+					g_autojoin_seen[i] = 0.0f;
+					CVAR_SET_FLOAT( "dod_spectate", 1.0f );
+					DodGC_JoinSpectator( pSpec );
+				}
+			}
+		}
+		if( i <= DOD_MAX_PLAYERS && pSpec && pSpec->IsPlayer() && !DodBots_IsBot( pSpec ) && !g_dod_joined[i] ) {
+			const char *aj = CVAR_GET_STRING( "dod_gc_autojoin" );
+			int aj_team = 0, aj_class = 0, aj_bots = -1;
+			const int aj_n = ( aj && aj[0] ) ? sscanf( aj, "%d %d %d", &aj_team, &aj_class, &aj_bots ) : 0;
+			if( aj_n >= 2 && ( aj_team == DOD_TEAM_ALLIES || aj_team == DOD_TEAM_AXIS ) ) {
+				if( g_autojoin_seen[i] == 0.0f ) {
+					g_autojoin_seen[i] = gpGlobals->time;
+					/* optional third number: the bot count, set here because a cfg line for dod_bots is overwritten when
+					 * the game registers the cvar (the bots join about 3 s after the human, after this point) */
+					if( aj_n >= 3 && aj_bots >= 0 )
+						CVAR_SET_FLOAT( "dod_bots", (float)aj_bots );
+				}
+				else if( gpGlobals->time - g_autojoin_seen[i] > 2.0f ) {
+					g_autojoin_seen[i] = 0.0f;
+					DodGC_HumanJoin( pSpec, (DodTeam)aj_team, (DodClass)aj_class );
+				}
+			}
+		}
+		if( i <= DOD_MAX_PLAYERS && pSpec && pSpec->IsPlayer() && !DodBots_IsBot( pSpec ) && g_dod_joined[i] && !pSpec->IsObserver() ) {
+			const char *at = CVAR_GET_STRING( "dod_gc_autotele" );
+			float tx, ty, tz;
+			if( at && at[0] && sscanf( at, "%f %f %f", &tx, &ty, &tz ) == 3 ) {
+				if( g_autotele_seen[i] == 0.0f )
+					g_autotele_seen[i] = gpGlobals->time;
+				else if( gpGlobals->time - g_autotele_seen[i] > 6.0f ) {
+					pSpec->pev->movetype = MOVETYPE_NOCLIP;
+					pSpec->pev->velocity = Vector( 0, 0, 0 );
+					if( !g_autotele_done[i] ) {
+						g_autotele_done[i] = TRUE;
+						UTIL_SetOrigin( pSpec->pev, Vector( tx, ty, tz ) );
+						ALERT( at_console, "dod_gc_autotele: human parked at %.0f %.0f %.0f\n", tx, ty, tz );
+					}
+				}
+			}
+		}
 		if( i <= DOD_MAX_PLAYERS && g_spec_join_pending[i] ) {
 			g_spec_join_pending[i] = FALSE;
 			if( pSpec && pSpec->IsPlayer() && !pSpec->IsObserver() && !DodBots_IsBot( pSpec ) )
@@ -1395,6 +1505,8 @@ static int DodGC_CountBoxes( void )
 
 int CHalfLifeDoD::DeadPlayerWeapons( CBasePlayer *pPlayer )
 {
+	if( CVAR_GET_FLOAT( "dod_gc_boxstress" ) > 0.0f )
+		return GR_PLR_DROP_GUN_ACTIVE;
 	if( gpGlobals->maxEntities - g_engfuncs.pfnNumberOfEntities() < DOD_DROP_EDICT_MARGIN || DodGC_CountBoxes() >= DOD_MAX_BOXES )
 		return GR_PLR_DROP_GUN_NO;
 	return GR_PLR_DROP_GUN_ACTIVE;
@@ -1409,6 +1521,12 @@ BOOL CHalfLifeDoD::FPlayerCanRespawn( CBasePlayer *pPlayer )
 
 int CHalfLifeDoD::DeadPlayerAmmo( CBasePlayer *pPlayer )
 {
+	if( CVAR_GET_FLOAT( "dod_gc_boxstress" ) > 0.0f )
+		return GR_PLR_DROP_AMMO_ACTIVE;
+	/* A box with no gun still costs an edict: with both rules off the player drops nothing, so the same edict margin and box limit
+	 * apply here (switch: 12 boxes on the ground against DOD_MAX_BOXES 6, most of them ammo only). */
+	if( gpGlobals->maxEntities - g_engfuncs.pfnNumberOfEntities() < DOD_DROP_EDICT_MARGIN || DodGC_CountBoxes() >= DOD_MAX_BOXES )
+		return GR_PLR_DROP_AMMO_NO;
 	return GR_PLR_DROP_AMMO_ACTIVE;
 }
 
@@ -1458,6 +1576,21 @@ static void DodGC_ManageWeaponBoxes( void )
 	if( gpGlobals->time < next_check )
 		return;
 	next_check = gpGlobals->time + 0.5f;
+	if( CVAR_GET_FLOAT( "dod_gc_boxstress" ) > 0.0f ) {
+		static float next_forced;
+		if( gpGlobals->time >= next_forced ) {
+			CBaseEntity *pl = UTIL_PlayerByIndex( 1 );
+			next_forced = gpGlobals->time + 3.0f;
+			if( pl ) {
+				CBaseEntity *made = CBaseEntity::Create( "weaponbox", pl->pev->origin + Vector( 0, 0, 24 ), Vector( 0, 0, 0 ), NULL );
+				if( made ) {
+					made->pev->nextthink = gpGlobals->time + 5.0f;
+					made->SetThink( &CBaseEntity::SUB_Remove );
+				} else
+					ALERT( at_console, "DoD boxstress: weaponbox Create gave NULL (no private block), carrying on\n" );
+			}
+		}
+	}
 	while( !FNullEnt( box = FIND_ENTITY_BY_STRING( box, "classname", "weaponbox" ) ) && alive_count < DOD_MAX_BOXES * 2 ) {
 		const int ent = ENTINDEX( box );
 		int slot = -1;
@@ -1554,6 +1687,8 @@ static void DodGC_UpdateMovement( void )
 
 #if defined( __GAMECUBE__ )
 extern "C" size_t GC_MemHeapFreeBytes( void );
+extern "C" void GC_HeapCensusReport( const char *stage );
+extern "C" void GC_MemReportPools( const char *stage );
 
 /* Free engine heap, sampled twice a second; the minimum is logged every 10 s (the margin on charlie is only ~32 KB). */
 static void DodGC_HeapMonitor( void )
@@ -1569,6 +1704,11 @@ static void DodGC_HeapMonitor( void )
 	if( gpGlobals->time >= next_log ) {
 		next_log = gpGlobals->time + 10.0f;
 		ALERT( at_console, "DoD heap: free %u KB, lowest since start %u KB\n", (unsigned)( now_free / 1024 ), (unsigned)( lowest / 1024 ) );
+		{
+			/* Census builds only (engine XASH_GC_HEAP_CENSUS_BOOT): who holds the heap right now. A no-op otherwise. */
+			GC_HeapCensusReport( "dod heap 10s" );
+			GC_MemReportPools( "dod 10s" );
+		}
 	}
 }
 #else
