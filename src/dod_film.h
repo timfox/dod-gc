@@ -73,6 +73,7 @@ typedef enum {
 	DOD_FX_KIND_DIRT,		/* a near miss: a spout of sand or earth, no fire */
 	DOD_FX_KIND_SMOKE,		/* a rising puff of smoke */
 	DOD_FX_KIND_TRACER,		/* a tracer round from origin to end */
+	DOD_FX_KIND_BLOOD,		/* a hit: a spurt and a spray of blood particles */
 	DOD_FX_KIND_COUNT
 } DodFilmFxKind;
 

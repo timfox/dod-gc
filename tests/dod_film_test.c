@@ -88,6 +88,9 @@ static void test_fx(void)
 	assert(first == end);
 	assert(DodFilm_FxDue(&cast, 2.0f, 2.0f, &first) == 0);
 	/* errors */
+	assert(DodFilm_ParseCast(&cast, "act 1\nfx 1 blood 4 5 6 0.5\n", err, sizeof(err)) == 0);
+	assert(cast.fx_count == 1 && cast.fx[0].kind == DOD_FX_KIND_BLOOD && near(cast.fx[0].scale, 0.5f, 1e-3f));
+	assert(DodFilm_PoseFromName("fallen") == DOD_POSE_FALLEN && !DodFilm_PoseLoops(DOD_POSE_FALLEN));
 	assert(DodFilm_ParseCast(&cast, "act 1\nfx 1 nuke 0 0 0\n", err, sizeof(err)) < 0);
 	assert(strstr(err, "kind"));
 	assert(DodFilm_ParseCast(&cast, "act 1\nfx 1 tracer 0 0 0\n", err, sizeof(err)) < 0);

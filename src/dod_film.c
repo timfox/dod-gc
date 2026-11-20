@@ -23,7 +23,10 @@ static const char *const seq_prone[] = { "prone_idle", "prone", 0 };
 static const char *const seq_crawl[] = { "prone_forward", "prone_walk", "crawl", "prone_idle", 0 };
 static const char *const seq_aim[] = { "stand_rifle_aim", "ref_aim_garand", "dod_idle1", "idle", 0 };
 static const char *const seq_crouch_aim[] = { "crouch_rifle_aim", "crouch_aim_garand", "dod_crouch_idle", 0 };
-static const char *const seq_fallen[] = { "die_simple", "die_forwards", "death_simple", 0 };
+/* Every death the model has is a candidate: the actor takes one of those found, picked by its
+ * slot, so a line of men going down does not fall the same way. */
+static const char *const seq_fallen[] = { "die_simple", "die_forwards", "die_backwards", "die_backwards1",
+	"die_spin", "die_headshot", "die_gutshot", "headshot", "gutshot", "death_simple", 0 };
 
 static const char *const *const pose_seqs[DOD_POSE_COUNT] = {
 	seq_stand, seq_walk, seq_run, seq_crouch, seq_crouch_walk, seq_prone, seq_crawl, seq_aim, seq_crouch_aim, seq_fallen,
@@ -69,7 +72,7 @@ int DodFilm_PoseLoops(DodFilmPose pose)
 }
 
 static const char *const fx_names[DOD_FX_KIND_COUNT] = {
-	"explosion", "water", "dirt", "smoke", "tracer",
+	"explosion", "water", "dirt", "smoke", "tracer", "blood",
 };
 
 const char *DodFilm_FxName(DodFilmFxKind kind)

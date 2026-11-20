@@ -68,6 +68,9 @@ static void DodFilm_BodyPath( int team, char *out, size_t size )
 }
 
 /* The first of the pose's candidate sequences the model has. */
+static unsigned DodFilm_ActorHash( int i );
+static void DodFilm_Blood( const Vector &o, const Vector &dir, float scale );
+
 static int DodFilm_Sequence( CDodFilmActor *ent, int pose )
 {
 	int *slot = &g_film_seq[ent->m_actor][pose];
@@ -75,6 +78,23 @@ static int DodFilm_Sequence( CDodFilmActor *ent, int pose )
 		const char *const *names = DodFilm_PoseSequences( (DodFilmPose)pose );
 		int seq = -1;
 		const char *found = "-";
+		if( pose == DOD_POSE_FALLEN ) {
+			/* A death: one of every candidate the model has, picked by the actor's slot. */
+			int have[16], n = 0;
+			const char *have_name[16];
+			for( int i = 0; names[i] && n < 16; i++ ) {
+				int s = ent->LookupSequence( names[i] );
+				if( s >= 0 ) {
+					have[n] = s;
+					have_name[n++] = names[i];
+				}
+			}
+			if( n > 0 ) {
+				int pick = (int)( ( DodFilm_ActorHash( ent->m_actor ) >> 16 ) % (unsigned)n );
+				seq = have[pick];
+				found = have_name[pick];
+			}
+		}
 		for( int i = 0; names[i] && seq < 0; i++ ) {
 			seq = ent->LookupSequence( names[i] );
 			if( seq >= 0 )
@@ -144,6 +164,13 @@ static void DodFilm_Place( int i, float t, float dt )
 	UTIL_SetOrigin( ent->pev, origin );
 	ent->pev->angles = Vector( 0.0f, s.yaw, 0.0f );
 	if( ent->m_pose != (int)s.pose ) {
+		/* Hit: an actor that goes down during the shot bleeds as it falls. One that
+		 * starts the shot lying there does not. */
+		if( s.pose == DOD_POSE_FALLEN && ent->m_pose >= 0 && t > 0.0f ) {
+			const float yaw = s.yaw * 0.017453293f;
+			const Vector back( -cosf( yaw ), -sinf( yaw ), 0.35f );
+			DodFilm_Blood( origin + Vector( 0, 0, 20.0f ), back, 1.0f );
+		}
 		ent->pev->sequence = DodFilm_Sequence( ent, s.pose );
 		ent->ResetSequenceInfo();
 		ent->m_pose = s.pose;
@@ -204,6 +231,35 @@ static void DodFilm_Smoke( const Vector &o, float scale, int framerate )
 	MESSAGE_END();
 }
 
+/* Blood: a spurt along dir and a spray around it, both particles (no sprite to load,
+ * which MEM1 has no room for). 70 is the red of the HL palette's blood ramp. */
+static void DodFilm_Blood( const Vector &o, const Vector &dir, float scale )
+{
+	const int color = 70;
+	MESSAGE_BEGIN( MSG_BROADCAST, SVC_TEMPENTITY );
+		WRITE_BYTE( TE_BLOODSTREAM );
+		WRITE_COORD( o.x );
+		WRITE_COORD( o.y );
+		WRITE_COORD( o.z );
+		WRITE_COORD( dir.x );
+		WRITE_COORD( dir.y );
+		WRITE_COORD( dir.z );
+		WRITE_BYTE( color );
+		WRITE_BYTE( DodFilm_Byte( 90.0f * scale ) );
+	MESSAGE_END();
+	MESSAGE_BEGIN( MSG_BROADCAST, SVC_TEMPENTITY );
+		WRITE_BYTE( TE_BLOOD );
+		WRITE_COORD( o.x );
+		WRITE_COORD( o.y );
+		WRITE_COORD( o.z );
+		WRITE_COORD( dir.x );
+		WRITE_COORD( dir.y );
+		WRITE_COORD( dir.z );
+		WRITE_BYTE( color );
+		WRITE_BYTE( DodFilm_Byte( 60.0f * scale ) );
+	MESSAGE_END();
+}
+
 /* One effect. Broadcast, not by PVS or PAS: the camera is often far from the player.
  * The sound is left to the film's own mix (TE_EXPLFLAG_NOSOUND). */
 static void DodFilm_FireFx( const DodFilmFx *f )
@@ -254,6 +310,9 @@ static void DodFilm_FireFx( const DodFilmFx *f )
 		break;
 	case DOD_FX_KIND_SMOKE:
 		DodFilm_Smoke( o, 30.0f * s, 6 );
+		break;
+	case DOD_FX_KIND_BLOOD:
+		DodFilm_Blood( o, Vector( 0, 0, 1.0f ), s );
 		break;
 	case DOD_FX_KIND_TRACER:
 		MESSAGE_BEGIN( MSG_BROADCAST, SVC_TEMPENTITY );
