@@ -428,6 +428,9 @@ class WeaponHookIntegrationTest(unittest.TestCase):
 		self.assertIn("dod_bot.cpp", cmake)
 		self.assertIn("ant_glob('dod_film.c')", source)
 		self.assertIn("dod_film_actor.cpp", cmake)
+		self.assertIn('"dod_grunts.c"', source)
+		self.assertIn("dod_grunt.cpp", cmake)
+		self.assertIn("ant_glob('dod_grunts.c')", source)
 
 
 class HudIntegrationTest(unittest.TestCase):

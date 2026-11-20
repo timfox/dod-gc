@@ -281,6 +281,12 @@ static DodTeam DodGC_TeamForPlayer( CBasePlayer *pPlayer )
 	return (DodTeam)Dod_TeamFromName( pPlayer->m_szTeamName );
 }
 
+/* For the grunts (dod_grunt.cpp): a player's side, and a random spawn point of a side. */
+int DodGC_PlayerTeam( CBasePlayer *pPlayer )
+{
+	return (int)DodGC_TeamForPlayer( pPlayer );
+}
+
 /* Called by SendWeaponAnim (patched in by the integrator): the number a weapon asks for becomes the sequence its
  * retail view model has. Outside a DoD game the stock numbers stand. */
 int DodGC_RemapWeaponAnim( const char *classname, int anim )
@@ -597,6 +603,7 @@ CHalfLifeDoD::CHalfLifeDoD()
 		Dod_SetParatroopers( paras & 1, paras & 2 );
 		ALERT( at_console, "DoD: paratroopers: Allies %s, Axis %s\n", paras & 1 ? "yes" : "no", paras & 2 ? "yes" : "no" );
 	}
+	DodGrunts_Init();
 	DodFilm_Init();	/* after the country and paratroopers: they pick the actors' bodies */
 	Dod_ClearObjectives();
 	round_seconds = CVAR_GET_FLOAT( "mp_timelimit" ) * 60.0f;
@@ -1292,6 +1299,28 @@ static void DodGC_LoadSpawns( void )
 	ALERT( at_console, "DoD spawns: %d Allies, %d Axis (%s)\n", allies, axis, by_class ? "by classname" : "by v.team" );
 }
 
+BOOL DodGC_TeamSpawnPoint( DodTeam team, Vector *origin, float *yaw )
+{
+	int count = 0, i, pick;
+	DodGC_LoadSpawns();
+	for( i = 0; i < g_spawn_count; i++ )
+		if( g_spawn_team[i] == (int)team )
+			count++;
+	if( count <= 0 )
+		return FALSE;
+	pick = RANDOM_LONG( 0, count - 1 );
+	for( i = 0; i < g_spawn_count; i++ ) {
+		if( g_spawn_team[i] != (int)team )
+			continue;
+		if( pick-- == 0 ) {
+			*origin = g_spawn_edict[i]->v.origin;
+			*yaw = g_spawn_edict[i]->v.angles.y;
+			return TRUE;
+		}
+	}
+	return FALSE;
+}
+
 edict_t *CHalfLifeDoD::GetPlayerSpawnSpot( CBasePlayer *pPlayer )
 {
 	const DodTeam team = DodGC_TeamForPlayer( pPlayer );
@@ -1875,6 +1904,7 @@ void CHalfLifeDoD::Think( void )
 	Dod_Think( gpGlobals->frametime );
 	DodBots_Think();
 	DodFilm_Think();
+	DodGrunts_Think();
 	DodGC_SpectatorThink();
 	DodGC_UpdateMovement();
 	DodGC_ManageWeaponBoxes();

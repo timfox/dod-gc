@@ -32,6 +32,7 @@ public:
 	int m_pose;		/* the pose whose sequence is set, -1 for none yet */
 	float m_phase;		/* sequence frame, 0..256 (the gait's, when there is one) */
 	int m_gait;		/* the legs' sequence under an upper-body aim sequence, 0 for none */
+	int m_seq;		/* the cast's named sequence being played (DodFilmKey.seq), 0 for the pose's */
 };
 
 static DodFilmCast g_film_cast;
@@ -42,6 +43,8 @@ static CDodFilmActor *g_film_ents[DOD_FILM_MAX_ACTORS];
 static CDodFilmActor *g_film_pool[DOD_FILM_MAX_ACTORS];
 #define DOD_FILM_EDICT_RESERVE 8	/* left free for the camera player, gibs and temp entities */
 static int g_film_seq[DOD_FILM_MAX_ACTORS][DOD_POSE_COUNT];	/* looked-up sequence + 1, 0 unknown */
+/* The cast's named sequences in each team's model: sequence + 1, -1 not in the model, 0 unknown. */
+static int g_film_named[4][DOD_FILM_MAX_SEQS];
 static float g_film_start;
 static float g_film_last;
 static float g_film_fx_clock;	/* the shot time fx have been fired up to */
@@ -70,6 +73,7 @@ static void DodFilm_Clear( void )
 	}
 	memset( &g_film_cast, 0, sizeof( g_film_cast ) );
 	memset( g_film_seq, 0, sizeof( g_film_seq ) );
+	memset( g_film_named, 0, sizeof( g_film_named ) );
 	g_film_shot[0] = '\0';
 }
 
@@ -121,6 +125,24 @@ static int DodFilm_Sequence( CDodFilmActor *ent, int pose )
 			DodFilm_PoseName( (DodFilmPose)pose ), seq, found );
 	}
 	return *slot - 1;
+}
+
+/* The model's sequence for the cast's named sequence n (1-based), or -1 when the model has none
+ * by that name: the actor then plays its pose. Looked up once per team body and logged. */
+static int DodFilm_Named( CDodFilmActor *ent, int n )
+{
+	const int team = g_film_cast.actors[ent->m_actor].team & 3;
+	if( n <= 0 || n > g_film_cast.seq_count )
+		return -1;
+	int *slot = &g_film_named[team][n - 1];
+	if( !*slot ) {
+		const char *name = g_film_cast.seq_names[n - 1];
+		const int seq = ent->LookupSequence( name );
+		*slot = seq >= 0 ? seq + 1 : -1;
+		ALERT( at_console, "FILM ACTOR %s: named sequence %s is %d%s\n", g_film_cast.actors[ent->m_actor].name,
+			name, seq, seq < 0 ? " (not in this model: the pose plays instead)" : "" );
+	}
+	return *slot > 0 ? *slot - 1 : -1;
 }
 
 /* A brush entity the renderer never draws: no-draw, or a render mode other than normal with amount 0. */
@@ -236,6 +258,9 @@ static void DodFilm_Place( int i, float t, float dt )
 		return;
 	DodFilm_Sample( &g_film_cast.actors[i], t, &s );
 	s.pose = DodFilm_GaitPose( s.pose, s.moving, s.speed );
+	const int named = s.seq ? DodFilm_Named( ent, s.seq ) : -1;
+	if( named < 0 )
+		s.seq = 0;
 	Vector origin( s.origin[0], s.origin[1], DodFilm_OriginZ( s.origin, s.pose ) );
 	UTIL_SetOrigin( ent->pev, origin );
 	/* Where he looks. The player models' sequences blend on the view pitch, and a blend left at 0 is
@@ -248,17 +273,25 @@ static void DodFilm_Place( int i, float t, float dt )
 	if( !s.moving && ( s.pose == DOD_POSE_STAND || s.pose == DOD_POSE_CROUCH ) )
 		yaw += 14.0f * sinf( t * 0.21f + own * 1.7f );
 	ent->pev->angles = Vector( 0.0f, yaw, 0.0f );
-	if( ent->m_pose != (int)s.pose ) {
+	if( ent->m_pose != (int)s.pose || ent->m_seq != s.seq ) {
 		/* Hit: an actor that goes down during the shot bleeds as it falls. One that
-		 * starts the shot lying there does not. */
-		if( s.pose == DOD_POSE_FALLEN && ent->m_pose >= 0 && t > 0.0f ) {
+		 * starts the shot lying there does not, nor one already down that moves on to
+		 * another sequence where he lies. */
+		if( s.pose == DOD_POSE_FALLEN && ent->m_pose >= 0 && ent->m_pose != DOD_POSE_FALLEN && t > 0.0f ) {
 			const float yaw = s.yaw * 0.017453293f;
 			const Vector back( -cosf( yaw ), -sinf( yaw ), 0.35f );
 			DodFilm_Blood( origin + Vector( 0, 0, 20.0f ), back, 1.0f );
 		}
 		int gait = 0;
-		const int upper = DodFilm_Layered( ent, s.pose, &gait );
-		if( upper >= 0 && gait > 0 ) {
+		const int upper = s.seq ? -1 : DodFilm_Layered( ent, s.pose, &gait );
+		if( s.seq ) {
+			/* A named sequence: the whole body, or the upper body over the pose's standing
+			 * legs. Its own cycle rate and ground speed set the pace. */
+			ent->pev->sequence = named;
+			ent->ResetSequenceInfo();
+			if( s.play == DOD_FILM_PLAY_UPPER || s.play == DOD_FILM_PLAY_UPPER_LOOP )
+				DodFilm_Layered( ent, s.pose, &gait );
+		} else if( upper >= 0 && gait > 0 ) {
 			/* The legs set the pace: their cycle rate and ground speed. */
 			ent->pev->sequence = gait;
 			ent->ResetSequenceInfo();
@@ -267,11 +300,12 @@ static void DodFilm_Place( int i, float t, float dt )
 			ent->pev->sequence = upper >= 0 ? upper : DodFilm_Sequence( ent, s.pose );
 			ent->ResetSequenceInfo();
 		}
-		ent->m_gait = upper >= 0 ? gait : 0;
+		ent->m_gait = ( s.seq || upper >= 0 ) ? gait : 0;
 		ent->m_pose = s.pose;
+		ent->m_seq = s.seq;
 		/* A looping pose starts at the actor's own point in the cycle, so a squad that
 		 * starts walking together does not step in lockstep. One-shot poses start at 0. */
-		ent->m_phase = DodFilm_PoseLoops( s.pose ) ? DodFilm_ActorPhase( i ) : 0.0f;
+		ent->m_phase = DodFilm_SampleLoops( &s ) ? DodFilm_ActorPhase( i ) : 0.0f;
 	}
 	/* Walk cycles run at the speed the actor covers ground, so the feet do not slide much,
 	 * give or take the actor's own stride (a few percent), so the cycles drift apart. */
@@ -282,7 +316,7 @@ static void DodFilm_Place( int i, float t, float dt )
 	}
 	if( t >= 0.0f )
 		ent->m_phase += dt * ent->m_flFrameRate * rate;
-	if( DodFilm_PoseLoops( s.pose ) )
+	if( DodFilm_SampleLoops( &s ) )
 		ent->m_phase = fmodf( ent->m_phase, 256.0f );
 	else if( ent->m_phase > 255.0f )
 		ent->m_phase = 255.0f;
@@ -528,6 +562,7 @@ static void DodFilm_CastCommand( void )
 		ent->pev->weaponmodel = gun ? MAKE_STRING( gun ) : 0;	/* a reused actor may have carried another */
 		ent->m_actor = i;
 		ent->m_pose = -1;
+		ent->m_seq = 0;
 		ent->m_gait = 0;
 		ent->m_phase = 0.0f;
 		g_film_ents[i] = ent;

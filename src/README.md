@@ -195,6 +195,25 @@ Not verified in Dolphin: fake client creation, the AI, respawn and kick. The
 count, the online rule, team and class selection, turning, aim error and the
 move decision have host tests.
 
+## Grunts (co-op fodder)
+
+Opt-in, beside the bots (the bot system is untouched). `dod_grunts N` (default 0) fills the match with N grunts on the side
+opposite the humans (`dod_grunt_team` 0 auto, 1 Allies, 2 Axis; `dod_grunt_rush` 1 runs forward and at the enemy, 0 wanders;
+`dod_grunt_skill` 0-3; `dod_grunt_log` 1 prints a cost line every 10 s). `dod_grunts.c` holds the rules as plain arrays
+(host-tested in `tests/dod_grunts_test.c`), `dod_grunt.cpp` the engine glue.
+
+- **Cost per grunt.** One prop edict wearing the side's player body, and a 62-byte row in a 3 KiB pool. No client slot (a bot
+  slot is 9.3 KiB slim, 89 KiB full), no weapon edicts (a bot spends about five), no nav graph, no objectives, no call-outs.
+  The pool is 48 at most; `Dod_GruntTargetCount` also keeps 24 edicts free, so on charlie's ~30 spare edicts a match gets 6.
+- **Cost per frame.** Movement is arithmetic. Looking (one line trace) is scheduled: each grunt looks about 3 times a second
+  and a frame never runs more than 4 looks. One hull trace per moving grunt every 0.15 s checks the next stretch of path,
+  plus one floor trace. 32 grunts come to about 100 looks, 210 hull and 210 floor traces a second, 3 to 4 of each per frame.
+- **Behaviour.** Wander (walk a heading, turn every 2-6 s), advance (run at the last seen enemy, or along the heading), shoot
+  (stop at 660 units or nearer, one shot every 1-2 s, hit chance 0.7 close to 0.1 at 1800, 40 health, 10 s to respawn at a
+  spawn point of its side). Players of the grunt's own side do no damage to it. A kill is one point.
+- **Unverified.** The cost numbers are from the host model; the engine glue has not run in Dolphin. Read `GRUNT cost:` in
+  the console for console-time numbers.
+
 ## Spectating bot matches
 
 The local human can watch the bots fight instead of playing.

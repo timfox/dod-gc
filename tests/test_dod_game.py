@@ -112,6 +112,9 @@ class DodGameRulesTests(unittest.TestCase):
     def test_native_achievements(self):
         with tempfile.TemporaryDirectory() as tmp:
             binary = Path(tmp) / "dod-achievements"
+    def test_native_grunts(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            binary = Path(tmp) / "dod-grunts"
             subprocess.run(
                 [
                     "cc", "-std=c99", "-Wall", "-Wextra", "-Werror",
@@ -120,6 +123,9 @@ class DodGameRulesTests(unittest.TestCase):
                     str(ROOT / "src/dod_achievements.c"),
                     str(ROOT / "tests/dod_achievements_test.c"),
                     "-o", str(binary),
+                    str(ROOT / "src/dod_grunts.c"),
+                    str(ROOT / "tests/dod_grunts_test.c"),
+                    "-o", str(binary), "-lm",
                 ],
                 check=True,
             )

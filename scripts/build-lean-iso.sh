@@ -35,7 +35,8 @@ usage: scripts/build-lean-iso.sh [options]
                    CapFaces camera override in gamecube.cfg (spawn atlas)
   --tas NAME       stage dod/tas/NAME.tas + gamecube.cfg tas NAME (pad replay)
   --film DIR       stage a film plan (from a film plan): DIR/cine/*.cam onto the disc and
-                   DIR/film-<map>.cfg into listenserver.cfg, so the listen map plays its shots; needs --listen
+                   DIR/film-<map>.cfg into listenserver.cfg, so the listen map plays its shots; needs --listen.
+                   DIR/models/player/<body>/<body>.mdl, when there, replaces that team body on this disc
   --skip-stage     reuse existing lean cache trees
   -h, --help
 
@@ -220,6 +221,10 @@ VMIN="${DODGC_LEAN_VALVE:-$XASH3D_GC_ISO_CACHE/valve-menu-min}"
 FILM_BEGIN="// >>> film block (build-lean-iso.sh --film)"
 FILM_END="// <<< film block"
 rm -rf "$LEAN/cine"
+# Team bodies a film plan brings (the retail model with extra sequences appended). The lean tree never
+# stages player bodies of its own (the disc builder reads the retail ones), so this folder only ever
+# holds a plan's, and a disc built without --film goes back to retail.
+rm -rf "$LEAN/models/player"
 if [[ -f "$LEAN/listenserver.cfg" ]]; then
 	awk -v b="$FILM_BEGIN" -v e="$FILM_END" '$0==b{skip=1;next} $0==e{skip=0;next} !skip' \
 		"$LEAN/listenserver.cfg" > "$LEAN/listenserver.cfg.tmp"
@@ -234,6 +239,11 @@ if [[ -n "$FILM" ]]; then
 	cp -f "$FILM"/cine/*.act "$LEAN/cine/" 2>/dev/null || true
 	cast_list="$FILM/cine/cast-$(echo "$LISTEN" | tr '[:upper:]' '[:lower:]').txt"
 	[[ -f "$cast_list" ]] && cp -f "$cast_list" "$LEAN/cine/cast.txt"
+	if [[ -d "$FILM/models/player" ]]; then
+		mkdir -p "$LEAN/models/player"
+		cp -rf "$FILM/models/player/." "$LEAN/models/player/"
+		echo "==> film: $(find "$LEAN/models/player" -name '*.mdl' | wc -l) team body model(s) from the plan"
+	fi
 	{ echo "$FILM_BEGIN"; cat "$film_cfg"; echo "$FILM_END"; } >> "$LEAN/listenserver.cfg"
 	echo "==> film: $(ls "$LEAN/cine"/*.cam | wc -l) camera path(s), $(ls "$LEAN/cine"/*.act 2>/dev/null | wc -l) cast(s), session $(basename "$film_cfg")"
 fi
