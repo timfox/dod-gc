@@ -35,6 +35,11 @@ public:
 
 static DodFilmCast g_film_cast;
 static CDodFilmActor *g_film_ents[DOD_FILM_MAX_ACTORS];
+/* Actor entities kept from shot to shot. Removing a cast and spawning the next one cost
+ * twice the edicts: a freed edict is not handed out again for half a second, and on
+ * dod_charlie the map leaves a cast only ~30 of the GameCube's edicts. */
+static CDodFilmActor *g_film_pool[DOD_FILM_MAX_ACTORS];
+#define DOD_FILM_EDICT_RESERVE 8	/* left free for the camera player, gibs and temp entities */
 static int g_film_seq[DOD_FILM_MAX_ACTORS][DOD_POSE_COUNT];	/* looked-up sequence + 1, 0 unknown */
 static float g_film_start;
 static float g_film_last;
@@ -47,11 +52,19 @@ static int g_film_precached[4];	/* by DodTeam */
  * explode1.spr is a fraction of that. 0 falls back to g_sModelIndexFireball. */
 static int g_film_fireball;
 
+static int DodFilm_PoolLive( int i )
+{
+	CDodFilmActor *e = g_film_pool[i];
+	return e && e->pev && !FNullEnt( e->edict() ) && !e->edict()->free
+		&& e->pev->iuser4 == DODGC_FILM_ACTOR_TAG;
+}
+
+/* Out of the shot: hidden and kept for the next cast. */
 static void DodFilm_Clear( void )
 {
 	for( int i = 0; i < DOD_FILM_MAX_ACTORS; i++ ) {
-		if( g_film_ents[i] )
-			UTIL_Remove( g_film_ents[i] );
+		if( DodFilm_PoolLive( i ) )
+			g_film_pool[i]->pev->effects |= EF_NODRAW;
 		g_film_ents[i] = NULL;
 	}
 	memset( &g_film_cast, 0, sizeof( g_film_cast ) );
@@ -68,6 +81,9 @@ static void DodFilm_BodyPath( int team, char *out, size_t size )
 }
 
 /* The first of the pose's candidate sequences the model has. */
+static unsigned DodFilm_ActorHash( int i );
+static void DodFilm_Blood( const Vector &o, const Vector &dir, float scale );
+
 static int DodFilm_Sequence( CDodFilmActor *ent, int pose )
 {
 	int *slot = &g_film_seq[ent->m_actor][pose];
@@ -75,6 +91,23 @@ static int DodFilm_Sequence( CDodFilmActor *ent, int pose )
 		const char *const *names = DodFilm_PoseSequences( (DodFilmPose)pose );
 		int seq = -1;
 		const char *found = "-";
+		if( pose == DOD_POSE_FALLEN ) {
+			/* A death: one of every candidate the model has, picked by the actor's slot. */
+			int have[16], n = 0;
+			const char *have_name[16];
+			for( int i = 0; names[i] && n < 16; i++ ) {
+				int s = ent->LookupSequence( names[i] );
+				if( s >= 0 ) {
+					have[n] = s;
+					have_name[n++] = names[i];
+				}
+			}
+			if( n > 0 ) {
+				int pick = (int)( ( DodFilm_ActorHash( ent->m_actor ) >> 16 ) % (unsigned)n );
+				seq = have[pick];
+				found = have_name[pick];
+			}
+		}
 		for( int i = 0; names[i] && seq < 0; i++ ) {
 			seq = ent->LookupSequence( names[i] );
 			if( seq >= 0 )
@@ -140,10 +173,18 @@ static void DodFilm_Place( int i, float t, float dt )
 	if( !ent )
 		return;
 	DodFilm_Sample( &g_film_cast.actors[i], t, &s );
+	s.pose = DodFilm_GaitPose( s.pose, s.moving, s.speed );
 	Vector origin( s.origin[0], s.origin[1], DodFilm_OriginZ( s.origin, s.pose ) );
 	UTIL_SetOrigin( ent->pev, origin );
 	ent->pev->angles = Vector( 0.0f, s.yaw, 0.0f );
 	if( ent->m_pose != (int)s.pose ) {
+		/* Hit: an actor that goes down during the shot bleeds as it falls. One that
+		 * starts the shot lying there does not. */
+		if( s.pose == DOD_POSE_FALLEN && ent->m_pose >= 0 && t > 0.0f ) {
+			const float yaw = s.yaw * 0.017453293f;
+			const Vector back( -cosf( yaw ), -sinf( yaw ), 0.35f );
+			DodFilm_Blood( origin + Vector( 0, 0, 20.0f ), back, 1.0f );
+		}
 		ent->pev->sequence = DodFilm_Sequence( ent, s.pose );
 		ent->ResetSequenceInfo();
 		ent->m_pose = s.pose;
@@ -204,6 +245,35 @@ static void DodFilm_Smoke( const Vector &o, float scale, int framerate )
 	MESSAGE_END();
 }
 
+/* Blood: a spurt along dir and a spray around it, both particles (no sprite to load,
+ * which MEM1 has no room for). 70 is the red of the HL palette's blood ramp. */
+static void DodFilm_Blood( const Vector &o, const Vector &dir, float scale )
+{
+	const int color = 70;
+	MESSAGE_BEGIN( MSG_BROADCAST, SVC_TEMPENTITY );
+		WRITE_BYTE( TE_BLOODSTREAM );
+		WRITE_COORD( o.x );
+		WRITE_COORD( o.y );
+		WRITE_COORD( o.z );
+		WRITE_COORD( dir.x );
+		WRITE_COORD( dir.y );
+		WRITE_COORD( dir.z );
+		WRITE_BYTE( color );
+		WRITE_BYTE( DodFilm_Byte( 90.0f * scale ) );
+	MESSAGE_END();
+	MESSAGE_BEGIN( MSG_BROADCAST, SVC_TEMPENTITY );
+		WRITE_BYTE( TE_BLOOD );
+		WRITE_COORD( o.x );
+		WRITE_COORD( o.y );
+		WRITE_COORD( o.z );
+		WRITE_COORD( dir.x );
+		WRITE_COORD( dir.y );
+		WRITE_COORD( dir.z );
+		WRITE_BYTE( color );
+		WRITE_BYTE( DodFilm_Byte( 60.0f * scale ) );
+	MESSAGE_END();
+}
+
 /* One effect. Broadcast, not by PVS or PAS: the camera is often far from the player.
  * The sound is left to the film's own mix (TE_EXPLFLAG_NOSOUND). */
 static void DodFilm_FireFx( const DodFilmFx *f )
@@ -254,6 +324,9 @@ static void DodFilm_FireFx( const DodFilmFx *f )
 		break;
 	case DOD_FX_KIND_SMOKE:
 		DodFilm_Smoke( o, 30.0f * s, 6 );
+		break;
+	case DOD_FX_KIND_BLOOD:
+		DodFilm_Blood( o, Vector( 0, 0, 1.0f ), s );
 		break;
 	case DOD_FX_KIND_TRACER:
 		MESSAGE_BEGIN( MSG_BROADCAST, SVC_TEMPENTITY );
@@ -336,11 +409,22 @@ static void DodFilm_CastCommand( void )
 				a->team == DOD_TEAM_AXIS ? "axis" : "allies" );
 			continue;
 		}
-		CDodFilmActor *ent = GetClassPtr( (CDodFilmActor *)NULL );
+		CDodFilmActor *ent = DodFilm_PoolLive( i ) ? g_film_pool[i] : NULL;
 		if( !ent ) {
-			ALERT( at_console, "FILM ACTOR %s: out of edicts\n", a->name );
-			break;
+			/* A full edict table hands the game NULL, and GetClassPtr does not survive it. */
+			if( NUMBER_OF_ENTITIES() + DOD_FILM_EDICT_RESERVE >= gpGlobals->maxEntities ) {
+				ALERT( at_console, "FILM CAST %s: edicts full (%d of %d in use), %d actor(s) left out\n",
+					g_film_shot, NUMBER_OF_ENTITIES(), gpGlobals->maxEntities, g_film_cast.actor_count - i );
+				break;
+			}
+			ent = GetClassPtr( (CDodFilmActor *)NULL );
+			if( !ent ) {
+				ALERT( at_console, "FILM ACTOR %s: out of edicts\n", a->name );
+				break;
+			}
+			g_film_pool[i] = ent;
 		}
+		ent->pev->effects &= ~EF_NODRAW;
 		ent->pev->classname = MAKE_STRING( "film_actor" );
 		ent->pev->movetype = MOVETYPE_NONE;
 		ent->pev->solid = SOLID_NOT;
@@ -352,8 +436,7 @@ static void DodFilm_CastCommand( void )
 		ent->pev->body = Dod_PlayerBodyValue( body, cls, i + 1 );
 		/* The engine draws weaponmodel on the actor's hand bones, as it does for a player. */
 		const char *gun = DodFilm_WeaponModel( a->team, cls );
-		if( gun )
-			ent->pev->weaponmodel = MAKE_STRING( gun );
+		ent->pev->weaponmodel = gun ? MAKE_STRING( gun ) : 0;	/* a reused actor may have carried another */
 		ent->m_actor = i;
 		ent->m_pose = -1;
 		ent->m_phase = 0.0f;
@@ -381,6 +464,7 @@ void DodFilm_Init( void )
 	}
 	/* a new map: the old map's entities are gone with it */
 	memset( g_film_ents, 0, sizeof( g_film_ents ) );
+	memset( g_film_pool, 0, sizeof( g_film_pool ) );
 	memset( &g_film_cast, 0, sizeof( g_film_cast ) );
 	memset( g_film_precached, 0, sizeof( g_film_precached ) );
 	g_film_fireball = 0;

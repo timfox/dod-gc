@@ -23,7 +23,10 @@ static const char *const seq_prone[] = { "prone_idle", "prone", 0 };
 static const char *const seq_crawl[] = { "prone_forward", "prone_walk", "crawl", "prone_idle", 0 };
 static const char *const seq_aim[] = { "stand_rifle_aim", "ref_aim_garand", "dod_idle1", "idle", 0 };
 static const char *const seq_crouch_aim[] = { "crouch_rifle_aim", "crouch_aim_garand", "dod_crouch_idle", 0 };
-static const char *const seq_fallen[] = { "die_simple", "die_forwards", "death_simple", 0 };
+/* Every death the model has is a candidate: the actor takes one of those found, picked by its
+ * slot, so a line of men going down does not fall the same way. */
+static const char *const seq_fallen[] = { "die_simple", "die_forwards", "die_backwards", "die_backwards1",
+	"die_spin", "die_headshot", "die_gutshot", "headshot", "gutshot", "death_simple", 0 };
 
 static const char *const *const pose_seqs[DOD_POSE_COUNT] = {
 	seq_stand, seq_walk, seq_run, seq_crouch, seq_crouch_walk, seq_prone, seq_crawl, seq_aim, seq_crouch_aim, seq_fallen,
@@ -68,8 +71,41 @@ int DodFilm_PoseLoops(DodFilmPose pose)
 	return pose != DOD_POSE_FALLEN;
 }
 
+/* The pose an actor is shown in: the keyed stance, with the gait its motion needs. A leg keyed
+ * "crouch" that covers ground plays the crouch walk, not a still crouch gliding over the floor; a
+ * stop keyed "run" stands. Fast legs run whatever the stance (a crouch walk at run pace slides). */
+DodFilmPose DodFilm_GaitPose(DodFilmPose pose, int moving, float speed)
+{
+	if (pose == DOD_POSE_FALLEN)
+		return pose;
+	if (!moving || speed < 8.0f) {
+		switch (pose) {
+		case DOD_POSE_WALK:
+		case DOD_POSE_RUN:
+			return DOD_POSE_STAND;
+		case DOD_POSE_CROUCH_WALK:
+			return DOD_POSE_CROUCH;
+		case DOD_POSE_CRAWL:
+			return DOD_POSE_PRONE;
+		default:
+			return pose;
+		}
+	}
+	switch (pose) {
+	case DOD_POSE_PRONE:
+	case DOD_POSE_CRAWL:
+		return speed > 90.0f ? DOD_POSE_RUN : DOD_POSE_CRAWL;
+	case DOD_POSE_CROUCH:
+	case DOD_POSE_CROUCH_AIM:
+	case DOD_POSE_CROUCH_WALK:
+		return speed > 130.0f ? DOD_POSE_RUN : DOD_POSE_CROUCH_WALK;
+	default:	/* standing stances */
+		return speed > 135.0f ? DOD_POSE_RUN : DOD_POSE_WALK;
+	}
+}
+
 static const char *const fx_names[DOD_FX_KIND_COUNT] = {
-	"explosion", "water", "dirt", "smoke", "tracer",
+	"explosion", "water", "dirt", "smoke", "tracer", "blood",
 };
 
 const char *DodFilm_FxName(DodFilmFxKind kind)

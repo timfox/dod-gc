@@ -73,6 +73,7 @@ typedef enum {
 	DOD_FX_KIND_DIRT,		/* a near miss: a spout of sand or earth, no fire */
 	DOD_FX_KIND_SMOKE,		/* a rising puff of smoke */
 	DOD_FX_KIND_TRACER,		/* a tracer round from origin to end */
+	DOD_FX_KIND_BLOOD,		/* a hit: a spurt and a spray of blood particles */
 	DOD_FX_KIND_COUNT
 } DodFilmFxKind;
 
@@ -134,6 +135,7 @@ const char *const *DodFilm_PoseSequences(DodFilmPose pose);
 /* 1 when the pose's sequence should loop (walking, idling); 0 when it plays once
  * and holds its last frame (falling). */
 int DodFilm_PoseLoops(DodFilmPose pose);
+DodFilmPose DodFilm_GaitPose(DodFilmPose pose, int moving, float speed);
 
 #ifdef __cplusplus
 }

@@ -88,6 +88,9 @@ static void test_fx(void)
 	assert(first == end);
 	assert(DodFilm_FxDue(&cast, 2.0f, 2.0f, &first) == 0);
 	/* errors */
+	assert(DodFilm_ParseCast(&cast, "act 1\nfx 1 blood 4 5 6 0.5\n", err, sizeof(err)) == 0);
+	assert(cast.fx_count == 1 && cast.fx[0].kind == DOD_FX_KIND_BLOOD && near(cast.fx[0].scale, 0.5f, 1e-3f));
+	assert(DodFilm_PoseFromName("fallen") == DOD_POSE_FALLEN && !DodFilm_PoseLoops(DOD_POSE_FALLEN));
 	assert(DodFilm_ParseCast(&cast, "act 1\nfx 1 nuke 0 0 0\n", err, sizeof(err)) < 0);
 	assert(strstr(err, "kind"));
 	assert(DodFilm_ParseCast(&cast, "act 1\nfx 1 tracer 0 0 0\n", err, sizeof(err)) < 0);
@@ -131,6 +134,17 @@ static void test_poses(void)
 	assert(DodFilm_PoseFromName("moonwalk") == -1);
 	assert(DodFilm_PoseHeight(DOD_POSE_STAND) == 36 && DodFilm_PoseHeight(DOD_POSE_CROUCH) == 18);
 	assert(DodFilm_PoseLoops(DOD_POSE_RUN) && !DodFilm_PoseLoops(DOD_POSE_FALLEN));
+	/* the gait follows the motion */
+	assert(DodFilm_GaitPose(DOD_POSE_CROUCH, 1, 70.0f) == DOD_POSE_CROUCH_WALK);
+	assert(DodFilm_GaitPose(DOD_POSE_CROUCH_AIM, 1, 60.0f) == DOD_POSE_CROUCH_WALK);
+	assert(DodFilm_GaitPose(DOD_POSE_CROUCH, 1, 200.0f) == DOD_POSE_RUN);
+	assert(DodFilm_GaitPose(DOD_POSE_CROUCH, 0, 0.0f) == DOD_POSE_CROUCH);
+	assert(DodFilm_GaitPose(DOD_POSE_RUN, 0, 0.0f) == DOD_POSE_STAND);
+	assert(DodFilm_GaitPose(DOD_POSE_STAND, 1, 90.0f) == DOD_POSE_WALK);
+	assert(DodFilm_GaitPose(DOD_POSE_AIM, 1, 200.0f) == DOD_POSE_RUN);
+	assert(DodFilm_GaitPose(DOD_POSE_PRONE, 1, 30.0f) == DOD_POSE_CRAWL);
+	assert(DodFilm_GaitPose(DOD_POSE_CRAWL, 0, 0.0f) == DOD_POSE_PRONE);
+	assert(DodFilm_GaitPose(DOD_POSE_FALLEN, 1, 200.0f) == DOD_POSE_FALLEN);
 }
 
 int main(void)
