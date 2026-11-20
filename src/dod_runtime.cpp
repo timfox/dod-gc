@@ -40,6 +40,10 @@ static cvar_t dod_gc_autojoin = { "dod_gc_autojoin", "", FCVAR_SERVER };
 /* dod_gc_autotele "<x> <y> <z>" (test only, off when empty): a few seconds after the human has joined, park them there in
  * noclip, so a packet-size or view test can look from a chosen open spot instead of the team spawn. */
 static cvar_t dod_gc_autotele = { "dod_gc_autotele", "", FCVAR_SERVER };
+/* dod_gc_boxstress (debug, default 0, never in a shipped cfg): every death drops a gun and ammo box whatever the edict margin and box limit say,
+ * and a box is also created every 3 s at the first player. The engine reads the same cvar: 1 starves the private-data slab for weapon boxes
+ * (the fixed pool serves them), 2 takes the pool away too (the scratch fallback and the freed edict fire). */
+static cvar_t dod_gc_boxstress = { "dod_gc_boxstress", "0", FCVAR_SERVER };
 static float g_autotele_seen[DOD_MAX_PLAYERS + 1];
 static BOOL g_autotele_done[DOD_MAX_PLAYERS + 1];
 static float g_autojoin_seen[DOD_MAX_PLAYERS + 1];
@@ -538,6 +542,7 @@ CHalfLifeDoD::CHalfLifeDoD()
 		Dod_CvarRegisterKeep( &dod_spec_auto );
 		Dod_CvarRegisterKeep( &dod_gc_autojoin );
 		Dod_CvarRegisterKeep( &dod_gc_autotele );
+		Dod_CvarRegisterKeep( &dod_gc_boxstress );
 		Dod_CvarRegisterKeep( &dod_gc_join );
 		Dod_CvarRegisterKeep( &dod_paras );
 		for( int k = 0; k < DOD_LIMIT_CVARS; k++ ) {
@@ -1498,6 +1503,8 @@ static int DodGC_CountBoxes( void )
 
 int CHalfLifeDoD::DeadPlayerWeapons( CBasePlayer *pPlayer )
 {
+	if( CVAR_GET_FLOAT( "dod_gc_boxstress" ) > 0.0f )
+		return GR_PLR_DROP_GUN_ACTIVE;
 	if( gpGlobals->maxEntities - g_engfuncs.pfnNumberOfEntities() < DOD_DROP_EDICT_MARGIN || DodGC_CountBoxes() >= DOD_MAX_BOXES )
 		return GR_PLR_DROP_GUN_NO;
 	return GR_PLR_DROP_GUN_ACTIVE;
@@ -1512,6 +1519,8 @@ BOOL CHalfLifeDoD::FPlayerCanRespawn( CBasePlayer *pPlayer )
 
 int CHalfLifeDoD::DeadPlayerAmmo( CBasePlayer *pPlayer )
 {
+	if( CVAR_GET_FLOAT( "dod_gc_boxstress" ) > 0.0f )
+		return GR_PLR_DROP_AMMO_ACTIVE;
 	/* A box with no gun still costs an edict: with both rules off the player drops nothing, so the same edict margin and box limit
 	 * apply here (switch: 12 boxes on the ground against DOD_MAX_BOXES 6, most of them ammo only). */
 	if( gpGlobals->maxEntities - g_engfuncs.pfnNumberOfEntities() < DOD_DROP_EDICT_MARGIN || DodGC_CountBoxes() >= DOD_MAX_BOXES )
@@ -1565,6 +1574,21 @@ static void DodGC_ManageWeaponBoxes( void )
 	if( gpGlobals->time < next_check )
 		return;
 	next_check = gpGlobals->time + 0.5f;
+	if( CVAR_GET_FLOAT( "dod_gc_boxstress" ) > 0.0f ) {
+		static float next_forced;
+		if( gpGlobals->time >= next_forced ) {
+			CBaseEntity *pl = UTIL_PlayerByIndex( 1 );
+			next_forced = gpGlobals->time + 3.0f;
+			if( pl ) {
+				CBaseEntity *made = CBaseEntity::Create( "weaponbox", pl->pev->origin + Vector( 0, 0, 24 ), Vector( 0, 0, 0 ), NULL );
+				if( made ) {
+					made->pev->nextthink = gpGlobals->time + 5.0f;
+					made->SetThink( &CBaseEntity::SUB_Remove );
+				} else
+					ALERT( at_console, "DoD boxstress: weaponbox Create gave NULL (no private block), carrying on\n" );
+			}
+		}
+	}
 	while( !FNullEnt( box = FIND_ENTITY_BY_STRING( box, "classname", "weaponbox" ) ) && alive_count < DOD_MAX_BOXES * 2 ) {
 		const int ent = ENTINDEX( box );
 		int slot = -1;
