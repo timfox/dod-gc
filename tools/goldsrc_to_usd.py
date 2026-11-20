@@ -717,7 +717,7 @@ def convert_bsp(path, outdir, wads, log=print):
 		cls = e.get("classname", "")
 		mdlname = e.get("model", "")
 		if mdlname.lower().endswith(".mdl") and "origin" in e:
-			rel = re.sub(r"^models/", "", mdlname.replace("\\", "/"))
+			rel = re.sub(r"^models/", "", mdlname.replace("\\", "/")).lower()  # converted files are lowercase
 			stem = os.path.splitext(os.path.basename(rel))[0]
 			rel_usd = "../../models/%s/%s/%s.usdc" % (os.path.dirname(rel), safe(stem), safe(stem))
 			rel_usd = rel_usd.replace("//", "/")
