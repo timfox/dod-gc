@@ -284,28 +284,6 @@ int DodGC_PlayerTeam( CBasePlayer *pPlayer )
 	return (int)DodGC_TeamForPlayer( pPlayer );
 }
 
-BOOL DodGC_TeamSpawnPoint( DodTeam team, Vector *origin, float *yaw )
-{
-	int count = 0, i, pick;
-	DodGC_LoadSpawns();
-	for( i = 0; i < g_spawn_count; i++ )
-		if( g_spawn_team[i] == (int)team )
-			count++;
-	if( count <= 0 )
-		return FALSE;
-	pick = RANDOM_LONG( 0, count - 1 );
-	for( i = 0; i < g_spawn_count; i++ ) {
-		if( g_spawn_team[i] != (int)team )
-			continue;
-		if( pick-- == 0 ) {
-			*origin = g_spawn_edict[i]->v.origin;
-			*yaw = g_spawn_edict[i]->v.angles.y;
-			return TRUE;
-		}
-	}
-	return FALSE;
-}
-
 /* Called by SendWeaponAnim (patched in by the integrator): the number a weapon asks for becomes the sequence its
  * retail view model has. Outside a DoD game the stock numbers stand. */
 int DodGC_RemapWeaponAnim( const char *classname, int anim )
@@ -1232,6 +1210,28 @@ static void DodGC_LoadSpawns( void )
 		else axis++;
 	}
 	ALERT( at_console, "DoD spawns: %d Allies, %d Axis (%s)\n", allies, axis, by_class ? "by classname" : "by v.team" );
+}
+
+BOOL DodGC_TeamSpawnPoint( DodTeam team, Vector *origin, float *yaw )
+{
+	int count = 0, i, pick;
+	DodGC_LoadSpawns();
+	for( i = 0; i < g_spawn_count; i++ )
+		if( g_spawn_team[i] == (int)team )
+			count++;
+	if( count <= 0 )
+		return FALSE;
+	pick = RANDOM_LONG( 0, count - 1 );
+	for( i = 0; i < g_spawn_count; i++ ) {
+		if( g_spawn_team[i] != (int)team )
+			continue;
+		if( pick-- == 0 ) {
+			*origin = g_spawn_edict[i]->v.origin;
+			*yaw = g_spawn_edict[i]->v.angles.y;
+			return TRUE;
+		}
+	}
+	return FALSE;
 }
 
 edict_t *CHalfLifeDoD::GetPlayerSpawnSpot( CBasePlayer *pPlayer )
