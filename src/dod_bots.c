@@ -1138,8 +1138,14 @@ int Dod_NavSearchStep(DodNav *nav, int budget, float now, int *path, int max_pat
 					continue;
 			}
 			cost = nav_dist(nav, cur, next) + 1.0f;
-			if (kind == DOD_NAV_JUMP)
+			if (kind == DOD_NAV_JUMP) {
+				float ax, ay, az, bx, by, bz;
 				cost += 64.0f;
+				Dod_NavNodePos(nav, cur, &ax, &ay, &az);
+				Dod_NavNodePos(nav, next, &bx, &by, &bz);
+				if (bz - az > 30.0f && bz - az <= 64.0f)
+					cost += 120.0f;	/* a ledge only a duck-jump clears (30-64 units): a short walk round is preferred when there is one */
+			}
 			else if (kind == DOD_NAV_DROP)
 				cost += 16.0f;
 			else if (kind == DOD_NAV_LADDER)

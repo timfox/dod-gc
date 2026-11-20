@@ -158,6 +158,9 @@ typedef struct DodBotState {
 	int want_jump;			/* the edge being walked is a jump */
 	int jump_duck;			/* tuck the legs in the air: a ledge of 30-64 units is only cleared that way (the baker's jump links go to 45) */
 	int stall_jumped;		/* a stalled route got its one jump before it is replanned */
+	short jl_from, jl_to;	/* the jump link being tried, how many launches, since when (a miss is retried from a run-up, then the edge is penalised) */
+	int jl_count;
+	float jl_time;
 	short hop_from, hop_to;	/* the edge of the last stall hop and when: the same edge is not hopped again for 60 s (it is replanned) */
 	float hop_time;
 	float jump_until;
@@ -1765,8 +1768,39 @@ static BOOL NavTarget( CBasePlayer *pBot, DodBotState *state, Vector *target )
 		if( state->path_idx > 0 && dist < 96.0f &&
 			Dod_NavEdgeKind( &g_nav, state->path[state->path_idx - 1], state->path[state->path_idx] ) == DOD_NAV_JUMP )
 		{
-			state->want_jump = 1;
-			state->jump_duck = ( nz - origin.z ) > 30.0f;
+			/* A jump link: run at it, jump at its edge, duck in the air for a ledge over 30 units. Too close and too slow (or sideways):
+			 * step back about 64 units for a run-up. Three launches at one link in 12 s and it is penalised for 30 s and the route replanned. */
+			const short lf = state->path[state->path_idx - 1], lt = state->path[state->path_idx];
+			const float spd = pBot->pev->velocity.Length2D();
+			const Vector to2( nx - origin.x, ny - origin.y, 0.0f );
+			const float to_len = to2.Length();
+			const BOOL aligned = to_len > 1.0f && spd > 140.0f &&
+				( pBot->pev->velocity.x * to2.x + pBot->pev->velocity.y * to2.y ) / ( spd * to_len ) > 0.8f;
+			if( lf != state->jl_from || lt != state->jl_to || now - state->jl_time > 12.0f )
+			{
+				state->jl_from = lf; state->jl_to = lt; state->jl_count = 0; state->jl_time = now;
+			}
+			if( state->jl_count >= 3 )
+			{
+				ALERT( at_console, "DoD bot %s: jump link %d -> %d failed 3 times, penalised for 30 s, replanning\n", STRING( pBot->pev->netname ), (int)lf, (int)lt );
+				Dod_NavPenalize( &g_nav, lf, lt, now + 30.0f );
+				state->jl_count = 0;
+				state->path_len = 0;
+				state->path_replan = now;
+				return FALSE;
+			}
+			if( aligned || dist < 40.0f )
+			{
+				if( !( state->want_jump ) )
+					state->jl_count++;
+				state->want_jump = 1;
+				state->jump_duck = ( nz - origin.z ) > 30.0f;
+			}
+			else if( dist < 64.0f && spd < 100.0f && gpGlobals->time >= state->hold_heading_until )
+			{
+				state->heading = Dod_BotAngleDelta( 0.0f, YawTo( origin, Vector( nx, ny, nz ) ) + 180.0f );
+				state->hold_heading_until = gpGlobals->time + 0.45f;	/* back off for a run-up */
+			}
 		}
 		*target = Vector( nx, ny, nz );
 		return TRUE;

@@ -529,9 +529,11 @@ static float real_edge_cost(const DodNav *nav, int a, int b)
 	Dod_NavNodePos(nav, a, &ax, &ay, &az);
 	Dod_NavNodePos(nav, b, &bx, &by, &bz);
 	c = sqrtf((bx - ax) * (bx - ax) + (by - ay) * (by - ay) + (bz - az) * (bz - az)) + 1.0f;
-	if (kind == DOD_NAV_JUMP)
+	if (kind == DOD_NAV_JUMP) {
 		c += 64.0f;
-	else if (kind == DOD_NAV_DROP)
+		if (bz - az > 30.0f && bz - az <= 64.0f)
+			c += 120.0f;	/* a ledge only a duck-jump clears */
+	} else if (kind == DOD_NAV_DROP)
 		c += 16.0f;
 	else if (kind == DOD_NAV_LADDER)
 		c = c * 1.5f + 64.0f;
