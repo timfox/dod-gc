@@ -194,6 +194,21 @@ static float DodFilm_OriginZ( const float *origin, int pose )
 	return origin[2] - 36.0f + DodFilm_PoseHeight( (DodFilmPose)pose );
 }
 
+/* How far his origin sits above his soles in the sequence his legs play: the lowest point of that
+ * sequence's box, as the model compiler measured it over every frame. The player models are not all
+ * built round one origin height (a crouch or prone set can sit lower or higher than the stand's 36), and
+ * a fixed height per pose sank whole boots into the ground. A box out of reason keeps the pose's height. */
+static float DodFilm_FootHeight( CDodFilmActor *ent, int seq, int pose )
+{
+	float mins[3], maxs[3];
+	if( seq >= 0 && ent->ExtractBbox( seq, mins, maxs ) ) {
+		const float h = -mins[2];
+		if( h >= 4.0f && h <= 48.0f )
+			return h;
+	}
+	return DodFilm_PoseHeight( (DodFilmPose)pose );
+}
+
 /* Per-actor variety from the actor's slot: a start phase in the cycle (0..256) and a
  * stride factor (0.92..1.08). Fixed per slot, so a re-render of a shot is identical. */
 static unsigned DodFilm_ActorHash( int i )
@@ -350,6 +365,15 @@ static void DodFilm_Place( int i, float t, float dt )
 		/* A looping pose starts at the actor's own point in the cycle, so a squad that
 		 * starts walking together does not step in lockstep. One-shot poses start at 0. */
 		ent->m_phase = DodFilm_SampleLoops( &s ) ? DodFilm_ActorPhase( i ) : 0.0f;
+	}
+	/* His soles on the floor under him: the pose's height above it, corrected to his legs' sequence. */
+	{
+		const int legs = ent->m_gait ? ent->m_gait : ent->pev->sequence;
+		const float lift = DodFilm_FootHeight( ent, legs, s.pose ) - DodFilm_PoseHeight( (DodFilmPose)s.pose );
+		if( lift != 0.0f ) {
+			origin.z += lift;
+			UTIL_SetOrigin( ent->pev, origin );
+		}
 	}
 	/* Walk cycles run at the speed the actor covers ground, so the feet do not slide much,
 	 * give or take the actor's own stride (a few percent), so the cycles drift apart. */
