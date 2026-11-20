@@ -51,6 +51,11 @@ static float g_film_fx_clock;	/* the shot time fx have been fired up to */
 static char g_film_shot[32];
 static int g_film_commands_added;
 static int g_film_precached[4];	/* by DodTeam */
+/* The class guns cine/cast.txt asked for ("gun <team> <class>" lines), by DodTeam and DodClass.
+ * Each costs a file read and a resident mesh, so a side carries at most DOD_FILM_GUNS_PER_SIDE
+ * models (its rifle counts as one); a class whose gun was not precached carries the rifle. */
+#define DOD_FILM_GUNS_PER_SIDE 4
+static int g_film_gun[4][DOD_CLASS_COUNT];
 /* The shot's fireball. zerogxplode.spr (g_sModelIndexFireball) is 193 KB on disc, more than
  * the GameCube heap has free once a map is up, so it never loaded and no burst drew;
  * explode1.spr is a fraction of that. 0 falls back to g_sModelIndexFireball. */
@@ -210,14 +215,42 @@ static float DodFilm_ActorStride( int i )
 	return 0.92f + 0.16f * (float)( ( DodFilm_ActorHash( i ) >> 8 ) & 255u ) / 255.0f;
 }
 
-/* The third-person weapon an actor carries (p_*.mdl), or NULL: the side's rifle for every
- * class. Each gun model costs the GameCube a file read and a resident mesh, and a cast of 24
- * asking for every class's gun ran the file pool dry; one per side fits. */
+/* The third-person weapon an actor carries (p_*.mdl), or NULL: his class's own gun when the map
+ * precached it for the film (a BAR, a Thompson, an MG42), else the side's rifle. Each gun model
+ * costs the GameCube a file read and a resident mesh; a cast of 24 asking for every class's gun
+ * ran the file pool dry, so cast.txt names only the classes the plan uses, capped per side. */
+static const char *DodFilm_ClassGun( int team, int player_class )
+{
+	const DodWeaponDef *def = Dod_ClassWeaponDef( (DodTeam)team, (DodClass)player_class );
+	return def && def->player_model && def->player_model[0] ? def->player_model : NULL;
+}
+
 static const char *DodFilm_WeaponModel( int team, int player_class )
 {
-	(void)player_class;
-	const DodWeaponDef *def = Dod_ClassWeaponDef( (DodTeam)team, DOD_CLASS_RIFLEMAN );
-	return def && def->player_model && def->player_model[0] ? def->player_model : NULL;
+	if( team >= 0 && team < 4 && player_class > DOD_CLASS_NONE && player_class < DOD_CLASS_COUNT
+		&& g_film_gun[team][player_class] ) {
+		const char *gun = DodFilm_ClassGun( team, player_class );
+		if( gun )
+			return gun;
+	}
+	return DodFilm_ClassGun( team, DOD_CLASS_RIFLEMAN );
+}
+
+/* The upper-body aim grid that fits the gun in his hands: DoD names them stand_<kind>_aim and
+ * crouch_<kind>_aim. NULL is the side's rifle grid. */
+static const char *DodFilm_AimKind( int team, int player_class )
+{
+	const char *gun = DodFilm_WeaponModel( team, player_class );
+	if( !gun ) return NULL;
+	if( strstr( gun, "p_tommy" ) ) return "tommy";
+	if( strstr( gun, "p_mp40" ) ) return "mp40";
+	if( strstr( gun, "p_stg44" ) ) return "stg44";
+	if( strstr( gun, "p_mg42" ) ) return "mg";
+	if( strstr( gun, "p_30cal" ) ) return "30cal";
+	if( strstr( gun, "p_bazooka" ) ) return "bazooka";
+	if( strstr( gun, "p_pschreck" ) ) return "pschreck";
+	if( strstr( gun, "p_spring" ) || strstr( gun, "p_k98" ) ) return "bolt";
+	return NULL;	/* Garand, BAR, carbine: the rifle grid */
 }
 
 /* A rifleman as DoD draws a player: the legs walk a gait sequence under the rifle's upper-body
@@ -227,7 +260,8 @@ static const char *DodFilm_WeaponModel( int team, int player_class )
  * none); -1 keeps the pose's own single sequence (lying down, prone, falling). */
 static int DodFilm_Layered( CDodFilmActor *ent, int pose, int *gait )
 {
-	const int axis = g_film_cast.actors[ent->m_actor].team == DOD_TEAM_AXIS;
+	const DodFilmActor *who = &g_film_cast.actors[ent->m_actor];
+	const int axis = who->team == DOD_TEAM_AXIS;
 	const char *upper = NULL, *legs = NULL;
 	*gait = 0;
 	switch( pose ) {
@@ -240,7 +274,17 @@ static int DodFilm_Layered( CDodFilmActor *ent, int pose, int *gait )
 	case DOD_POSE_CROUCH_AIM:  upper = axis ? "crouch_bolt_aim" : "crouch_rifle_aim"; break;
 	default: return -1;
 	}
-	const int u = ent->LookupSequence( upper );
+	/* his own gun's grid when the model has it (both hands on an MG42 or a Thompson, not a rifle hold) */
+	int u = -1;
+	const char *kind = DodFilm_AimKind( who->team, who->player_class > DOD_CLASS_NONE ? who->player_class
+		: DOD_CLASS_RIFLEMAN );
+	if( kind ) {
+		char name[32];
+		snprintf( name, sizeof( name ), "%s_%s_aim", strncmp( upper, "crouch", 6 ) ? "stand" : "crouch", kind );
+		u = ent->LookupSequence( name );
+	}
+	if( u < 0 )
+		u = ent->LookupSequence( upper );
 	if( u < 0 )
 		return -1;
 	if( legs ) {
@@ -592,6 +636,7 @@ void DodFilm_Init( void )
 	memset( g_film_pool, 0, sizeof( g_film_pool ) );
 	memset( &g_film_cast, 0, sizeof( g_film_cast ) );
 	memset( g_film_precached, 0, sizeof( g_film_precached ) );
+	memset( g_film_gun, 0, sizeof( g_film_gun ) );
 	g_film_fireball = 0;
 	byte *text = LOAD_FILE_FOR_ME( "cine/cast.txt", &length );
 	if( !text )
@@ -611,7 +656,43 @@ void DodFilm_Init( void )
 		if( gun )
 			PRECACHE_MODEL( (char *)gun );
 		g_film_precached[team] = 1;
+		g_film_gun[team][DOD_CLASS_RIFLEMAN] = 1;
 		ALERT( at_console, "FILM: precached %s for actors\n", model );
+	}
+	/* "gun <team> <class>" lines: the class guns the plan's casts carry, in the plan's order of need */
+	{
+		const char *p = (const char *)text, *end = (const char *)text + length;
+		int per_side[4] = { 0, 1, 1, 0 };	/* the rifle is one */
+		while( p < end ) {
+			char line[64], tname[16], cname[16];
+			int n = 0;
+			while( p < end && *p != '\n' && n < (int)sizeof( line ) - 1 )
+				line[n++] = *p++;
+			line[n] = '\0';
+			while( p < end && *p != '\n' )
+				p++;
+			if( p < end )
+				p++;
+			if( sscanf( line, "gun %15s %15s", tname, cname ) != 2 )
+				continue;
+			const int team = !strcmp( tname, "axis" ) ? DOD_TEAM_AXIS : !strcmp( tname, "allies" ) ? DOD_TEAM_ALLIES : 0;
+			int cls = -1;
+			static const char *const names[DOD_CLASS_COUNT] = { "none", "rifleman", "assault", "support", "sniper", "mg", "rocket" };
+			for( int c = 1; c < DOD_CLASS_COUNT; c++ )
+				if( !strcmp( cname, names[c] ) )
+					cls = c;
+			if( !team || cls < 0 || !g_film_precached[team] || g_film_gun[team][cls] )
+				continue;
+			const char *gun = DodFilm_ClassGun( team, cls );
+			if( !gun || per_side[team] >= DOD_FILM_GUNS_PER_SIDE ) {
+				ALERT( at_console, "FILM: %s %s carry the rifle (%s)\n", tname, cname, gun ? "gun cap" : "no gun" );
+				continue;
+			}
+			PRECACHE_MODEL( (char *)gun );
+			g_film_gun[team][cls] = 1;
+			per_side[team]++;
+			ALERT( at_console, "FILM: precached %s for %s %s\n", gun, tname, cname );
+		}
 	}
 	FREE_FILE( text );
 }
