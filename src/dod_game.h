@@ -160,6 +160,11 @@ void Dod_SetTimerDriven(int on);
  * to every later one. */
 void Dod_SetRoundClock(float seconds);
 int Dod_TeamOwnsAllObjectives(DodTeam team);
+
+/* dod_object / area_object_group (satchels, TNT). The group name of an object and of the areas that want it hash to the same
+ * non-zero id (0 for no group). A team may take an object when it has no owner (0) or the owner is the other team. */
+int Dod_ObjectGroupId(const char *name);
+int Dod_ObjectCanTake(int owner, DodTeam team);
 void Dod_Think(float frametime);
 const DodGameRulesState *Dod_GetState(void);
 
