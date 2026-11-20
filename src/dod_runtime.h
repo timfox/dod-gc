@@ -66,6 +66,12 @@ const char *DodGC_BodyModelForTeam( DodTeam team );
  * gamerules constructor; moving the actors, from its Think. */
 void DodFilm_Init( void );
 void DodFilm_Think( void );
+/* Grunts (dod_grunt.cpp): opt-in cheap fodder for co-op matches (dod_grunts > 0). Init at map start, Think each server frame. */
+void DodGrunts_Init( void );
+void DodGrunts_Think( void );
+/* What the grunts need from the rules: a player's side (a DodTeam) and a random spawn point of a side. */
+int DodGC_PlayerTeam( CBasePlayer *pPlayer );
+BOOL DodGC_TeamSpawnPoint( DodTeam team, Vector *origin, float *yaw );
 /* True on a map a film plan precached actors for (cine/cast.txt): the human there is a camera. */
 int DodFilm_IsFilmMap( void );
 

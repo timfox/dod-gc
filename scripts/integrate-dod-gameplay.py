@@ -654,6 +654,7 @@ DOD_DLL_SOURCES = (
 	"dod_weapon.cpp", "dod_weapon.h", "dod_viewanims.h", "dod_viewsounds.h", "dod_hud.h", "dod_hud_retail.h", "dod_hud_geom.h",
 	"dod_bots.c", "dod_bots.h", "dod_bot.cpp", "dod_bot.h",
 	"dod_film.c", "dod_film.h", "dod_film_actor.cpp",
+	"dod_grunts.c", "dod_grunts.h", "dod_grunt.cpp",
 )
 # Client HUD sources, copied into cl_dll/ (dod_hud.h is shared with the DLL).
 DOD_CLIENT_SOURCES = (
@@ -1006,7 +1007,7 @@ def main() -> int:
 	replace_once(
 		dlls / "CMakeLists.txt",
 		"\tmultiplay_gamerules.cpp\n",
-		"\tmultiplay_gamerules.cpp\n\tdod_game.c\n\tdod_weapons.c\n\tdod_runtime.cpp\n\tdod_grenade.cpp\n\tdod_weapon.cpp\n\tdod_bots.c\n\tdod_bot.cpp\n\tdod_film.c\n\tdod_film_actor.cpp\n",
+		"\tmultiplay_gamerules.cpp\n\tdod_game.c\n\tdod_weapons.c\n\tdod_runtime.cpp\n\tdod_grenade.cpp\n\tdod_weapon.cpp\n\tdod_bots.c\n\tdod_bot.cpp\n\tdod_film.c\n\tdod_film_actor.cpp\n\tdod_grunts.c\n\tdod_grunt.cpp\n",
 	)
 	replace_once(
 		dlls / "wscript",
@@ -1015,7 +1016,8 @@ def main() -> int:
 		"\tsource += bld.path.ant_glob('dod_game.c')\n"
 		"\tsource += bld.path.ant_glob('dod_weapons.c')\n"
 		"\tsource += bld.path.ant_glob('dod_bots.c')\n"
-		"\tsource += bld.path.ant_glob('dod_film.c')\n",
+		"\tsource += bld.path.ant_glob('dod_film.c')\n"
+		"\tsource += bld.path.ant_glob('dod_grunts.c')\n",
 	)
 	replace_once(
 		dlls / "gamerules.cpp",
