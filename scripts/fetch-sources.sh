@@ -54,7 +54,15 @@ if (( UPDATE )); then
 	fi
 	# Submodules at the commits this engine revision records (a few are deliberately left alone by
 	# the engine's own .gitmodules, update = none).
-	git -C "$ENGINE_DIR" submodule update --init --recursive --jobs 8
+	# DODGC_SKIP_SUBMODULES="a b" leaves those paths out (CI skips 3rdparty/dolphin: the emulator is not
+	# part of the DOL build and is most of the download).
+	if [[ -n "${DODGC_SKIP_SUBMODULES:-}" ]]; then
+		mapfile -t want < <(git -C "$ENGINE_DIR" config -f .gitmodules --get-regexp '\.path$' | awk '{print $2}' \
+			| grep -vxF -f <(tr ' ' '\n' <<<"$DODGC_SKIP_SUBMODULES"))
+		git -C "$ENGINE_DIR" submodule update --init --recursive --jobs 8 -- "${want[@]}"
+	else
+		git -C "$ENGINE_DIR" submodule update --init --recursive --jobs 8
+	fi
 fi
 
 # --- game-code SDK --------------------------------------------------------------------------
