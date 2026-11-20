@@ -207,7 +207,16 @@ static void DodFilm_Place( int i, float t, float dt )
 	s.pose = DodFilm_GaitPose( s.pose, s.moving, s.speed );
 	Vector origin( s.origin[0], s.origin[1], DodFilm_OriginZ( s.origin, s.pose ) );
 	UTIL_SetOrigin( ent->pev, origin );
-	ent->pev->angles = Vector( 0.0f, s.yaw, 0.0f );
+	/* Where he looks. The player models' sequences blend on the view pitch, and a blend left at 0 is
+	 * the bottom of that range: every actor stared at his boots. Level,
+	 * drifting a few degrees on his own slow cycle; a man standing or crouching at rest also turns his
+	 * body a little to look round. Aiming and moving men keep their line. */
+	const float own = DodFilm_ActorPhase( i ) * 0.0245f;	/* 0..2pi from his 0..256 phase */
+	float pitch = 4.0f * sinf( t * 0.37f + own );
+	float yaw = s.yaw;
+	if( !s.moving && ( s.pose == DOD_POSE_STAND || s.pose == DOD_POSE_CROUCH ) )
+		yaw += 14.0f * sinf( t * 0.21f + own * 1.7f );
+	ent->pev->angles = Vector( 0.0f, yaw, 0.0f );
 	if( ent->m_pose != (int)s.pose ) {
 		/* Hit: an actor that goes down during the shot bleeds as it falls. One that
 		 * starts the shot lying there does not. */
@@ -236,6 +245,7 @@ static void DodFilm_Place( int i, float t, float dt )
 		ent->m_phase = fmodf( ent->m_phase, 256.0f );
 	else if( ent->m_phase > 255.0f )
 		ent->m_phase = 255.0f;
+	ent->SetBlending( 0, pitch );	/* mapped onto the current sequence's own blend range */
 	ent->pev->frame = ent->m_phase;
 	ent->pev->framerate = 0.0f;	/* the frame is set here every server frame */
 	ent->pev->animtime = gpGlobals->time;
