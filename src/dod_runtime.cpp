@@ -1721,9 +1721,54 @@ static void DodGC_HeapMonitor( void )
 static void DodGC_HeapMonitor( void ) {}
 #endif
 
+/* Every 10 s: how many edicts are in use and which classnames fill the table (the 460-edict wall on charlie plus 8 bots). */
+static void DodGC_EdictCensus( void )
+{
+	static float next;
+	char names[48][32];
+	int counts[48], n = 0, used = 0, i, k;
+	if( gpGlobals->time < next )
+		return;
+	next = gpGlobals->time + 10.0f;
+	for( i = 1; i < gpGlobals->maxEntities; i++ ) {
+		edict_t *e = INDEXENT( i );
+		const char *c;
+		if( !e || e->free || !e->pvPrivateData )
+			continue;
+		++used;
+		c = STRING( e->v.classname );
+		for( k = 0; k < n; k++ )
+			if( !strncmp( names[k], c, 31 ) )
+				break;
+		if( k == n && n < 48 ) {
+			strncpy( names[n], c, 31 ); names[n][31] = 0; counts[n] = 0; ++n;
+		}
+		if( k < n )
+			++counts[k];
+	}
+	{
+		/* the six biggest classes */
+		char line[320];
+		int shown, best, len = 0;
+		line[0] = 0;
+		for( shown = 0; shown < 8; shown++ ) {
+			best = -1;
+			for( k = 0; k < n; k++ )
+				if( counts[k] > 0 && ( best < 0 || counts[k] > counts[best] ) )
+					best = k;
+			if( best < 0 )
+				break;
+			len += snprintf( line + len, sizeof( line ) - len, " %s=%d", names[best], counts[best] );
+			counts[best] = -counts[best];
+		}
+		ALERT( at_console, "DoD edicts: %d in use of %d at game time %.0f:%s\n", used, gpGlobals->maxEntities, gpGlobals->time, line );
+	}
+}
+
 void CHalfLifeDoD::Think( void )
 {
 	DodGC_HeapMonitor();
+	DodGC_EdictCensus();
 	CHalfLifeTeamplay::Think();
 	Dod_Think( gpGlobals->frametime );
 	DodBots_Think();
