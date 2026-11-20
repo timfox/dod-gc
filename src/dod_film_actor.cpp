@@ -173,6 +173,7 @@ static void DodFilm_Place( int i, float t, float dt )
 	if( !ent )
 		return;
 	DodFilm_Sample( &g_film_cast.actors[i], t, &s );
+	s.pose = DodFilm_GaitPose( s.pose, s.moving, s.speed );
 	Vector origin( s.origin[0], s.origin[1], DodFilm_OriginZ( s.origin, s.pose ) );
 	UTIL_SetOrigin( ent->pev, origin );
 	ent->pev->angles = Vector( 0.0f, s.yaw, 0.0f );

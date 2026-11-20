@@ -135,6 +135,7 @@ const char *const *DodFilm_PoseSequences(DodFilmPose pose);
 /* 1 when the pose's sequence should loop (walking, idling); 0 when it plays once
  * and holds its last frame (falling). */
 int DodFilm_PoseLoops(DodFilmPose pose);
+DodFilmPose DodFilm_GaitPose(DodFilmPose pose, int moving, float speed);
 
 #ifdef __cplusplus
 }

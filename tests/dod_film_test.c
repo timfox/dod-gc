@@ -134,6 +134,17 @@ static void test_poses(void)
 	assert(DodFilm_PoseFromName("moonwalk") == -1);
 	assert(DodFilm_PoseHeight(DOD_POSE_STAND) == 36 && DodFilm_PoseHeight(DOD_POSE_CROUCH) == 18);
 	assert(DodFilm_PoseLoops(DOD_POSE_RUN) && !DodFilm_PoseLoops(DOD_POSE_FALLEN));
+	/* the gait follows the motion */
+	assert(DodFilm_GaitPose(DOD_POSE_CROUCH, 1, 70.0f) == DOD_POSE_CROUCH_WALK);
+	assert(DodFilm_GaitPose(DOD_POSE_CROUCH_AIM, 1, 60.0f) == DOD_POSE_CROUCH_WALK);
+	assert(DodFilm_GaitPose(DOD_POSE_CROUCH, 1, 200.0f) == DOD_POSE_RUN);
+	assert(DodFilm_GaitPose(DOD_POSE_CROUCH, 0, 0.0f) == DOD_POSE_CROUCH);
+	assert(DodFilm_GaitPose(DOD_POSE_RUN, 0, 0.0f) == DOD_POSE_STAND);
+	assert(DodFilm_GaitPose(DOD_POSE_STAND, 1, 90.0f) == DOD_POSE_WALK);
+	assert(DodFilm_GaitPose(DOD_POSE_AIM, 1, 200.0f) == DOD_POSE_RUN);
+	assert(DodFilm_GaitPose(DOD_POSE_PRONE, 1, 30.0f) == DOD_POSE_CRAWL);
+	assert(DodFilm_GaitPose(DOD_POSE_CRAWL, 0, 0.0f) == DOD_POSE_PRONE);
+	assert(DodFilm_GaitPose(DOD_POSE_FALLEN, 1, 200.0f) == DOD_POSE_FALLEN);
 }
 
 int main(void)

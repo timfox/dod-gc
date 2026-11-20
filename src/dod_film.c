@@ -71,6 +71,39 @@ int DodFilm_PoseLoops(DodFilmPose pose)
 	return pose != DOD_POSE_FALLEN;
 }
 
+/* The pose an actor is shown in: the keyed stance, with the gait its motion needs. A leg keyed
+ * "crouch" that covers ground plays the crouch walk, not a still crouch gliding over the floor; a
+ * stop keyed "run" stands. Fast legs run whatever the stance (a crouch walk at run pace slides). */
+DodFilmPose DodFilm_GaitPose(DodFilmPose pose, int moving, float speed)
+{
+	if (pose == DOD_POSE_FALLEN)
+		return pose;
+	if (!moving || speed < 8.0f) {
+		switch (pose) {
+		case DOD_POSE_WALK:
+		case DOD_POSE_RUN:
+			return DOD_POSE_STAND;
+		case DOD_POSE_CROUCH_WALK:
+			return DOD_POSE_CROUCH;
+		case DOD_POSE_CRAWL:
+			return DOD_POSE_PRONE;
+		default:
+			return pose;
+		}
+	}
+	switch (pose) {
+	case DOD_POSE_PRONE:
+	case DOD_POSE_CRAWL:
+		return speed > 90.0f ? DOD_POSE_RUN : DOD_POSE_CRAWL;
+	case DOD_POSE_CROUCH:
+	case DOD_POSE_CROUCH_AIM:
+	case DOD_POSE_CROUCH_WALK:
+		return speed > 130.0f ? DOD_POSE_RUN : DOD_POSE_CROUCH_WALK;
+	default:	/* standing stances */
+		return speed > 135.0f ? DOD_POSE_RUN : DOD_POSE_WALK;
+	}
+}
+
 static const char *const fx_names[DOD_FX_KIND_COUNT] = {
 	"explosion", "water", "dirt", "smoke", "tracer", "blood",
 };
