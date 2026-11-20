@@ -387,7 +387,7 @@ void DodFilm_Init( void )
 	byte *text = LOAD_FILE_FOR_ME( "cine/cast.txt", &length );
 	if( !text )
 		return;
-	g_film_fireball = PRECACHE_MODEL( "sprites/explode1.spr" );
+	g_film_fireball = PRECACHE_MODEL( (char *)"sprites/explode1.spr" );
 	for( int team = DOD_TEAM_ALLIES; team <= DOD_TEAM_AXIS; team++ ) {
 		const char *name = team == DOD_TEAM_AXIS ? "axis" : "allies";
 		const char *hit = strstr( (const char *)text, name );
