@@ -358,6 +358,19 @@ def integrate_weaponbox_null_check(dlls: Path) -> None:
 		"			if( !pWeaponBox )\n				return;	// weaponbox: no edict or private block left\n			pWeaponBox->pev->angles.x = 0;")
 
 
+def integrate_weapon_model_null_check(hlsdk: Path) -> None:
+	"""StudioDrawPlayer merges the weapon model's bones into the player's. When the weapon model is not resident
+	(IEngineStudio.Mod_Extradata gives NULL: a GameCube match with a dozen bots in view and the weapon models unloaded) the next
+	line read m_pStudioHeader->numseq through NULL: a data fault (DAR 0xa4) that ended in libogc's reset screen and froze the match.
+	Skip the weapon then."""
+	renderer = hlsdk / "cl_dll" / "StudioModelRenderer.cpp"
+	if "weapon model not resident" in renderer.read_text():
+		return
+	replace_once(renderer,
+		"		if( pplayer->weaponmodel )\n		{\n			cl_entity_t saveent = *m_pCurrentEntity;\n\n			model_t *pweaponmodel = IEngineStudio.GetModelByIndex( pplayer->weaponmodel );\n",
+		"		if( pplayer->weaponmodel\n			&& IEngineStudio.GetModelByIndex( pplayer->weaponmodel )\n			&& IEngineStudio.Mod_Extradata( IEngineStudio.GetModelByIndex( pplayer->weaponmodel )))	// weapon model not resident: skip it\n		{\n			cl_entity_t saveent = *m_pCurrentEntity;\n\n			model_t *pweaponmodel = IEngineStudio.GetModelByIndex( pplayer->weaponmodel );\n")
+
+
 def integrate_studio_anim_pack(hlsdk: Path, engine: Path | None) -> None:
 	"""The client DLL's StudioModelRenderer::StudioGetAnim loads a sequence group with IEngineStudio.LoadCacheFile. For a
 	split DoD model the group is an animation pack (.gca, 3.5 MB), which cannot be read into MEM1 (Host_Error: LoadCacheFile:
@@ -904,6 +917,7 @@ def main() -> int:
 	integrate_precache_bodies_hook(dlls)
 	integrate_weaponbox_null_check(dlls)
 	integrate_studio_anim_pack(args.hlsdk_dir, args.engine_dir)
+	integrate_weapon_model_null_check(args.hlsdk_dir)
 	integrate_death_anims(dlls)
 	integrate_retail_sounds(args.hlsdk_dir)
 	integrate_pm_caps(args.hlsdk_dir, args.engine_dir)
