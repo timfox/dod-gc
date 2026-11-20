@@ -160,6 +160,9 @@ typedef struct DodBotState {
 	int stall_jumped;		/* a stalled route got its one jump before it is replanned */
 	short jl_from, jl_to;	/* the jump link being tried, how many launches, since when (a miss is retried from a run-up, then the edge is penalised) */
 	int jl_count;
+	int jl_has_spot;	/* after a miss: a higher launch spot within 64 units of the foot of the link is walked to first, and jumped from */
+	float jl_spot_until, jl_spot_try;
+	Vector jl_spot;
 	float jl_time;
 	short hop_from, hop_to;	/* the edge of the last stall hop and when: the same edge is not hopped again for 60 s (it is replanned) */
 	float hop_time;
@@ -1788,6 +1791,63 @@ static BOOL NavTarget( CBasePlayer *pBot, DodBotState *state, Vector *target )
 				state->path_len = 0;
 				state->path_replan = now;
 				return FALSE;
+			}
+			if( state->jl_has_spot )
+			{
+				if( now > state->jl_spot_until )
+					state->jl_has_spot = 0;
+				else if( ( origin - state->jl_spot ).Length2D() < 24.0f )
+				{
+					/* on the better spot: jump from here, facing the link */
+					state->jl_has_spot = 0;
+					state->heading = YawTo( origin, Vector( nx, ny, nz ) );
+					state->want_jump = 1;
+					state->jump_duck = ( nz - origin.z ) > 30.0f;
+					state->jl_count++;
+					*target = Vector( nx, ny, nz );
+					return TRUE;
+				}
+				else
+				{
+					*target = state->jl_spot;
+					return TRUE;
+				}
+			}
+			else if( state->jl_count >= 1 && !state->want_jump && now - state->jl_spot_try > 2.0f && spd < 120.0f )
+			{
+				/* a miss: the floor within 64 units that is highest (a lip is lower from a crest): walk there and jump from it */
+				float best_z = origin.z + 6.0f, a;
+				Vector best( 0, 0, 0 );
+				BOOL found = FALSE;
+				state->jl_spot_try = now;
+				for( a = 0.0f; a < 360.0f; a += 30.0f )
+				{
+					TraceResult fl, wk;
+					const Vector p( origin.x + cosf( a * (float)M_PI / 180.0f ) * 64.0f, origin.y + sinf( a * (float)M_PI / 180.0f ) * 64.0f, origin.z );
+					float fz;
+					UTIL_TraceLine( p + Vector( 0, 0, 64.0f ), p - Vector( 0, 0, 96.0f ), ignore_monsters, pBot->edict(), &fl );
+					if( fl.flFraction >= 1.0f || fl.fStartSolid )
+						continue;
+					fz = fl.vecEndPos.z + 36.0f;
+					if( fz < best_z || fz > origin.z + 24.0f )
+						continue;
+					UTIL_TraceHull( origin, Vector( p.x, p.y, fz ), ignore_monsters, human_hull, pBot->edict(), &wk );
+					if( wk.flFraction < 1.0f )
+						continue;
+					best_z = fz;
+					best = Vector( p.x, p.y, fz );
+					found = TRUE;
+				}
+				if( found )
+				{
+					state->jl_spot = best;
+					state->jl_has_spot = 1;
+					state->jl_spot_until = now + 3.0f;
+					ALERT( at_console, "DoD bot %s: jump link %d -> %d missed, tries again from a launch spot %.0f,%.0f,%.0f (%.0f units higher)\n", STRING( pBot->pev->netname ),
+						(int)lf, (int)lt, best.x, best.y, best.z, best.z - origin.z );
+					*target = best;
+					return TRUE;
+				}
 			}
 			if( aligned || dist < 40.0f )
 			{
