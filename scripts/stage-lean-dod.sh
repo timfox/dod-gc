@@ -359,22 +359,66 @@ PY
 	# CapFaces densify when the pack is merely *listed* (mod_bmodel.c, "world DL
 	# pack hit"); without the file on the disc the world then draws zero faces.
 	# Set DODGC_STAGE_WORLDDL=0 to leave it out.
-	rm -f "$LEAN/media/wd_${stem}.gcd"
+	# A pack is only taken with the wd_<map>_sb.gcd written alongside it: the
+	# engine ignores the static brush list when the pack is another size, and
+	# the server then sends every brush entity as a packet entity (a stale
+	# 1.3 MB prebaked avalanche pack against a 2.88 MB fresh bake left objects
+	# missing). The list and light faces (_lf) travel with the pack.
+	rm -f "$LEAN/media/wd_${stem}.gcd" "$LEAN/media/wd_${stem}_sb.gcd" "$LEAN/media/wd_${stem}_lf.gcd"
 	if [[ "${DODGC_STAGE_WORLDDL:-1}" == "1" ]]; then
 		wd_src=""
+		wd_stale=""
 		for cand in \
+			"$DODGC_ROOT/out/media/wd_${stem}.gcd" \
 			"$SRC/media/wd_${stem}.gcd" \
-			"$DODGC_ROOT/content/dod/media/wd_${stem}.gcd" \
-			"$DODGC_ROOT/out/media/wd_${stem}.gcd"
+			"$DODGC_ROOT/content/dod/media/wd_${stem}.gcd"
 		do
-			if [[ -f "$cand" ]]; then
+			[[ -f "$cand" ]] || continue
+			if python3 - "$cand" <<'PY'
+import os, sys
+wd = sys.argv[1]
+try:
+	head = open(wd[:-4] + "_sb.gcd", "rb").read(12)
+except OSError:
+	sys.exit(1)
+ok = len(head) == 12 and head[:4] == b"GCsb" and int.from_bytes(head[4:6], "big") == 1
+sys.exit(0 if ok and int.from_bytes(head[8:12], "big") == os.path.getsize(wd) else 1)
+PY
+			then
 				wd_src="$cand"
 				break
 			fi
+			echo "world DL: ignoring $cand (no matching static brush list; stale prebake)" >&2
+			[[ -n "$wd_stale" ]] || wd_stale="$cand"
 		done
+		if [[ -z "$wd_src" && -n "${bsp:-}" && -f "$DODGC_ENGINE/scripts/bake_worlddl_goldsrc.py" ]]; then
+			fresh="$DODGC_ROOT/out/media/wd_${stem}.gcd"
+			mkdir -p "$(dirname "$fresh")"
+			echo "world DL: baking $fresh from $bsp"
+			if python3 "$DODGC_ENGINE/scripts/bake_worlddl_goldsrc.py" --map "$bsp" --out "$fresh" \
+				$([[ "${DODGC_WD_LZ4:-}" == "1" ]] && echo --lz4) >/dev/null; then
+				wd_src="$fresh"
+			else
+				echo "world DL: bake failed for $bsp" >&2
+			fi
+		fi
+		if [[ -z "$wd_src" && -n "$wd_stale" ]]; then
+			if [[ "${DODGC_ALLOW_STALE_WORLDDL:-0}" != "1" ]]; then
+				echo "error: only a stale world DL for $stem ($wd_stale); rebake it (xash3d-gc scripts/bake_worlddl_goldsrc.py) or set DODGC_ALLOW_STALE_WORLDDL=1" >&2
+				exit 1
+			fi
+			echo "warning: staging stale world DL $wd_stale (DODGC_ALLOW_STALE_WORLDDL=1)" >&2
+			wd_src="$wd_stale"
+		fi
 		if [[ -n "$wd_src" ]]; then
 			cp -f "$wd_src" "$LEAN/media/wd_${stem}.gcd"
-			echo "staged world DL: media/wd_${stem}.gcd ($(wc -c < "$LEAN/media/wd_${stem}.gcd") bytes)"
+			echo "staged world DL: media/wd_${stem}.gcd ($(wc -c < "$LEAN/media/wd_${stem}.gcd") bytes) from $wd_src"
+			for side in sb lf; do
+				if [[ -f "${wd_src%.gcd}_${side}.gcd" ]]; then
+					cp -f "${wd_src%.gcd}_${side}.gcd" "$LEAN/media/wd_${stem}_${side}.gcd"
+					echo "staged media/wd_${stem}_${side}.gcd"
+				fi
+			done
 		else
 			echo "world DL: no media/wd_${stem}.gcd (CapFaces/live BSP fallback)"
 		fi
