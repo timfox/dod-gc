@@ -362,13 +362,24 @@ def integrate_weapon_model_null_check(hlsdk: Path) -> None:
 	"""StudioDrawPlayer merges the weapon model's bones into the player's. When the weapon model is not resident
 	(IEngineStudio.Mod_Extradata gives NULL: a GameCube match with a dozen bots in view and the weapon models unloaded) the next
 	line read m_pStudioHeader->numseq through NULL: a data fault (DAR 0xa4) that ended in libogc's reset screen and froze the match.
-	Skip the weapon then."""
+	Skip the weapon then, and say so once per model so the cause (a model that is not loaded) can be fixed in the engine."""
 	renderer = hlsdk / "cl_dll" / "StudioModelRenderer.cpp"
-	if "weapon model not resident" in renderer.read_text():
+	if "DodGC_WeaponModelResident" in renderer.read_text():
 		return
 	replace_once(renderer,
+		"void CStudioModelRenderer::StudioDrawPlayer( int flags, entity_state_t *pplayer )\n",
+		"static bool DodGC_WeaponModelResident( int index )\n{\n"
+		"	static int logged[8];\n	static int nlogged;\n"
+		"	model_t *m = IEngineStudio.GetModelByIndex( index );\n"
+		"	if( m && IEngineStudio.Mod_Extradata( m ))\n		return true;\n"
+		"	for( int i = 0; i < nlogged; i++ )\n		if( logged[i] == index )\n			return false;\n"
+		"	if( nlogged < 8 )\n		logged[nlogged++] = index;\n"
+		"	gEngfuncs.Con_Printf( \"DoD weapon model %d (%s) not resident, weapon not drawn\\n\", index, m ? m->name : \"(none)\" );\n"
+		"	return false;\n}\n\n"
+		"void CStudioModelRenderer::StudioDrawPlayer( int flags, entity_state_t *pplayer )\n")
+	replace_once(renderer,
 		"		if( pplayer->weaponmodel )\n		{\n			cl_entity_t saveent = *m_pCurrentEntity;\n\n			model_t *pweaponmodel = IEngineStudio.GetModelByIndex( pplayer->weaponmodel );\n",
-		"		if( pplayer->weaponmodel\n			&& IEngineStudio.GetModelByIndex( pplayer->weaponmodel )\n			&& IEngineStudio.Mod_Extradata( IEngineStudio.GetModelByIndex( pplayer->weaponmodel )))	// weapon model not resident: skip it\n		{\n			cl_entity_t saveent = *m_pCurrentEntity;\n\n			model_t *pweaponmodel = IEngineStudio.GetModelByIndex( pplayer->weaponmodel );\n")
+		"		if( pplayer->weaponmodel && DodGC_WeaponModelResident( pplayer->weaponmodel ))\n		{\n			cl_entity_t saveent = *m_pCurrentEntity;\n\n			model_t *pweaponmodel = IEngineStudio.GetModelByIndex( pplayer->weaponmodel );\n")
 
 
 def integrate_studio_anim_pack(hlsdk: Path, engine: Path | None) -> None:
