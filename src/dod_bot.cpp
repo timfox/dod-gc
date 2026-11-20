@@ -2726,14 +2726,17 @@ static void JumpDiag( CBasePlayer *pBot, unsigned short buttons, int why )
 	char gname[64];
 	if( bi < 1 || bi > DOD_MAX_PLAYERS )
 		return;
+	static BOOL was_pressed[DOD_MAX_PLAYERS + 1];
 	if( buttons & IN_JUMP )
 	{
 		edict_t *ge = pBot->pev->groundentity;
 		last_jump[bi] = now;
+		if( !was_pressed[bi] )
 		ALERT( at_console, "DoD jump: %s pressed jump (%s) at %.0f,%.0f,%.0f ground %s\n", STRING( pBot->pev->netname ),
 			why == 1 ? "jump link" : ( why == 2 ? "stall hop" : ( why == 3 ? "escape" : "planner" ) ), o.x, o.y, o.z,
 			ge && !FNullEnt( ge ) ? STRING( ge->v.classname ) : "world" );
 	}
+	was_pressed[bi] = ( buttons & IN_JUMP ) != 0;
 	/* a 0.2 s window of heights */
 	for( i = 0; i < 2; i++ )
 	{
@@ -2743,7 +2746,7 @@ static void JumpDiag( CBasePlayer *pBot, unsigned short buttons, int why )
 	hist_t[bi][2] = now;
 	hist_z[bi][2] = o.z;
 	if( ( pBot->pev->velocity.z > 150.0f || ( hist_t[bi][0] > 0.0f && now - hist_t[bi][0] <= 0.35f && o.z - hist_z[bi][0] > 24.0f ) )
-		&& now - last_jump[bi] > 0.3f && now >= next_launch[bi] )
+		&& now - last_jump[bi] > 0.6f && now >= next_launch[bi] )
 	{
 		edict_t *ge = prev_ground[bi] ? INDEXENT( prev_ground[bi] ) : NULL;
 		next_launch[bi] = now + 0.5f;
@@ -2757,6 +2760,64 @@ static void JumpDiag( CBasePlayer *pBot, unsigned short buttons, int why )
 	{
 		edict_t *ge = pBot->pev->groundentity;
 		prev_ground[bi] = ge && !FNullEnt( ge ) ? ENTINDEX( ge ) : 0;
+	}
+}
+
+/* One gate for every bot jump that is not a planned jump link (stall hop, escape, planner): only a low lip is jumped (Dod_JumpGate: blocked at
+ * knee height, clear from jump height), at most one such jump per 2 s and two per 64-unit spot per 30 s (Dod_JumpRateOk). A wall, a hedgehog or a
+ * clip brush (blocked high too) is not jumped: the bot turns to the clearer side, and a second refusal within 4 s penalises the current edge
+ * and replans. dod_bot_jumplog 1 logs each refusal. */
+static void GateJump( CBasePlayer *pBot, DodBotState *state, unsigned short *buttons, int why )
+{
+	static float last[DOD_MAX_PLAYERS + 1], until[DOD_MAX_PLAYERS + 1], refused[DOD_MAX_PLAYERS + 1];
+	static float spot_x[DOD_MAX_PLAYERS + 1][2], spot_y[DOD_MAX_PLAYERS + 1][2], spot_t[DOD_MAX_PLAYERS + 1][2];
+	const int bi = pBot->entindex();
+	const float now = gpGlobals->time;
+	const Vector o = pBot->pev->origin;
+	TraceResult low, high, left, right;
+	int low_blocked, high_blocked;
+	float rad, yaw;
+	Vector dir;
+	if( !( *buttons & IN_JUMP ) || why == 1 || bi < 1 || bi > DOD_MAX_PLAYERS )
+		return;
+	if( now < until[bi] )
+		return;	/* the jump that passed the gate a moment ago, still held */
+	yaw = state->heading;
+	rad = yaw * (float)M_PI / 180.0f;
+	dir = Vector( cosf( rad ), sinf( rad ), 0.0f );
+	UTIL_TraceHull( o, o + dir * 32.0f, ignore_monsters, human_hull, pBot->edict(), &low );
+	UTIL_TraceHull( o + Vector( 0, 0, 45.0f ), o + Vector( 0, 0, 45.0f ) + dir * 32.0f, ignore_monsters, human_hull, pBot->edict(), &high );
+	low_blocked = low.flFraction < 1.0f || low.fStartSolid;
+	high_blocked = high.flFraction < 1.0f || high.fStartSolid;
+	if( Dod_JumpGate( low_blocked, high_blocked ) && Dod_JumpRateOk( now, last[bi], spot_x[bi], spot_y[bi], spot_t[bi], o.x, o.y ) )
+	{
+		until[bi] = now + 0.7f;
+		last[bi] = now;
+		spot_x[bi][1] = spot_x[bi][0]; spot_y[bi][1] = spot_y[bi][0]; spot_t[bi][1] = spot_t[bi][0];
+		spot_x[bi][0] = o.x; spot_y[bi][0] = o.y; spot_t[bi][0] = now;
+		return;
+	}
+	*buttons &= ~IN_JUMP;
+	state->want_jump = 0;
+	state->jump_until = 0.0f;
+	if( CVAR_GET_FLOAT( "dod_bot_jumplog" ) != 0.0f )
+		ALERT( at_console, "DoD jump refused: %s (%s) at %.0f,%.0f,%.0f low %d high %d\n", STRING( pBot->pev->netname ),
+			why == 2 ? "stall hop" : ( why == 3 ? "escape" : "planner" ), o.x, o.y, o.z, low_blocked, high_blocked );
+	if( low_blocked && high_blocked )
+	{
+		/* a wall, hedgehog or clip brush: go round, to the side with the clearer trace */
+		const float ra = ( yaw + 90.0f ) * (float)M_PI / 180.0f, la = ( yaw - 90.0f ) * (float)M_PI / 180.0f;
+		UTIL_TraceHull( o, o + Vector( cosf( ra ), sinf( ra ), 0.0f ) * 48.0f, ignore_monsters, human_hull, pBot->edict(), &right );
+		UTIL_TraceHull( o, o + Vector( cosf( la ), sinf( la ), 0.0f ) * 48.0f, ignore_monsters, human_hull, pBot->edict(), &left );
+		state->heading = Dod_BotAngleDelta( 0.0f, yaw + ( right.flFraction >= left.flFraction ? 70.0f : -70.0f ) );
+		state->hold_heading_until = now + 0.6f;
+		if( now - refused[bi] < 4.0f && state->path_len > 0 && state->path_idx > 0 )
+		{
+			Dod_NavPenalize( &g_nav, state->path[state->path_idx - 1], state->path[state->path_idx], now + 25.0f );
+			state->path_len = 0;
+			state->path_replan = now;
+		}
+		refused[bi] = now;
 	}
 }
 
@@ -3310,6 +3371,7 @@ static void RunBot( int index, CBasePlayer *pBot )
 	state->have_prev_angles = 1;
 	{
 		PhaseTimer timer( DOD_PH_MOVE );
+		GateJump( pBot, state, &buttons, jump_why );
 		if( CVAR_GET_FLOAT( "dod_bot_jumplog" ) != 0.0f )
 			JumpDiag( pBot, buttons, jump_why );
 		( *g_engfuncs.pfnRunPlayerMove )( pBot->edict(), viewangles, move.forward * speed, move.side * speed, 0, buttons, 0, msec );

@@ -1068,6 +1068,22 @@ static int nav_edge_hazard(const DodNav *nav, int team, int a, int b)
 	return 0;
 }
 
+int Dod_JumpGate(int low_blocked, int high_blocked)
+{
+	return low_blocked && !high_blocked;
+}
+
+int Dod_JumpRateOk(float now, float last_jump, const float spot_x[2], const float spot_y[2], const float spot_t[2], float x, float y)
+{
+	int i, near_spot = 0;
+	if (last_jump > 0.0f && now - last_jump < 2.0f)
+		return 0;
+	for (i = 0; i < 2; ++i)
+		if (spot_t[i] > 0.0f && now - spot_t[i] < 30.0f && (x - spot_x[i]) * (x - spot_x[i]) + (y - spot_y[i]) * (y - spot_y[i]) < 64.0f * 64.0f)
+			++near_spot;
+	return near_spot < 2;
+}
+
 int Dod_NavSearchBegin(DodNav *nav, int from, int to, int owner, float now)
 {
 	int i;
