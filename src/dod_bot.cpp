@@ -104,6 +104,7 @@ static cvar_t dod_bots_online = { "dod_bots_online", "0", FCVAR_SERVER };
 /* Test scenarios (dev only): 1 = an enemy behind a wall inside the view cone, then in the open; 2 = a contested capture;
  * 3 = put the human on the Allies as a rifleman (weapon animation checks). */
 static cvar_t dod_bot_stage = { "dod_bot_stage", "0", FCVAR_SERVER };
+static cvar_t dod_bot_jumplog = { "dod_bot_jumplog", "0", FCVAR_SERVER };
 
 /* The most bots ever; the free slots are the real limit. */
 #define DOD_BOT_HARD_CAP 12	/* measured 2026-11-19 on charlie: a bot costs about 8 KB heap, 3 edicts, 0.07 ms think */
@@ -579,6 +580,7 @@ void DodBots_Init( void )
 		Dod_CvarRegisterKeep( &dod_bots );
 		Dod_CvarRegisterKeep( &dod_bot_skill );
 		Dod_CvarRegisterKeep( &dod_bot_stage );
+		Dod_CvarRegisterKeep( &dod_bot_jumplog );
 		Dod_CvarRegisterKeep( &dod_bots_online );
 		g_registered = TRUE;
 	}
@@ -2677,6 +2679,53 @@ static void StageStep( void )
 	}
 }
 
+/* dod_bot_jumplog 1: every tick a bot presses jump (with why), and every launch it did not ask for (z velocity above 150, or the origin up
+ * more than 24 units in 0.2 s, with no jump press in the last 0.3 s), with what it stood on before. */
+static void JumpDiag( CBasePlayer *pBot, unsigned short buttons, int why )
+{
+	static float last_jump[DOD_MAX_PLAYERS + 1], hist_t[DOD_MAX_PLAYERS + 1][3], hist_z[DOD_MAX_PLAYERS + 1][3], next_launch[DOD_MAX_PLAYERS + 1];
+	static int prev_ground[DOD_MAX_PLAYERS + 1];
+	const int bi = pBot->entindex();
+	const float now = gpGlobals->time;
+	const Vector o = pBot->pev->origin;
+	int i;
+	char gname[64];
+	if( bi < 1 || bi > DOD_MAX_PLAYERS )
+		return;
+	if( buttons & IN_JUMP )
+	{
+		edict_t *ge = pBot->pev->groundentity;
+		last_jump[bi] = now;
+		ALERT( at_console, "DoD jump: %s pressed jump (%s) at %.0f,%.0f,%.0f ground %s\n", STRING( pBot->pev->netname ),
+			why == 1 ? "jump link" : ( why == 2 ? "stall hop" : ( why == 3 ? "escape" : "planner" ) ), o.x, o.y, o.z,
+			ge && !FNullEnt( ge ) ? STRING( ge->v.classname ) : "world" );
+	}
+	/* a 0.2 s window of heights */
+	for( i = 0; i < 2; i++ )
+	{
+		hist_t[bi][i] = hist_t[bi][i + 1];
+		hist_z[bi][i] = hist_z[bi][i + 1];
+	}
+	hist_t[bi][2] = now;
+	hist_z[bi][2] = o.z;
+	if( ( pBot->pev->velocity.z > 150.0f || ( hist_t[bi][0] > 0.0f && now - hist_t[bi][0] <= 0.35f && o.z - hist_z[bi][0] > 24.0f ) )
+		&& now - last_jump[bi] > 0.3f && now >= next_launch[bi] )
+	{
+		edict_t *ge = prev_ground[bi] ? INDEXENT( prev_ground[bi] ) : NULL;
+		next_launch[bi] = now + 0.5f;
+		if( ge && !FNullEnt( ge ) )
+			snprintf( gname, sizeof( gname ), "%s model %s ent %d", STRING( ge->v.classname ), STRING( ge->v.model ), prev_ground[bi] );
+		else
+			strcpy( gname, "world" );
+		ALERT( at_console, "DoD launch: %s rose without a jump press at %.0f,%.0f,%.0f vel %.0f,%.0f,%.0f ground before: %s\n", STRING( pBot->pev->netname ),
+			o.x, o.y, o.z, pBot->pev->velocity.x, pBot->pev->velocity.y, pBot->pev->velocity.z, gname );
+	}
+	{
+		edict_t *ge = pBot->pev->groundentity;
+		prev_ground[bi] = ge && !FNullEnt( ge ) ? ENTINDEX( ge ) : 0;
+	}
+}
+
 static void RunBot( int index, CBasePlayer *pBot )
 {
 	SegTimer seg;
@@ -2695,6 +2744,7 @@ static void RunBot( int index, CBasePlayer *pBot )
 	const float speed = pBot->pev->maxspeed;
 	float viewangles[3], aim_error = 0.0f, enemy_distance = 0.0f;
 	unsigned short buttons = 0;
+	int jump_why = 0;	/* debug (dod_bot_jumplog): 1 jump link, 2 stall hop, 3 escape jump, 4 planner jump */
 	CBasePlayer *enemy;
 	DodBotInput in;
 	DodBotMove move;
@@ -2858,8 +2908,11 @@ static void RunBot( int index, CBasePlayer *pBot )
 		{
 			state->heading = Dod_BotAngleDelta( 0.0f, state->yaw + esc.turn );	/* the view eases round to it; the legs go at once */
 			state->hold_heading_until = gpGlobals->time + esc.hold;
-			if( esc.jump )
+			if( esc.jump && !SlopeClimbing( pBot ) )
+			{
 				buttons |= IN_JUMP;
+				jump_why = 3;
+			}
 		}
 	}
 	{
@@ -3045,8 +3098,12 @@ static void RunBot( int index, CBasePlayer *pBot )
 	if( state->want_jump && !fight && !zone_stop )
 	{
 		buttons |= IN_JUMP;
+<<<<<<< HEAD
 		if( state->jump_duck && !( pBot->pev->flags & FL_ONGROUND ) )
 			buttons |= IN_DUCK;	/* a duck-jump: legs tucked once off the ground */
+=======
+		jump_why = gpGlobals->time < state->jump_until ? 2 : 1;
+>>>>>>> af201ff (Debug (dod_bot_jumplog 1): log every bot jump press with its reason and every launch without a jump press, with the ground before)
 	}
 	if( ( state->nav_arrived && !fight ) || ( state->behavior == DOD_ACT_RELOAD && !state->ladder_dir ) )
 	{
@@ -3166,8 +3223,12 @@ static void RunBot( int index, CBasePlayer *pBot )
 		buttons |= IN_ATTACK;
 	if( move.reload )
 		buttons |= IN_RELOAD;
-	if( move.jump )
+	if( move.jump && !SlopeClimbing( pBot ) )
+	{
 		buttons |= IN_JUMP;
+		if( !jump_why )
+			jump_why = 4;
+	}
 
 	{
 		/* The one place the view turns: an eased step towards where the bot wants to look. Human-like limits
@@ -3218,6 +3279,8 @@ static void RunBot( int index, CBasePlayer *pBot )
 	state->have_prev_angles = 1;
 	{
 		PhaseTimer timer( DOD_PH_MOVE );
+		if( CVAR_GET_FLOAT( "dod_bot_jumplog" ) != 0.0f )
+			JumpDiag( pBot, buttons, jump_why );
 		( *g_engfuncs.pfnRunPlayerMove )( pBot->edict(), viewangles, move.forward * speed, move.side * speed, 0, buttons, 0, msec );
 		pBot->pev->angles.x = Dod_BotBodyPitch( viewangles[0] );	/* after the move: the player move rewrites the angles */
 	}
