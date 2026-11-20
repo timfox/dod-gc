@@ -72,6 +72,9 @@ unsigned int DodAch_Progress(const DodAchState *state, DodAchId id, unsigned int
 /* Save blob (little endian, magic, version, checksum). Unpack rejects any damaged blob and leaves `state` untouched. */
 void DodAch_Pack(const DodAchState *state, unsigned char *blob);
 int DodAch_Unpack(DodAchState *state, const unsigned char *blob, unsigned int len);
+/* Hex form for the engine cvar gc_ach: `out` holds 2 * DOD_ACH_BLOB_SIZE + 1 characters. */
+void DodAch_ToHex(const DodAchState *state, char *out);
+int DodAch_FromHex(DodAchState *state, const char *hex);
 
 #ifdef __cplusplus
 }

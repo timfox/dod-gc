@@ -80,8 +80,23 @@ static void test_blob(void)
 	assert(!DodAch_Unpack(&b, blob, 10));
 }
 
+static void test_hex(void)
+{
+	DodAchState a, b; char hex[2 * DOD_ACH_BLOB_SIZE + 1];
+	DodAch_Reset(&a);
+	DodAch_RecordKill(&a, DOD_KW_LUGER, DOD_CLASS_RIFLEMAN);
+	DodAch_ToHex(&a, hex);
+	assert(strlen(hex) == 2 * DOD_ACH_BLOB_SIZE);
+	DodAch_Reset(&b);
+	assert(DodAch_FromHex(&b, hex) && b.kills[DOD_KW_LUGER] == 1);
+	assert(!DodAch_FromHex(&b, ""));
+	assert(!DodAch_FromHex(&b, 0));
+	hex[3] = 'g';
+	assert(!DodAch_FromHex(&b, hex));
+}
+
 int main(void)
 {
-	test_counted(); test_classify(); test_jack(); test_hail_mary_and_war_hero(); test_blob();
+	test_counted(); test_classify(); test_jack(); test_hail_mary_and_war_hero(); test_blob(); test_hex();
 	return 0;
 }

@@ -1151,7 +1151,25 @@ static void DodGC_SendKillFeed( CBasePlayer *pVictim, entvars_t *pKiller, entvar
  * The counters are a few hundred bytes and are touched only on a kill, a plant or a death. */
 static DodAchState g_dod_ach;
 
-DodAchState *DodGC_Achievements( void ) { return &g_dod_ach; }
+/* Progress lives in the engine cvar gc_ach: the engine loads it from the memory card at start-up and saves it with the settings.
+ * It is read once, on first use, and written (and the card saved) only when something unlocks. */
+static BOOL g_dod_ach_loaded;
+
+DodAchState *DodGC_Achievements( void )
+{
+	if( !g_dod_ach_loaded ) {
+		g_dod_ach_loaded = TRUE;
+		DodAch_FromHex( &g_dod_ach, CVAR_GET_STRING( "gc_ach" ) );
+	}
+	return &g_dod_ach;
+}
+
+static void DodGC_AchSave( void )
+{
+	char hex[2 * DOD_ACH_BLOB_SIZE + 1];
+	DodAch_ToHex( &g_dod_ach, hex );
+	CVAR_SET_STRING( "gc_ach", hex );
+}
 
 static BOOL DodGC_AchIsLocal( CBasePlayer *pPlayer )
 {
@@ -1162,6 +1180,9 @@ static BOOL DodGC_AchIsLocal( CBasePlayer *pPlayer )
 static void DodGC_AchAnnounce( CBasePlayer *pPlayer, unsigned int unlocked )
 {
 	int i;
+	DodGC_AchSave();	/* the cvar follows every counted event; the card write (a sector) only happens on an unlock */
+	if( unlocked )
+		SERVER_COMMAND( "gc_card_save\n" );
 	for( i = 0; i < DOD_ACH_COUNT; i++ ) {
 		if( !( unlocked & ( 1u << i ) ) )
 			continue;
@@ -1174,7 +1195,7 @@ static void DodGC_AchOnKill( CBasePlayer *pVictim, entvars_t *pKiller, entvars_t
 {
 	CBaseEntity *killer = pKiller ? CBaseEntity::Instance( pKiller ) : NULL;
 	if( DodGC_AchIsLocal( pVictim ) )
-		DodAch_LifeReset( &g_dod_ach );
+		DodAch_LifeReset( DodGC_Achievements() );
 	if( !killer || !killer->IsPlayer() || killer == pVictim )
 		return;
 	CBasePlayer *kp = (CBasePlayer *)killer;
@@ -1187,7 +1208,7 @@ static void DodGC_AchOnKill( CBasePlayer *pVictim, entvars_t *pKiller, entvars_t
 		cls = STRING( kp->m_pActiveItem->pev->classname );
 	const DodTeam kteam = DodGC_TeamForPlayer( kp );
 	const DodPlayerState *st = Dod_GetPlayer( DodGC_PlayerIndex( kp ) );
-	DodAchState *ach = &g_dod_ach;
+	DodAchState *ach = DodGC_Achievements();
 	const DodKillWeapon weapon = DodAch_ClassifyKill( cls, kteam == DOD_TEAM_AXIS );
 	DodGC_AchAnnounce( kp, DodAch_RecordKill( ach, weapon, st ? st->player_class : DOD_CLASS_NONE ) );
 }
@@ -1195,12 +1216,13 @@ static void DodGC_AchOnKill( CBasePlayer *pVictim, entvars_t *pKiller, entvars_t
 static void DodGC_AchListing( CBasePlayer *pPlayer )
 {
 	int i;
+	DodGC_Achievements();
 	for( i = 0; i < DOD_ACH_COUNT; i++ ) {
-		unsigned int goal, have = DodAch_Progress( &g_dod_ach, (DodAchId)i, &goal );
+		unsigned int goal, have = DodAch_Progress( DodGC_Achievements(), (DodAchId)i, &goal );
 		if( goal )
-			ClientPrint( pPlayer->pev, HUD_PRINTCONSOLE, UTIL_VarArgs( "%s %s: %u/%u\n", ( g_dod_ach.unlocked >> i ) & 1u ? "[x]" : "[ ]", DodAch_Name( (DodAchId)i ), have > goal ? goal : have, goal ) );
+			ClientPrint( pPlayer->pev, HUD_PRINTCONSOLE, UTIL_VarArgs( "%s %s: %u/%u\n", ( DodGC_Achievements()->unlocked >> i ) & 1u ? "[x]" : "[ ]", DodAch_Name( (DodAchId)i ), have > goal ? goal : have, goal ) );
 		else
-			ClientPrint( pPlayer->pev, HUD_PRINTCONSOLE, UTIL_VarArgs( "%s %s\n", ( g_dod_ach.unlocked >> i ) & 1u ? "[x]" : "[ ]", DodAch_Name( (DodAchId)i ) ) );
+			ClientPrint( pPlayer->pev, HUD_PRINTCONSOLE, UTIL_VarArgs( "%s %s\n", ( DodGC_Achievements()->unlocked >> i ) & 1u ? "[x]" : "[ ]", DodAch_Name( (DodAchId)i ) ) );
 	}
 }
 

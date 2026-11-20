@@ -158,3 +158,30 @@ int DodAch_Unpack(DodAchState *s, const unsigned char *b, unsigned int len)
 	*s = n;
 	return 1;
 }
+
+void DodAch_ToHex(const DodAchState *s, char *out)
+{
+	unsigned char b[DOD_ACH_BLOB_SIZE];
+	int i;
+	DodAch_Pack(s, b);
+	for (i = 0; i < DOD_ACH_BLOB_SIZE; i++) {
+		out[2 * i] = "0123456789abcdef"[b[i] >> 4];
+		out[2 * i + 1] = "0123456789abcdef"[b[i] & 15];
+	}
+	out[2 * DOD_ACH_BLOB_SIZE] = 0;
+}
+
+static int hexval(char c) { return c >= '0' && c <= '9' ? c - '0' : (c >= 'a' && c <= 'f' ? c - 'a' + 10 : -1); }
+
+int DodAch_FromHex(DodAchState *s, const char *hex)
+{
+	unsigned char b[DOD_ACH_BLOB_SIZE];
+	int i;
+	if (!hex || strlen(hex) != 2 * DOD_ACH_BLOB_SIZE) return 0;
+	for (i = 0; i < DOD_ACH_BLOB_SIZE; i++) {
+		int hi = hexval(hex[2 * i]), lo = hexval(hex[2 * i + 1]);
+		if (hi < 0 || lo < 0) return 0;
+		b[i] = (unsigned char)(hi << 4 | lo);
+	}
+	return DodAch_Unpack(s, b, sizeof b);
+}
