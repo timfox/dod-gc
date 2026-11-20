@@ -322,6 +322,15 @@ class Mdl:
 		return out
 
 
+def ground_shift(m, tr, qu, foot_ids, rest_foot):
+	"""Z shift that puts the lowest foot bone of frame 0 at the rest-pose foot height."""
+	W = []
+	for b, bone in enumerate(m.bones):
+		loc = quat_matrix(tuple(qu[0, b]), tr[0, b])
+		W.append(W[bone["parent"]] @ loc if bone["parent"] >= 0 else loc)
+	return rest_foot - min(W[i][2, 3] for i in foot_ids)
+
+
 def convert_mdl(path, outdir, anims=True, log=print):
 	m = Mdl(path)
 	root_dir = os.path.join(outdir, safe(m.name))
@@ -423,6 +432,13 @@ def convert_mdl(path, outdir, anims=True, log=print):
 	if anims and m.numseq:
 		seqs = m.seqs()
 		adir = UsdGeom.Scope.Define(stage, rp + "/Animations")
+		# Player animations are authored around the hull centre (feet about 36 units
+		# below the origin). Shift each sequence so its feet stand on the origin like
+		# the rest pose does.
+		ground = "/player/" in path.replace("\\", "/") or m.name == "player"
+		foot_ids = [i for i, b in enumerate(m.bones) if re.search(r"foot|toe", b["name"], re.I)]
+		rest_foot = min(m.world[i][2, 3] for i in foot_ids) if foot_ids else 0.0
+		ground = ground and bool(foot_ids)
 		stage.SetTimeCodesPerSecond(30.0)
 		first = None
 		used = set()
@@ -432,6 +448,9 @@ def convert_mdl(path, outdir, anims=True, log=print):
 				if r is None:
 					continue
 				nf, tr, qu = r
+				if ground:
+					tr = tr.copy()
+					tr[:, [i for i, b in enumerate(m.bones) if b["parent"] < 0], 2] += ground_shift(m, tr, qu, foot_ids, rest_foot)
 				nm = safe(s["label"]) + ("_b%d" % bl if bl else "")
 				if nm in used:
 					nm = "%s_%d" % (nm, si)
@@ -547,6 +566,42 @@ def miptex_decode(b):
 	return dict(name=name, w=w, h=h, pix=pix, pal=pal)
 
 
+def parse_entities(raw):
+	text = raw.split(b"\0", 1)[0].decode("latin-1")
+	out = []
+	for blk in re.findall(r"\{(.*?)\}", text, re.S):
+		out.append(dict(re.findall(r'"([^"]*)"\s+"([^"]*)"', blk)))
+	return out
+
+
+def set_entity_xform(x, e, brush):
+	"""Translate by 'origin', rotate by 'angles' (pitch yaw roll) or 'angle' (yaw)."""
+	try:
+		org = [float(v) for v in e.get("origin", "0 0 0").split()[:3]]
+	except ValueError:
+		org = [0, 0, 0]
+	if "angles" in e:
+		try:
+			pitch, yaw, roll = [float(v) for v in e["angles"].split()[:3]]
+		except ValueError:
+			pitch = yaw = roll = 0
+	else:
+		pitch = roll = 0
+		try:
+			yaw = float(e.get("angle", 0))
+		except ValueError:
+			yaw = 0
+		if yaw == -1:
+			yaw = 0
+	x.AddTranslateOp().Set(Gf.Vec3d(*org))
+	if yaw:
+		x.AddRotateZOp().Set(yaw)
+	if pitch:
+		x.AddRotateYOp().Set(pitch)
+	if roll:
+		x.AddRotateXOp().Set(roll)
+
+
 def convert_bsp(path, outdir, wads, log=print):
 	d = open(path, "rb").read()
 	ver = struct.unpack_from("<i", d, 0)[0]
@@ -607,8 +662,20 @@ def convert_bsp(path, outdir, wads, log=print):
 			mats[mi] = make_material(stage, rp, nme, "./textures/" + fnm, masked, flags=0)
 			texinfo[mi] = (nme, t)
 		return texinfo[mi]
+	ents = parse_entities(lump(0))
+	place = {}  # brush model index -> entity
+	for e in ents:
+		mdlkey = e.get("model", "")
+		if mdlkey.startswith("*") and mdlkey[1:].isdigit():
+			place.setdefault(int(mdlkey[1:]), e)
 	for mi_, mdl in enumerate(models):
 		mp = "%s/%s" % (rp, "world" if mi_ == 0 else "brush_%d" % mi_)
+		xf = UsdGeom.Xform.Define(stage, mp)
+		if mi_ in place:
+			set_entity_xform(xf, place[mi_], brush=True)
+			xf.GetPrim().SetCustomDataByKey("goldsrc:classname", place[mi_].get("classname", ""))
+			if place[mi_].get("targetname"):
+				xf.GetPrim().SetCustomDataByKey("goldsrc:targetname", place[mi_]["targetname"])
 		mesh_pts, buckets = [], {}
 		tp = {}
 		for fi in range(mdl["first"], mdl["first"] + mdl["n"]):
@@ -643,7 +710,30 @@ def convert_bsp(path, outdir, wads, log=print):
 				mesh.CreateVisibilityAttr(UsdGeom.Tokens.invisible)  # tool textures kept but hidden
 			if mip in mats:
 				UsdShade.MaterialBindingAPI.Apply(mesh.GetPrim()).Bind(mats[mip])
+	# point/model entities: references to converted MDLs, locators for the rest
+	n_props = 0
+	grp = UsdGeom.Xform.Define(stage, rp + "/entities")
+	for ei, e in enumerate(ents):
+		cls = e.get("classname", "")
+		mdlname = e.get("model", "")
+		if mdlname.lower().endswith(".mdl") and "origin" in e:
+			rel = re.sub(r"^models/", "", mdlname.replace("\\", "/"))
+			stem = os.path.splitext(os.path.basename(rel))[0]
+			rel_usd = "../../models/%s/%s/%s.usdc" % (os.path.dirname(rel), safe(stem), safe(stem))
+			rel_usd = rel_usd.replace("//", "/")
+			x = UsdGeom.Xform.Define(stage, "%s/entities/%s_%d" % (rp, safe(cls), ei))
+			set_entity_xform(x, e, brush=False)
+			x.GetPrim().GetReferences().AddReference(rel_usd)
+			x.GetPrim().SetCustomDataByKey("goldsrc:model", mdlname)
+			n_props += 1
+		elif "origin" in e and cls and not mdlname.startswith("*") and cls not in ("worldspawn",):
+			x = UsdGeom.Xform.Define(stage, "%s/entities/%s_%d" % (rp, safe(cls), ei))
+			set_entity_xform(x, e, brush=False)
+			x.GetPrim().SetCustomDataByKey("goldsrc:classname", cls)
+			if e.get("targetname"):
+				x.GetPrim().SetCustomDataByKey("goldsrc:targetname", e["targetname"])
 	stage.GetRootLayer().Save()
+	log("  %s: %d brush entities placed, %d model props referenced" % (name, len(place), n_props))
 	if missing:
 		log("  %s: textures not found (need a WAD): %s" % (name, ", ".join(sorted(missing))[:200]))
 	log("  %s: %d models, %d faces" % (name, len(models), len(fl)))
@@ -682,7 +772,9 @@ def main():
 	if a.kind == "all":
 		root = a.inputs[0]
 		wads = {}
-		for w in walk(root, ".wad"):
+		# the base game's WADs (halflife.wad, liquids.wad, ...) hold many map textures
+		extra = os.path.join(os.path.dirname(os.path.abspath(root)), "valve")
+		for w in list(walk(extra, ".wad")) + list(walk(root, ".wad")):
 			wads.update(read_wad(w))
 		wads_l = [wads]
 		for p in walk(os.path.join(root, "models"), ".mdl"):
