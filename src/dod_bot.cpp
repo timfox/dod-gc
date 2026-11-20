@@ -155,6 +155,7 @@ typedef struct DodBotState {
 	int ladder_dir;			/* +1 climbing up, -1 down, 0 not on a ladder */
 	float ladder_until;
 	int want_jump;			/* the edge being walked is a jump */
+	int jump_duck;			/* tuck the legs in the air: a ledge of 30-64 units is only cleared that way (the baker's jump links go to 45) */
 	int stall_jumped;		/* a stalled route got its one jump before it is replanned */
 	float jump_until;
 	/* GOAP (see Think) */
@@ -1598,6 +1599,7 @@ static BOOL NavTarget( CBasePlayer *pBot, DodBotState *state, Vector *target )
 			state->stall_jumped = 1;
 			state->jump_until = now + 0.7f;
 			state->want_jump = 1;
+			state->jump_duck = 1;
 			state->path_progress_time = now;
 		}
 		else if( now - state->path_progress_time > DOD_BOT_NODE_STALL )
@@ -1735,7 +1737,10 @@ static BOOL NavTarget( CBasePlayer *pBot, DodBotState *state, Vector *target )
 		}
 		if( state->path_idx > 0 && dist < 96.0f &&
 			Dod_NavEdgeKind( &g_nav, state->path[state->path_idx - 1], state->path[state->path_idx] ) == DOD_NAV_JUMP )
+		{
 			state->want_jump = 1;
+			state->jump_duck = ( nz - origin.z ) > 30.0f;
+		}
 		*target = Vector( nx, ny, nz );
 		return TRUE;
 	}
@@ -2948,7 +2953,11 @@ static void RunBot( int index, CBasePlayer *pBot )
 		move.turn_away = 0;
 	}
 	if( state->want_jump && !fight && !zone_stop )
+	{
 		buttons |= IN_JUMP;
+		if( state->jump_duck && !( pBot->pev->flags & FL_ONGROUND ) )
+			buttons |= IN_DUCK;	/* a duck-jump: legs tucked once off the ground */
+	}
 	if( ( state->nav_arrived && !fight ) || ( state->behavior == DOD_ACT_RELOAD && !state->ladder_dir ) )
 	{
 		move.forward = 0.0f;
