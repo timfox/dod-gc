@@ -1588,7 +1588,11 @@ static BOOL NavTarget( CBasePlayer *pBot, DodBotState *state, Vector *target )
 			*target = Vector( lx, ly, lz );
 			return TRUE;
 		}
-		if( dist < DOD_BOT_NODE_REACH && fabsf( nz - origin.z ) < 40.0f )	/* was 72: a bot under a ledge counted as on it and stalled on the climb */
+		/* the foot of a jump link is a take-off point: the bot has to stand on it (20 units, 12 in height), not within 40 of it on the lower
+		 * floor, or it jumps from 22 units below and 37 away and the lip is 60 high instead of 38 (charlie's roof lip); after 4 s of trying it counts as reached */
+		const BOOL jump_next = !last && Dod_NavEdgeKind( &g_nav, state->path[state->path_idx], state->path[state->path_idx + 1] ) == DOD_NAV_JUMP;
+		const BOOL strict = jump_next && now - state->path_progress_time < 4.0f;
+		if( dist < ( strict ? 20.0f : DOD_BOT_NODE_REACH ) && fabsf( nz - origin.z ) < ( strict ? 12.0f : 40.0f ) )	/* was 72: a bot under a ledge counted as on it and stalled on the climb */
 		{
 			if( last )
 			{
