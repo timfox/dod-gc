@@ -35,6 +35,11 @@ public:
 
 static DodFilmCast g_film_cast;
 static CDodFilmActor *g_film_ents[DOD_FILM_MAX_ACTORS];
+/* Actor entities kept from shot to shot. Removing a cast and spawning the next one cost
+ * twice the edicts: a freed edict is not handed out again for half a second, and on
+ * dod_charlie the map leaves a cast only ~30 of the GameCube's edicts. */
+static CDodFilmActor *g_film_pool[DOD_FILM_MAX_ACTORS];
+#define DOD_FILM_EDICT_RESERVE 8	/* left free for the camera player, gibs and temp entities */
 static int g_film_seq[DOD_FILM_MAX_ACTORS][DOD_POSE_COUNT];	/* looked-up sequence + 1, 0 unknown */
 static float g_film_start;
 static float g_film_last;
@@ -47,11 +52,19 @@ static int g_film_precached[4];	/* by DodTeam */
  * explode1.spr is a fraction of that. 0 falls back to g_sModelIndexFireball. */
 static int g_film_fireball;
 
+static int DodFilm_PoolLive( int i )
+{
+	CDodFilmActor *e = g_film_pool[i];
+	return e && e->pev && !FNullEnt( e->edict() ) && !e->edict()->free
+		&& e->pev->iuser4 == DODGC_FILM_ACTOR_TAG;
+}
+
+/* Out of the shot: hidden and kept for the next cast. */
 static void DodFilm_Clear( void )
 {
 	for( int i = 0; i < DOD_FILM_MAX_ACTORS; i++ ) {
-		if( g_film_ents[i] )
-			UTIL_Remove( g_film_ents[i] );
+		if( DodFilm_PoolLive( i ) )
+			g_film_pool[i]->pev->effects |= EF_NODRAW;
 		g_film_ents[i] = NULL;
 	}
 	memset( &g_film_cast, 0, sizeof( g_film_cast ) );
@@ -395,11 +408,22 @@ static void DodFilm_CastCommand( void )
 				a->team == DOD_TEAM_AXIS ? "axis" : "allies" );
 			continue;
 		}
-		CDodFilmActor *ent = GetClassPtr( (CDodFilmActor *)NULL );
+		CDodFilmActor *ent = DodFilm_PoolLive( i ) ? g_film_pool[i] : NULL;
 		if( !ent ) {
-			ALERT( at_console, "FILM ACTOR %s: out of edicts\n", a->name );
-			break;
+			/* A full edict table hands the game NULL, and GetClassPtr does not survive it. */
+			if( NUMBER_OF_ENTITIES() + DOD_FILM_EDICT_RESERVE >= gpGlobals->maxEntities ) {
+				ALERT( at_console, "FILM CAST %s: edicts full (%d of %d in use), %d actor(s) left out\n",
+					g_film_shot, NUMBER_OF_ENTITIES(), gpGlobals->maxEntities, g_film_cast.actor_count - i );
+				break;
+			}
+			ent = GetClassPtr( (CDodFilmActor *)NULL );
+			if( !ent ) {
+				ALERT( at_console, "FILM ACTOR %s: out of edicts\n", a->name );
+				break;
+			}
+			g_film_pool[i] = ent;
 		}
+		ent->pev->effects &= ~EF_NODRAW;
 		ent->pev->classname = MAKE_STRING( "film_actor" );
 		ent->pev->movetype = MOVETYPE_NONE;
 		ent->pev->solid = SOLID_NOT;
@@ -411,8 +435,7 @@ static void DodFilm_CastCommand( void )
 		ent->pev->body = Dod_PlayerBodyValue( body, cls, i + 1 );
 		/* The engine draws weaponmodel on the actor's hand bones, as it does for a player. */
 		const char *gun = DodFilm_WeaponModel( a->team, cls );
-		if( gun )
-			ent->pev->weaponmodel = MAKE_STRING( gun );
+		ent->pev->weaponmodel = gun ? MAKE_STRING( gun ) : 0;	/* a reused actor may have carried another */
 		ent->m_actor = i;
 		ent->m_pose = -1;
 		ent->m_phase = 0.0f;
@@ -440,6 +463,7 @@ void DodFilm_Init( void )
 	}
 	/* a new map: the old map's entities are gone with it */
 	memset( g_film_ents, 0, sizeof( g_film_ents ) );
+	memset( g_film_pool, 0, sizeof( g_film_pool ) );
 	memset( &g_film_cast, 0, sizeof( g_film_cast ) );
 	memset( g_film_precached, 0, sizeof( g_film_precached ) );
 	g_film_fireball = 0;
