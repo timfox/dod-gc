@@ -2217,6 +2217,71 @@ static void StageStep( void )
 	static float armed_at;
 	static int g_track_victim;
 	static float g_track_until, g_track_next;
+	if( stage == 8 )
+	{
+		/* test scenario 8 (grenades): the Allies bot stands still, perceives and fights; the Axis bot stands still and blind 220 units
+		 * away on level floor, in the open. Reads from the log: the throw steps, the grenade entity, the victim's health, the edicts. */
+		static int placed8;
+		static float t8, next8;
+		static int pair_a = -1, pair_b = -1;
+		CBasePlayer *pa = NULL, *pb = NULL;
+		for( int k = 1; k <= gpGlobals->maxClients; k++ )
+		{
+			CBasePlayer *p = PlayerAt( k );
+			if( !p || !p->IsAlive() || !DodBots_IsBot( p ) )
+				continue;
+			if( TeamOf( p ) == DOD_TEAM_ALLIES && !pa ) pa = p;
+			else if( TeamOf( p ) == DOD_TEAM_AXIS && !pb ) pb = p;
+		}
+		if( !pa || !pb || !g_nav.node_count )
+			return;
+		if( !placed8 )
+		{
+			/* two graph nodes 200-260 apart at about the same height with a clear line between them */
+			for( int a = 0; a < g_nav.node_count && pair_a < 0; a += 3 )
+				for( int b = a + 1; b < g_nav.node_count; b++ )
+				{
+					float ax, ay, az, bx, by, bz;
+					TraceResult tr;
+					Dod_NavNodePos( &g_nav, a, &ax, &ay, &az );
+					Dod_NavNodePos( &g_nav, b, &bx, &by, &bz );
+					const float d = sqrtf( ( bx - ax ) * ( bx - ax ) + ( by - ay ) * ( by - ay ) );
+					if( d < 200.0f || d > 260.0f || fabsf( bz - az ) > 12.0f )
+						continue;
+					UTIL_TraceLine( Vector( ax, ay, az + 40.0f ), Vector( bx, by, bz + 40.0f ), ignore_monsters, NULL, &tr );
+					if( tr.flFraction < 1.0f )
+						continue;
+					pair_a = a; pair_b = b;
+					break;
+				}
+			if( pair_a < 0 )
+				return;
+			float ax, ay, az, bx, by, bz;
+			Dod_NavNodePos( &g_nav, pair_a, &ax, &ay, &az );
+			Dod_NavNodePos( &g_nav, pair_b, &bx, &by, &bz );
+			const float yaw_ab = atan2f( by - ay, bx - ax ) * 180.0f / (float)M_PI;
+			StagePlace( pa, Vector( ax, ay, az ), yaw_ab );
+			StagePlace( pb, Vector( bx, by, bz ), yaw_ab + 180.0f );
+			DodBotState *sa8 = BotState( pa->entindex() ), *sb8 = BotState( pb->entindex() );
+			if( sa8 ) { sa8->stage_role = 1; sa8->stage_yaw = yaw_ab; }
+			if( sb8 ) { sb8->stage_role = 2; }
+			placed8 = 1;
+			t8 = now;
+			ALERT( at_console, "DoD STAGE grenade: Allies bot at %.0f,%.0f,%.0f, Axis bot at %.0f,%.0f,%.0f (%.0f units)\n", ax, ay, az, bx, by, bz,
+				sqrtf( ( bx - ax ) * ( bx - ax ) + ( by - ay ) * ( by - ay ) ) );
+		}
+		if( now >= next8 )
+		{
+			int live = 0;
+			CBaseEntity *g = NULL;
+			next8 = now + 1.0f;
+			while( ( g = UTIL_FindEntityByClassname( g, "grenade" ) ) != NULL )
+				++live;
+			ALERT( at_console, "DoD STAGE grenade t+%.0f: victim health %.0f, grenades in flight %d, thrower holds %s\n", now - t8, pb->pev->health, live,
+				pa->m_pActiveItem ? STRING( pa->m_pActiveItem->pev->classname ) : "-" );
+		}
+		return;
+	}
 	if( stage == 7 && g_stage_phase >= 9 )
 	{
 		/* test scenario 7: the Allies win the round 20 s after the human joined, the Axis win the next one 40 s after that (round-end fanfares) */
