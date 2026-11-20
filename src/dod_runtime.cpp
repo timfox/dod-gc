@@ -32,6 +32,7 @@ static cvar_t dod_spectate = { "dod_spectate", "0", FCVAR_SERVER };
  * (1 Allies, 2 Axis) and class (1 rifleman .. 6 rocket) once the map has run that many seconds: a human joining a round in progress. */
 static cvar_t dod_gc_join = { "dod_gc_join", "", FCVAR_SERVER };
 static BOOL g_join_done[DOD_MAX_PLAYERS + 1];
+static int g_dod_objects_spawned;	/* dod_object entities kept on this map (see DOD_MAX_OBJECTS) */
 static cvar_t dod_spec_auto = { "dod_spec_auto", "1", FCVAR_SERVER };
 /* dod_gc_autojoin "<team> <class>" (debug, off when empty): the local human takes that side and class a couple of
  * seconds after connecting, with the steps the menus take, so an automated run (no pad) gets a playable human and a
@@ -624,6 +625,7 @@ CHalfLifeDoD::CHalfLifeDoD()
 	memset( g_autotele_done, 0, sizeof( g_autotele_done ) );
 	memset( g_autojoin_spec_done, 0, sizeof( g_autojoin_spec_done ) );
 	memset( g_join_done, 0, sizeof( g_join_done ) );
+	g_dod_objects_spawned = 0;
 }
 
 /* The first open class for a side, starting at the one asked for: a bot's pick when limits turn its choice away. */
@@ -1871,7 +1873,9 @@ public:
 	/* The first area that links to this point supplies the volume bots stand in. */
 	void SetAreaBounds( const Vector &mins, const Vector &maxs, const int can_cap[3], const int num_cap[3] );
 	void FillView( DodGCObjectiveView *view ) const;
+	void SetObjectGroup( int group ) { m_iObjectGroup = group; }
 private:
+	int m_iObjectGroup;
 	Vector m_vecAreaMin, m_vecAreaMax;
 	int m_iAreaCanCap[3];
 	int m_iAreaNumCap[3];	/* players of a team needed inside to capture */
@@ -1897,6 +1901,7 @@ LINK_ENTITY_TO_CLASS( dod_control_point, CDoDControlPoint )
 CDoDControlPoint::CDoDControlPoint()
 {
 	m_iPointIndex = -1;
+	m_iObjectGroup = 0;
 	m_bTouchKeys = FALSE;
 	m_iDefaultOwner = DOD_TEAM_UNASSIGNED;
 	m_iPointsForCap = 1;
@@ -1973,6 +1978,7 @@ void CDoDControlPoint::FillView( DodGCObjectiveView *view ) const
 		view->num_cap[DOD_TEAM_ALLIES] = view->num_cap[DOD_TEAM_AXIS] = 1;
 	}
 	view->center = ( view->mins + view->maxs ) * 0.5f;
+	view->object_group = m_iObjectGroup;
 }
 
 void CDoDControlPoint::SetAreaDriven( float capture_seconds )
@@ -2085,6 +2091,235 @@ void CDoDControlPoint::Think( void )
  * capture the point named by `target` over area_time_to_cap seconds. `master` (an env_state)
  * switches the area off. area_<team>_startcap / area_<team>_endcap are targets fired when a
  * capture starts / completes. The capture itself runs in the rules core (Dod_TickObjective). */
+
+/* ---------------------------------------------------------------- dod_object
+ * Retail's satchels and TNT (charlie's walls and flags, escape, glider, jagd, vicenza): a thing lying on the map that a player of the
+ * right team takes by touching it and carries until he dies, drops it, or plants it by standing in a dod_capture_area with the same
+ * area_object_group. Keys read from the maps' entity lumps: object_group, object_owner (the team the object belongs to; the other
+ * team picks it up; 0 anyone), object_name, object_takesound / object_dropsound, object_carryspeed (fraction of the carrier's speed),
+ * object_resettime (seconds a dropped object lies before it returns home), object_resetontouch (the owner team touching a dropped
+ * object sends it home at once), object_cappoints (score to a planter), `target` (fired when it is picked up: the map's hint text).
+ * Not drawn (the map's hk_satchel.mdl would cost GameCube heap), so a carrier sees nothing; the lean HUD has no sprite for it either. */
+#define DOD_MAX_OBJECTS 6	/* edicts are the GameCube's scarcest thing (charlie plus 8 bots sits near the 460 wall): the first six objects of a map stay */
+static int DodGC_GroupId( const char *name )
+{
+	return Dod_ObjectGroupId( name );
+}
+
+class CDoDObject : public CBaseEntity
+{
+public:
+	CDoDObject();
+	void Spawn( void );
+	void KeyValue( KeyValueData *pkvd );
+	void EXPORT ObjectTouch( CBaseEntity *pOther );
+	void EXPORT ObjectThink( void );
+	int Group( void ) const { return m_iGroup; }
+	BOOL IsCarried( void ) const { return ( (CBaseEntity *)m_hCarrier ) != NULL; }
+	BOOL IsAvailable( void ) const { return !IsCarried() && !m_bHidden; }
+	BOOL CanTake( DodTeam team ) const { return Dod_ObjectCanTake( m_iOwner, team ); }
+	CBasePlayer *Carrier( void ) { return m_hCarrier ? (CBasePlayer *)(CBaseEntity *)m_hCarrier : NULL; }
+	void Consume( void );	/* planted: gone until its reset time has passed, then home again */
+private:
+	void PickUp( CBasePlayer *pPlayer );
+	void Drop( void );
+	void GoHome( void );
+	string_t m_iszGroup;
+	int m_iGroup;
+	int m_iOwner;	/* 0 anyone, else a DodTeam */
+	float m_flCarrySpeed, m_flResetTime;
+	int m_iResetOnTouch, m_iCapPoints;
+	mutable EHANDLE m_hCarrier;
+	Vector m_vecHome;
+	float m_flResetAt;
+	float m_flBaseSpeed;
+	BOOL m_bHidden;
+	BOOL m_bDropped;
+};
+
+LINK_ENTITY_TO_CLASS( dod_object, CDoDObject )
+
+CDoDObject::CDoDObject()
+{
+	m_iszGroup = 0; m_iGroup = 0; m_iOwner = 0; m_flCarrySpeed = 1.0f; m_flResetTime = 15.0f; m_iResetOnTouch = 0; m_iCapPoints = 0;
+	m_flResetAt = 0.0f; m_flBaseSpeed = 0.0f; m_bHidden = FALSE; m_bDropped = FALSE;
+}
+
+void CDoDObject::KeyValue( KeyValueData *pkvd )
+{
+	if( FStrEq( pkvd->szKeyName, "object_group" ) ) {
+		m_iszGroup = ALLOC_STRING( pkvd->szValue ); m_iGroup = DodGC_GroupId( pkvd->szValue ); pkvd->fHandled = TRUE;
+	} else if( FStrEq( pkvd->szKeyName, "object_owner" ) ) {
+		m_iOwner = atoi( pkvd->szValue ); pkvd->fHandled = TRUE;
+	} else if( FStrEq( pkvd->szKeyName, "object_carryspeed" ) ) {
+		m_flCarrySpeed = (float)atof( pkvd->szValue ); pkvd->fHandled = TRUE;
+	} else if( FStrEq( pkvd->szKeyName, "object_resettime" ) ) {
+		m_flResetTime = (float)atof( pkvd->szValue ); pkvd->fHandled = TRUE;
+	} else if( FStrEq( pkvd->szKeyName, "object_resetontouch" ) ) {
+		m_iResetOnTouch = atoi( pkvd->szValue ); pkvd->fHandled = TRUE;
+	} else if( FStrEq( pkvd->szKeyName, "object_cappoints" ) ) {
+		m_iCapPoints = atoi( pkvd->szValue ); pkvd->fHandled = TRUE;
+	} else if( FStrEq( pkvd->szKeyName, "object_name" ) || FStrEq( pkvd->szKeyName, "object_dropsound" ) || FStrEq( pkvd->szKeyName, "object_takesound" )
+		|| FStrEq( pkvd->szKeyName, "object_hud_sprite" ) || FStrEq( pkvd->szKeyName, "object_player_sprite" ) || FStrEq( pkvd->szKeyName, "object_otherpoints" ) ) {
+		pkvd->fHandled = TRUE;	/* text, sounds and sprites: not used by the lean HUD */
+	} else CBaseEntity::KeyValue( pkvd );
+}
+
+void CDoDObject::Spawn( void )
+{
+	if( g_dod_objects_spawned >= DOD_MAX_OBJECTS ) {
+		UTIL_Remove( this );
+		return;
+	}
+	++g_dod_objects_spawned;
+	ALERT( at_console, "DoD object %d spawned: group %s owner %d at %.0f,%.0f,%.0f\n", g_dod_objects_spawned, m_iszGroup ? STRING( m_iszGroup ) : "-", m_iOwner, pev->origin.x, pev->origin.y, pev->origin.z );
+	pev->movetype = MOVETYPE_NONE;
+	pev->solid = SOLID_TRIGGER;
+	pev->effects |= EF_NODRAW;
+	pev->model = 0;
+	UTIL_SetSize( pev, Vector( -24, -24, -16 ), Vector( 24, 24, 24 ) );
+	UTIL_SetOrigin( pev, pev->origin );
+	m_vecHome = pev->origin;
+	SetTouch( &CDoDObject::ObjectTouch );
+	SetThink( &CDoDObject::ObjectThink );
+	pev->nextthink = gpGlobals->time + 0.5f;
+	if( !m_iGroup )
+		m_iGroup = DodGC_GroupId( "object" );
+}
+
+void CDoDObject::PickUp( CBasePlayer *pPlayer )
+{
+	m_hCarrier = pPlayer;
+	m_bDropped = FALSE;
+	pev->solid = SOLID_NOT;
+	m_flBaseSpeed = pPlayer->pev->maxspeed;
+	ALERT( at_console, "DoD object: %s picks up group %d (owner %d)\n", STRING( pPlayer->pev->netname ), m_iGroup, m_iOwner );
+	if( pev->target )
+		FireTargets( STRING( pev->target ), pPlayer, this, USE_TOGGLE, 0 );
+}
+
+void CDoDObject::Drop( void )
+{
+	CBasePlayer *pCarrier = Carrier();
+	if( pCarrier && m_flBaseSpeed > 0.0f )
+		pCarrier->pev->maxspeed = m_flBaseSpeed;
+	m_hCarrier = NULL;
+	m_bDropped = TRUE;
+	m_flResetAt = gpGlobals->time + m_flResetTime;
+	pev->solid = SOLID_TRIGGER;
+	UTIL_SetOrigin( pev, pev->origin );
+	ALERT( at_console, "DoD object: group %d dropped at %.0f,%.0f,%.0f, home again in %.0f s\n", m_iGroup, pev->origin.x, pev->origin.y, pev->origin.z, m_flResetTime );
+}
+
+void CDoDObject::GoHome( void )
+{
+	m_hCarrier = NULL;
+	m_bDropped = FALSE;
+	m_bHidden = FALSE;
+	pev->solid = SOLID_TRIGGER;
+	UTIL_SetOrigin( pev, m_vecHome );
+}
+
+void CDoDObject::Consume( void )
+{
+	CBasePlayer *pCarrier = Carrier();
+	if( pCarrier && m_flBaseSpeed > 0.0f )
+		pCarrier->pev->maxspeed = m_flBaseSpeed;
+	m_hCarrier = NULL;
+	m_bDropped = FALSE;
+	m_bHidden = TRUE;
+	pev->solid = SOLID_NOT;
+	m_flResetAt = gpGlobals->time + m_flResetTime;
+	ALERT( at_console, "DoD object: group %d planted, back in %.0f s\n", m_iGroup, m_flResetTime );
+}
+
+void CDoDObject::ObjectTouch( CBaseEntity *pOther )
+{
+	if( IsCarried() || m_bHidden || !pOther || !pOther->IsPlayer() )
+		return;
+	CBasePlayer *pPlayer = (CBasePlayer *)pOther;
+	if( !pPlayer->IsAlive() || pPlayer->IsObserver() )
+		return;
+	const DodTeam team = DodGC_TeamForPlayer( pPlayer );
+	if( team != DOD_TEAM_ALLIES && team != DOD_TEAM_AXIS )
+		return;
+	if( m_bDropped && m_iResetOnTouch && m_iOwner && (int)team == m_iOwner ) {
+		GoHome();	/* the owner's side puts a dropped object back */
+		return;
+	}
+	if( !CanTake( team ) || DodGC_PlayerCarriesGroup( pPlayer, m_iGroup ) )
+		return;
+	PickUp( pPlayer );
+}
+
+void CDoDObject::ObjectThink( void )
+{
+	pev->nextthink = gpGlobals->time + 0.2f;
+	if( m_bHidden ) {
+		if( gpGlobals->time >= m_flResetAt )
+			GoHome();
+		return;
+	}
+	if( IsCarried() ) {
+		CBasePlayer *pCarrier = Carrier();
+		if( !pCarrier || !pCarrier->IsAlive() || pCarrier->IsObserver() || FBitSet( pCarrier->pev->flags, FL_KILLME ) ) {
+			Drop();
+			return;
+		}
+		UTIL_SetOrigin( pev, pCarrier->pev->origin );
+		if( m_flBaseSpeed > 0.0f && pCarrier->pev->maxspeed > m_flBaseSpeed * m_flCarrySpeed )
+			pCarrier->pev->maxspeed = m_flBaseSpeed * m_flCarrySpeed;
+		return;
+	}
+	if( m_bDropped && gpGlobals->time >= m_flResetAt )
+		GoHome();
+}
+
+BOOL DodGC_PlayerCarriesGroup( CBasePlayer *pPlayer, int group )
+{
+	CBaseEntity *e = NULL;
+	if( !pPlayer || !group )
+		return FALSE;
+	while( ( e = UTIL_FindEntityByClassname( e, "dod_object" ) ) != NULL ) {
+		CDoDObject *o = (CDoDObject *)e;
+		if( o->Group() == group && o->Carrier() == pPlayer )
+			return TRUE;
+	}
+	return FALSE;
+}
+
+BOOL DodGC_NearestObject( DodTeam team, int group, const Vector &from, Vector *pos )
+{
+	CBaseEntity *e = NULL;
+	float best = 1e18f;
+	BOOL found = FALSE;
+	while( ( e = UTIL_FindEntityByClassname( e, "dod_object" ) ) != NULL ) {
+		CDoDObject *o = (CDoDObject *)e;
+		float d;
+		if( o->Group() != group || !o->IsAvailable() || !o->CanTake( team ) )
+			continue;
+		d = ( o->pev->origin - from ).Length();
+		if( d < best ) {
+			best = d;
+			if( pos )
+				*pos = o->pev->origin;
+			found = TRUE;
+		}
+	}
+	return found;
+}
+
+/* Planting: the objects of a group carried by the players standing in an area that wants that group. Counts and consumes. */
+static int DodGC_GroupCarrierCount( int group )
+{
+	CBaseEntity *e = NULL;
+	int n = 0;
+	while( ( e = UTIL_FindEntityByClassname( e, "dod_object" ) ) != NULL )
+		if( ( (CDoDObject *)e )->Group() == group )
+			++n;
+	return n;
+}
+
 class CDoDCaptureArea : public CBaseEntity
 {
 public:
@@ -2104,6 +2339,7 @@ private:
 	BOOL m_bStarted;
 	BOOL m_bContested;
 	float m_flNextStateLog;	/* throttle for the capture area state log */
+	int m_iObjectGroup;	/* area_object_group id: only carriers of that group count (0 none, or no object of the group on the map) */
 	CDoDControlPoint *m_pPoint;
 };
 
@@ -2118,6 +2354,7 @@ CDoDCaptureArea::CDoDCaptureArea()
 	m_iszStartCap[DOD_TEAM_ALLIES] = m_iszStartCap[DOD_TEAM_AXIS] = 0;
 	m_iszEndCap[DOD_TEAM_ALLIES] = m_iszEndCap[DOD_TEAM_AXIS] = 0;
 	m_bResolved = m_bStarted = m_bContested = FALSE;
+	m_iObjectGroup = 0;
 	m_pPoint = NULL;
 }
 
@@ -2143,8 +2380,10 @@ void CDoDCaptureArea::KeyValue( KeyValueData *pkvd )
 		m_iszEndCap[DOD_TEAM_ALLIES] = ALLOC_STRING( pkvd->szValue ); pkvd->fHandled = TRUE;
 	} else if( FStrEq( pkvd->szKeyName, "area_axis_endcap" ) ) {
 		m_iszEndCap[DOD_TEAM_AXIS] = ALLOC_STRING( pkvd->szValue ); pkvd->fHandled = TRUE;
-	} else if( FStrEq( pkvd->szKeyName, "area_hud_sprite" ) || FStrEq( pkvd->szKeyName, "area_object_group" ) ) {
-		pkvd->fHandled = TRUE;	/* HUD/object-group data: not used by the lean HUD */
+	} else if( FStrEq( pkvd->szKeyName, "area_object_group" ) ) {
+		m_iObjectGroup = DodGC_GroupId( pkvd->szValue ); pkvd->fHandled = TRUE;
+	} else if( FStrEq( pkvd->szKeyName, "area_hud_sprite" ) ) {
+		pkvd->fHandled = TRUE;	/* HUD data: not used by the lean HUD */
 	} else CBaseEntity::KeyValue( pkvd );
 }
 
@@ -2170,8 +2409,11 @@ void CDoDCaptureArea::Think( void )
 		while( e && !FClassnameIs( e->pev, "dod_control_point" ) )
 			e = UTIL_FindEntityByTargetname( e, STRING( m_iszTarget ) );
 		m_bResolved = TRUE;
+		if( m_iObjectGroup && !DodGC_GroupCarrierCount( m_iObjectGroup ) )
+			m_iObjectGroup = 0;	/* no object of the group on this map: the area works as a plain one */
 		if( e ) {
 			m_pPoint = (CDoDControlPoint *)e;
+			m_pPoint->SetObjectGroup( m_iObjectGroup );
 			m_pPoint->SetAreaDriven( m_flTimeToCap );
 			m_pPoint->SetAreaBounds( pev->absmin, pev->absmax, m_iCanCap, m_iNumCap );
 		}
@@ -2200,6 +2442,8 @@ void CDoDCaptureArea::Think( void )
 			|| player->pev->absmin.z > pev->absmax.z || player->pev->absmax.z < pev->absmin.z )
 			continue;
 		team = DodGC_TeamForPlayer( player );
+		if( m_iObjectGroup && !DodGC_PlayerCarriesGroup( player, m_iObjectGroup ) )
+			continue;	/* an object area counts only the players who carry its object */
 		if( team == DOD_TEAM_ALLIES || team == DOD_TEAM_AXIS )
 			++inside[team];
 	}
@@ -2248,6 +2492,18 @@ void CDoDCaptureArea::Think( void )
 				owner == DOD_TEAM_ALLIES ? "Allies" : "Axis", m_pPoint->PointIndex() ) );
 			if( ( owner == DOD_TEAM_ALLIES || owner == DOD_TEAM_AXIS ) && m_iszEndCap[owner] )
 				FireTargets( STRING( m_iszEndCap[owner] ), this, this, USE_TOGGLE, 0 );
+			if( m_iObjectGroup ) {
+				/* the carried charges go off with the capture */
+				CBaseEntity *obj = NULL;
+				while( ( obj = UTIL_FindEntityByClassname( obj, "dod_object" ) ) != NULL ) {
+					CDoDObject *o = (CDoDObject *)obj;
+					CBasePlayer *carrier = o->Group() == m_iObjectGroup ? o->Carrier() : NULL;
+					if( carrier && carrier->pev->absmin.x <= pev->absmax.x && carrier->pev->absmax.x >= pev->absmin.x
+						&& carrier->pev->absmin.y <= pev->absmax.y && carrier->pev->absmax.y >= pev->absmin.y
+						&& carrier->pev->absmin.z <= pev->absmax.z && carrier->pev->absmax.z >= pev->absmin.z )
+						o->Consume();
+				}
+			}
 			m_bStarted = FALSE;
 		}
 	}

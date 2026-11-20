@@ -215,6 +215,21 @@ void Dod_SetRoundClock(float seconds)
 		g_dod_state.round_time_remaining = g_round_seconds;
 }
 
+int Dod_ObjectGroupId(const char *name)
+{
+	unsigned h = 5381u;
+	if (!name || !name[0])
+		return 0;
+	while (*name)
+		h = h * 33u + (unsigned char)*name++;
+	return (int)((h & 0x7fffffffu) | 1u);
+}
+
+int Dod_ObjectCanTake(int owner, DodTeam team)
+{
+	return owner == 0 || (int)team != owner;
+}
+
 int Dod_TeamOwnsAllObjectives(DodTeam team)
 {
 	return dod_valid_team(team) && g_dod_state.objective_count > 0 &&

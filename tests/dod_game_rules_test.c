@@ -5,6 +5,18 @@
 #include <math.h>
 #include <string.h>
 
+static void test_objects(void)
+{
+	/* a charge's group: area and object name it the same way; no group is 0; different groups differ */
+	assert(Dod_ObjectGroupId(NULL) == 0 && Dod_ObjectGroupId("") == 0);
+	assert(Dod_ObjectGroupId("tnt") != 0 && Dod_ObjectGroupId("tnt") == Dod_ObjectGroupId("tnt"));
+	assert(Dod_ObjectGroupId("tnt") != Dod_ObjectGroupId("dev42") && Dod_ObjectGroupId("axis_obj") != Dod_ObjectGroupId("allies_obj"));
+	/* object_owner 2 (charlie's satchels belong to the Axis): only the Allies take them; owner 0 anyone */
+	assert(Dod_ObjectCanTake(2, DOD_TEAM_ALLIES) && !Dod_ObjectCanTake(2, DOD_TEAM_AXIS));
+	assert(Dod_ObjectCanTake(1, DOD_TEAM_AXIS) && !Dod_ObjectCanTake(1, DOD_TEAM_ALLIES));
+	assert(Dod_ObjectCanTake(0, DOD_TEAM_ALLIES) && Dod_ObjectCanTake(0, DOD_TEAM_AXIS));
+}
+
 static void test_kit_plan(void)
 {
 	int team, cls, human_total = 0, lean_total = 0, classes = 0;
@@ -1173,6 +1185,7 @@ static void test_british_kit(void)
 
 int main(void)
 {
+	test_objects();
 	test_kit_plan();
 	test_players_and_weapon_models();
 	test_retail_class_names();

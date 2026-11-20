@@ -31,6 +31,7 @@ typedef struct DodGCObjectiveView {
 	int can_cap[4];		/* indexed by DodTeam */
 	int num_cap[4];		/* players of that team that must be inside to capture (1 on most points) */
 	Vector center, mins, maxs;
+	int object_group;	/* area_object_group id (0 none): only a player carrying an object of this group counts in the area */
 } DodGCObjectiveView;
 
 /* Fill up to max views, one per control point; returns the count. */
@@ -40,6 +41,12 @@ int DodGC_ListObjectives( DodGCObjectiveView *out, int max );
 BOOL DodGC_TriggerHurtApplies( int spawnflags, CBaseEntity *pOther );
 
 void DodGC_ResetMapObjectives( void );
+
+/* dod_object (satchels, TNT): a thing a player picks up by touching it and carries to a dod_capture_area with the same
+ * area_object_group. The group is an id (0 none) made from the group name. */
+BOOL DodGC_PlayerCarriesGroup( CBasePlayer *pPlayer, int group );
+/* The nearest object of a group a player of that team may pick up and that nobody carries; FALSE when there is none. */
+BOOL DodGC_NearestObject( DodTeam team, int group, const Vector &from, Vector *pos );
 /* A voice line (Dod_VoiceFind names: "enemyahead", "fireinhole"...) from a living player of a side, in that side's
  * voice, with a per-player cooldown so a bot or a grenade spree does not chatter. Returns TRUE when it played. */
 BOOL DodGC_Voice( CBasePlayer *pPlayer, int voice, BOOL automatic );
