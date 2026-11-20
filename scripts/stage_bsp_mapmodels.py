@@ -8,8 +8,8 @@ map props must follow the same laziness — disc only ships what this map needs,
 and the engine PRECACHE/Mod_ForName's them at map load (not at boot).
 
 Hard gates (override only for deliberate probes):
-  DODGC_MAX_MAPMODELS   default 32   — refuse absurd BSP ref sets
-  DODGC_MAX_MAPMODEL_BYTES default 4MiB — refuse packing a whole prop farm
+  DODGC_MAX_MAPMODELS   default 48   — refuse absurd BSP ref sets
+  DODGC_MAX_MAPMODEL_BYTES default 6MiB — refuse packing a whole prop farm
 """
 
 from __future__ import annotations
@@ -22,8 +22,8 @@ import sys
 from pathlib import Path
 
 
-DEFAULT_MAX_MODELS = 32
-DEFAULT_MAX_BYTES = 4 * 1024 * 1024
+DEFAULT_MAX_MODELS = 48
+DEFAULT_MAX_BYTES = 6 * 1024 * 1024
 
 
 def bsp_model_refs(bsp_path: Path) -> list[str]:
