@@ -301,20 +301,16 @@ static void DodFilm_CastCommand( void )
 		ALERT( at_console, "FILM CAST %s: no %s, no actors\n", g_film_shot, path );
 		return;
 	}
-	/* LOAD_FILE_FOR_ME null-terminates, but the parser should not trust that. A static
-	 * buffer, not the heap: a failed allocation used to drop the whole cast silently. */
-	static char copy[32768];
-	if( length <= 0 || length >= (int)sizeof( copy ) ) {
-		ALERT( at_console, "FILM CAST %s: %s is %d bytes (the limit is %d), no actors\n", g_film_shot, path,
-			length, (int)sizeof( copy ) - 1 );
+	/* Parsed in place: LOAD_FILE_FOR_ME allocates length + 1 and null-terminates. No copy
+	 * buffer: a static 32 KB one cost the GameCube enough MEM1 that later config reads failed. */
+	if( length <= 0 || text[length] != '\0' ) {
+		ALERT( at_console, "FILM CAST %s: %s is %d bytes and not terminated, no actors\n", g_film_shot, path, length );
 		FREE_FILE( text );
 		return;
 	}
-	memcpy( copy, text, (size_t)length );
-	copy[length] = '\0';
-	FREE_FILE( text );
 	ALERT( at_console, "FILM CAST %s: read %s, %d bytes\n", g_film_shot, path, length );
-	int count = DodFilm_ParseCast( &g_film_cast, copy, err, sizeof( err ) );
+	int count = DodFilm_ParseCast( &g_film_cast, (const char *)text, err, sizeof( err ) );
+	FREE_FILE( text );
 	if( count < 0 ) {
 		ALERT( at_console, "FILM CAST %s: %s: %s\n", g_film_shot, path, err );
 		memset( &g_film_cast, 0, sizeof( g_film_cast ) );
@@ -322,7 +318,7 @@ static void DodFilm_CastCommand( void )
 	}
 	float preroll = CMD_ARGC() > 2 ? (float)atof( CMD_ARGV( 2 ) ) : 0.0f;
 	g_film_start = gpGlobals->time + ( preroll > 0.0f ? preroll : 0.0f );
-	g_film_last = gpGlobals->time;
+	g_film_last = gpGlobals->time - g_film_start;	/* shot time, as DodFilm_Think keeps it */
 	g_film_fx_clock = gpGlobals->time - g_film_start;	/* minus the preroll: an fx at 0 fires on the first frame */
 	if( g_film_fx_clock >= 0.0f )
 		g_film_fx_clock = -0.001f;
@@ -410,15 +406,27 @@ int DodFilm_IsFilmMap( void )
 	return g_film_precached[DOD_TEAM_ALLIES] || g_film_precached[DOD_TEAM_AXIS];
 }
 
+/* Seconds into the shot. The engine's cine_clock cvar is the camera's locked film clock
+ * (negative in preroll); server time can fall behind it when frames render slowly, which
+ * left effects unfired and actors behind the camera. Server time when no shot plays. */
+static float DodFilm_ShotTime( void )
+{
+	const float clock = CVAR_GET_FLOAT( "cine_clock" );
+	if( clock > -50000.0f )
+		return clock;
+	return gpGlobals->time - g_film_start;
+}
+
 void DodFilm_Think( void )
 {
 	if( !g_film_cast.actor_count && !g_film_cast.fx_count )
 		return;
-	float dt = gpGlobals->time - g_film_last;
-	g_film_last = gpGlobals->time;
+	const float t = DodFilm_ShotTime();
+	float dt = t - g_film_last;
+	g_film_last = t;
 	if( dt < 0.0f || dt > 0.5f )
 		dt = 0.0f;
 	for( int i = 0; i < g_film_cast.actor_count; i++ )
-		DodFilm_Place( i, gpGlobals->time - g_film_start, dt );
-	DodFilm_RunFx( gpGlobals->time - g_film_start );
+		DodFilm_Place( i, t, dt );
+	DodFilm_RunFx( t );
 }
