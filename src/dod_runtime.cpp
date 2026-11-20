@@ -436,6 +436,19 @@ void DodGC_PrecacheTeamBodies( void )
 		snprintf( path, sizeof( path ), "models/player/%s/%s.mdl", body, body );
 		PRECACHE_MODEL( path );
 	}
+	/* The third-person weapon models of both sides' classes: a bot's weapon is drawn by every client from these, and a model that is
+	 * only loaded when the renderer first asks for it is a disc read in the middle of a frame. Same call the body precache uses, so the
+	 * engine promotes them into the studio arena with the bodies. */
+	for( int t = 0; t < 2; t++ ) {
+		const char *body = DodGC_BodyForTeam( teams[t] );
+		if( !body || !body[0] )
+			continue;
+		for( int c = 0; c < (int)DOD_CLASS_COUNT; c++ ) {
+			const DodWeaponDef *def = Dod_ClassWeaponDef( teams[t], (DodClass)c );
+			if( def && def->player_model && def->player_model[0] )
+				PRECACHE_MODEL( (char *)def->player_model );
+		}
+	}
 }
 #endif
 
