@@ -157,6 +157,8 @@ typedef struct DodBotState {
 	int want_jump;			/* the edge being walked is a jump */
 	int jump_duck;			/* tuck the legs in the air: a ledge of 30-64 units is only cleared that way (the baker's jump links go to 45) */
 	int stall_jumped;		/* a stalled route got its one jump before it is replanned */
+	short hop_from, hop_to;	/* the edge of the last stall hop and when: the same edge is not hopped again for 60 s (it is replanned) */
+	float hop_time;
 	float jump_until;
 	/* GOAP (see Think) */
 	unsigned ws;			/* world-state facts at the last think */
@@ -1501,6 +1503,21 @@ plan_failed:
 
 /* The position to walk towards while following the path; FALSE when there is no path to follow (no graph,
  * no goal, arrived, or no route), in which case the caller heads for the goal itself. */
+/* True when the bot is walking up a walkable slope with speed (floor normal z between 0.7 and 0.98, rising, 60+ units/s): not stalled, and
+ * no reason to hop. */
+static BOOL SlopeClimbing( CBasePlayer *pBot )
+{
+	TraceResult tr;
+	const Vector o = pBot->pev->origin;
+	if( pBot->pev->velocity.Length2D() < 60.0f || !( pBot->pev->flags & FL_ONGROUND ) )
+		return FALSE;
+	UTIL_TraceLine( o, o - Vector( 0, 0, 64.0f ), ignore_monsters, pBot->edict(), &tr );
+	if( tr.flFraction >= 1.0f || tr.vecPlaneNormal.z < 0.7f || tr.vecPlaneNormal.z > 0.98f )
+		return FALSE;
+	/* uphill: the horizontal velocity has a component against the slope's downhill direction */
+	return pBot->pev->velocity.x * tr.vecPlaneNormal.x + pBot->pev->velocity.y * tr.vecPlaneNormal.y < 0.0f;
+}
+
 static BOOL NavTarget( CBasePlayer *pBot, DodBotState *state, Vector *target )
 {
 	const float now = gpGlobals->time;
@@ -1593,9 +1610,17 @@ static BOOL NavTarget( CBasePlayer *pBot, DodBotState *state, Vector *target )
 			state->goal_progress_time = now;
 			state->stall_jumped = 0;
 		}
-		else if( now - state->path_progress_time > DOD_BOT_NODE_STALL && !state->stall_jumped )
+		else if( now - state->path_progress_time > DOD_BOT_NODE_STALL && SlopeClimbing( pBot ) )
 		{
-			/* no progress for a moment: hop once (a low lip, a door frame), then give it another go */
+			state->path_progress_time = now;	/* walking up a walkable slope with speed is not a stall */
+		}
+		else if( now - state->path_progress_time > DOD_BOT_NODE_STALL && !state->stall_jumped &&
+			!( state->hop_from == ( state->path_idx > 0 ? state->path[state->path_idx - 1] : -1 ) && state->hop_to == state->path[state->path_idx] && now - state->hop_time < 60.0f ) )
+		{
+			/* no progress for a moment: hop once (a low lip, a door frame), then give it another go; the same edge gets one hop a minute */
+			state->hop_from = state->path_idx > 0 ? state->path[state->path_idx - 1] : -1;
+			state->hop_to = state->path[state->path_idx];
+			state->hop_time = now;
 			state->stall_jumped = 1;
 			state->jump_until = now + 0.7f;
 			state->want_jump = 1;
