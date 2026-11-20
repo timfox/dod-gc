@@ -3098,12 +3098,9 @@ static void RunBot( int index, CBasePlayer *pBot )
 	if( state->want_jump && !fight && !zone_stop )
 	{
 		buttons |= IN_JUMP;
-<<<<<<< HEAD
 		if( state->jump_duck && !( pBot->pev->flags & FL_ONGROUND ) )
 			buttons |= IN_DUCK;	/* a duck-jump: legs tucked once off the ground */
-=======
 		jump_why = gpGlobals->time < state->jump_until ? 2 : 1;
->>>>>>> af201ff (Debug (dod_bot_jumplog 1): log every bot jump press with its reason and every launch without a jump press, with the ground before)
 	}
 	if( ( state->nav_arrived && !fight ) || ( state->behavior == DOD_ACT_RELOAD && !state->ladder_dir ) )
 	{
