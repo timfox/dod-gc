@@ -382,6 +382,24 @@ def integrate_weapon_model_null_check(hlsdk: Path) -> None:
 		"		if( pplayer->weaponmodel && DodGC_WeaponModelResident( pplayer->weaponmodel ))\n		{\n			cl_entity_t saveent = *m_pCurrentEntity;\n\n			model_t *pweaponmodel = IEngineStudio.GetModelByIndex( pplayer->weaponmodel );\n")
 
 
+def integrate_gib_null_check(dlls: Path) -> None:
+	"""A gib made at the edict tip (460 on the GameCube) takes GetClassPtr( NULL ) through CREATE_ENTITY, which gives no edict, and the
+	next line read through it: a data fault that froze the match (a bot gibbed in CBasePlayer::Killed). No gib then."""
+	combat = dlls / "combat.cpp"
+	effects = dlls / "effects.cpp"
+	if "no edict for the gib" in combat.read_text():
+		return
+	g = "CGib *pGib = GetClassPtr( (CGib *)NULL );\n"
+	replace_once(combat, "	for( i = 0; i < cGibs; i++ )\n	{\n		" + g,
+		"	for( i = 0; i < cGibs; i++ )\n	{\n		" + g + "		if( !pGib )\n			break;	// no edict for the gib\n")
+	replace_once(combat, "void CGib::SpawnHeadGib( entvars_t *pevVictim )\n{\n	" + g,
+		"void CGib::SpawnHeadGib( entvars_t *pevVictim )\n{\n	" + g + "	if( !pGib )\n		return;\n")
+	replace_once(combat, "	for( cSplat = 0; cSplat < cGibs; cSplat++ )\n	{\n		" + g,
+		"	for( cSplat = 0; cSplat < cGibs; cSplat++ )\n	{\n		" + g + "		if( !pGib )\n			break;\n")
+	replace_once(effects, "		return NULL;\n\n	" + g, "		return NULL;\n\n	" + g + "	if( !pGib )\n		return NULL;\n")
+	replace_once(effects, "CGib *CEnvShooter::CreateGib( void )\n{\n	" + g, "CGib *CEnvShooter::CreateGib( void )\n{\n	" + g + "	if( !pGib )\n		return NULL;\n")
+
+
 def integrate_studio_anim_pack(hlsdk: Path, engine: Path | None) -> None:
 	"""The client DLL's StudioModelRenderer::StudioGetAnim loads a sequence group with IEngineStudio.LoadCacheFile. For a
 	split DoD model the group is an animation pack (.gca, 3.5 MB), which cannot be read into MEM1 (Host_Error: LoadCacheFile:
@@ -929,6 +947,7 @@ def main() -> int:
 	integrate_weaponbox_null_check(dlls)
 	integrate_studio_anim_pack(args.hlsdk_dir, args.engine_dir)
 	integrate_weapon_model_null_check(args.hlsdk_dir)
+	integrate_gib_null_check(args.hlsdk_dir / "dlls")
 	integrate_death_anims(dlls)
 	integrate_retail_sounds(args.hlsdk_dir)
 	integrate_pm_caps(args.hlsdk_dir, args.engine_dir)
