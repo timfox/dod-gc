@@ -2582,6 +2582,19 @@ void CDoDCaptureArea::Think( void )
 			m_bContested = TRUE;
 			ALERT( at_console, "DoD capture contested point %d: Allies %d, Axis %d, capture paused at %.0f%%\n", m_pPoint->PointIndex(),
 				allies, axis, before ? before->capture_progress * 100.0f : 0.0f );
+			/* Nuts!: the local player stands in the area against a capture that was under way and so stops it */
+			if( before && before->capture_progress > 0.0f && ( before->capturing_team == DOD_TEAM_ALLIES || before->capturing_team == DOD_TEAM_AXIS ) ) {
+				int k;
+				for( k = 1; k <= gpGlobals->maxClients; ++k ) {
+					CBasePlayer *blocker = (CBasePlayer *)UTIL_PlayerByIndex( k );
+					if( !blocker || blocker->pev->deadflag != DEAD_NO || !DodGC_AchIsLocal( blocker ) ) continue;
+					if( DodGC_TeamForPlayer( blocker ) == before->capturing_team ) continue;
+					if( blocker->pev->absmin.x > pev->absmax.x || blocker->pev->absmax.x < pev->absmin.x
+						|| blocker->pev->absmin.y > pev->absmax.y || blocker->pev->absmax.y < pev->absmin.y
+						|| blocker->pev->absmin.z > pev->absmax.z || blocker->pev->absmax.z < pev->absmin.z ) continue;
+					DodGC_AchAnnounce( blocker, DodAch_RecordBlock( DodGC_Achievements() ) );
+				}
+			}
 		} else if( m_bContested && !( allies && axis ) ) {
 			m_bContested = FALSE;
 			ALERT( at_console, "DoD capture contest over at point %d (%s inside)\n", m_pPoint->PointIndex(),
