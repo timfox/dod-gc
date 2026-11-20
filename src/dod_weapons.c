@@ -168,6 +168,13 @@ DodAlliesCountry Dod_GetAlliesCountry(void)
 	return g_allies_country;
 }
 
+int Dod_ViewSleeveBody(DodTeam team)
+{
+	if (team == DOD_TEAM_AXIS)
+		return 2;
+	return g_allies_country == DOD_COUNTRY_BRITISH ? 1 : 0;
+}
+
 DodAlliesCountry Dod_AlliesCountryForMap(const char *mapname)
 {
 	static const char *const british[] = { "dod_caen", "dod_flash", "dod_jagd" };

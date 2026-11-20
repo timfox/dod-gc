@@ -252,7 +252,7 @@ BOOL CDodWeapon::Deploy( void )
 	 * Models without a sleeve group ignore it. */
 	{
 		const DodPlayerState *me = m_pPlayer ? Dod_GetPlayer( m_pPlayer->entindex() ) : NULL;
-		pev->body = ( me && me->team == DOD_TEAM_AXIS ) ? 2 : 0;
+		pev->body = Dod_ViewSleeveBody( me ? me->team : DOD_TEAM_ALLIES );
 	}
 	QueueViewSounds( def, DOD_ANIM_DRAW );
 	return DefaultDeploy( def->view_model, def->player_model, DODW_ANIM_DRAW, AnimExt( def ) );
