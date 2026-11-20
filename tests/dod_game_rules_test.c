@@ -32,14 +32,14 @@ static void test_kit_plan(void)
 				continue;
 			}
 			classes++;
-			/* a bot keeps exactly its primary weapon, and it is always there to be the active item */
-			assert(lean.primary == 1 && lean.entities == 1 && l == 1);
-			assert(lean.crowbar == 0 && lean.sidearm == 0 && lean.grenade == 0);
+			/* a bot keeps its primary weapon (always there to be the active item) and the class's grenades, no crowbar or sidearm */
+			assert(lean.primary == 1 && lean.entities == 1 + lean.grenade && l == lean.entities);
+			assert(lean.crowbar == 0 && lean.sidearm == 0 && lean.grenade == human.grenade);
 			/* a human keeps the full stock kit: crowbar and primary at least, never fewer than a bot */
 			assert(human.primary == 1 && human.crowbar == 1 && h >= 2 && h <= 4 && h > l);
 			assert(human.entities == human.crowbar + human.sidearm + human.primary + human.grenade);
 			human_total += h;
-			lean_total += l;
+			lean_total += l - lean.grenade;
 		}
 	}
 	assert(classes > 0 && lean_total == classes && human_total > lean_total);

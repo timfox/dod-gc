@@ -672,10 +672,12 @@ int Dod_KitPlan(DodTeam team, DodClass player_class, int lean, DodKitPlan *out)
 	if (!weapon)
 		return 0;
 	out->primary = 1;
+	/* retail classes carry their grenades from spawn, bots too (they throw them: GrenadeThrow in dod_bot.cpp); the one weapon entity
+	 * holds the whole issue (the rest is ammo on the player) */
+	out->grenade = Dod_GetLoadout(team, player_class, &load) && load.grenades > 0 ? 1 : 0;
 	if (!lean) {
 		out->crowbar = 1;
 		out->sidearm = Dod_ClassSidearmDef(team, player_class) ? 1 : 0;
-		out->grenade = Dod_GetLoadout(team, player_class, &load) && load.grenades > 0 ? 1 : 0;
 	}
 	out->entities = out->crowbar + out->sidearm + out->primary + out->grenade;
 	return out->entities;

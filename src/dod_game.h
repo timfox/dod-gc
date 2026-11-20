@@ -219,9 +219,8 @@ int Dod_GetLoadout(DodTeam team, DodClass player_class, DodLoadout *out);
 /* Which weapon entities a spawn creates. Every weapon is an edict (CBasePlayerItem) beside the
  * player's body, and the table has 460 of them, so a bot only gets what it uses: its AI fires and
  * reloads the active weapon and never switches, throws or drops (src/dod_bot.cpp reads only
- * m_pActiveItem). lean = 1 is that kit: the primary weapon alone, made the active item. The crowbar,
- * sidearm and grenade are created on demand through the same grant path if bot code ever needs
- * them. Humans (lean = 0) keep the full stock kit. Returns the number of weapon entities, 0 when
+ * m_pActiveItem). lean = 1 is that kit: the primary weapon made the active item and the class's grenades (a bot lobs them),
+ * without the crowbar and sidearm, which are created on demand through the same grant path if bot code ever needs them. Humans (lean = 0) keep the full stock kit. Returns the number of weapon entities, 0 when
  * the class has no weapon. */
 typedef struct DodKitPlan {
 	int crowbar;
