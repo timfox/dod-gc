@@ -9,6 +9,7 @@
 #include <setjmp.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stddef.h>
 #include <string.h>
 
 /* ================================================================== */
@@ -42,6 +43,18 @@ static void *arena_alloc(arena *a, size_t n)
     a->head->used += n;
     memset(p, 0, n);
     return p;
+}
+
+/* Drop everything but one block, for reuse by the next top-level statement. */
+static void arena_reset(arena *a)
+{
+    while (a->head && a->head->next) {
+        arena_blk *n = a->head->next;
+        ms_free(a->vm, a->head);
+        a->head = n;
+    }
+    if (a->head)
+        a->head->used = 0;
 }
 
 static void arena_free(arena *a)
@@ -495,6 +508,29 @@ static token next(parser *P)
     memmove(&P->tok[0], &P->tok[1], sizeof(token) * (size_t)(P->ntok - 1));
     P->ntok--;
     return t;
+}
+
+/* The tree of the statement just compiled is no longer needed: free it, keeping the
+   strings of tokens already lexed ahead. Compiling one top-level statement at a time
+   bounds the compile peak by the largest statement, not the whole file. */
+static void parser_reset(parser *P)
+{
+    char *keep[3] = {NULL, NULL, NULL};
+    for (int i = 0; i < P->ntok; i++)
+        if (P->tok[i].str && !(keep[i] = ms_strdup(P->vm, P->tok[i].str)))
+            perr(P, P->tok[i].line, "out of memory");
+    arena_reset(&P->ar);
+    for (int i = 0; i < P->ntok; i++)
+        if (keep[i]) {
+            size_t n = strlen(keep[i]);
+            char *d = (char *)arena_alloc(&P->ar, n + 1);
+            if (d)
+                memcpy(d, keep[i], n + 1);
+            ms_strfree(P->vm, keep[i]);
+            if (!d)
+                perr(P, P->tok[i].line, "out of memory");
+            P->tok[i].str = d;
+        }
 }
 
 static token expect(parser *P, int type, const char *what)
@@ -1070,21 +1106,27 @@ typedef struct cg {
     ms_vm *vm;
     uint8_t *code;
     uint32_t len, cap;
-    ms_value *consts;
+    char *kbuf;                 /* constants laid out as ms_str, at 8-aligned offsets */
+    uint32_t klen, kcap;
+    uint32_t *koff;             /* offset of each constant in kbuf */
     uint32_t nconsts, cconsts;
     ms_label *labels;
     uint32_t nlabels, clabels;
     ms_switch *sw;
     uint32_t nsw, csw;
-    ms_line *lines;
-    uint32_t nlines, clines;
+    uint8_t *lines;
+    uint32_t nlines, clines;    /* bytes */
+    uint32_t pend_pc, pend_line, last_pc, last_line;
+    int has_pend;
+    ms_pool *kpool;             /* constants after pool_consts */
+    ms_str **ktab;
     ctl *ctl;
 } cg;
 
 #define GROW(ptr, n, cap, type)                                                                   \
     do {                                                                                          \
         if ((n) >= (cap)) {                                                                       \
-            uint32_t nc_ = (cap) ? (cap) * 2 : 16;                                                \
+            uint32_t nc_ = (cap) ? (cap) + (cap) / 2 : 16;   /* 1.5x: less slack at the peak */                                                \
             type *np_ = (type *)ms_realloc(G->vm, (ptr), sizeof(type) * nc_);                     \
             if (!np_)                                                                             \
                 perr(G->P, 0, "out of memory");                                                   \
@@ -1096,7 +1138,7 @@ typedef struct cg {
 static void emit_bytes(cg *G, const void *p, uint32_t n)
 {
     while (G->len + n > G->cap) {
-        uint32_t nc = G->cap ? G->cap * 2 : 1024;
+        uint32_t nc = G->cap ? G->cap + G->cap / 2 : 1024;
         uint8_t *nb = (uint8_t *)ms_realloc(G->vm, G->code, nc);
         if (!nb)
             perr(G->P, 0, "out of memory");
@@ -1145,31 +1187,86 @@ static void patch_all(cg *G, patch *p, uint32_t target)
     memset(p, 0, sizeof(*p));
 }
 
+static void line_byte(cg *G, uint32_t b)
+{
+    GROW(G->lines, G->nlines, G->clines, uint8_t);
+    G->lines[G->nlines++] = (uint8_t)b;
+}
+
+static void line_varint(cg *G, uint32_t v)
+{
+    while (v >= 0x80) {
+        line_byte(G, (v & 0x7F) | 0x80);
+        v >>= 7;
+    }
+    line_byte(G, v);
+}
+
+static void flush_line(cg *G)
+{
+    if (!G->has_pend)
+        return;
+    int32_t dl = (int32_t)(G->pend_line - G->last_line);
+    line_varint(G, G->pend_pc - G->last_pc);
+    line_varint(G, dl < 0 ? ((uint32_t)(-dl) << 1) | 1u : (uint32_t)dl << 1);
+    G->last_pc = G->pend_pc;
+    G->last_line = G->pend_line;
+    G->has_pend = 0;
+}
+
 static void mark_line(cg *G, int line)
 {
-    if (G->nlines && G->lines[G->nlines - 1].line == (uint32_t)line)
+    if (G->has_pend && G->pend_line == (uint32_t)line)
         return;
-    if (G->nlines && G->lines[G->nlines - 1].pc == G->len) {
-        G->lines[G->nlines - 1].line = (uint32_t)line;
+    if (G->has_pend && G->pend_pc == G->len) {
+        G->pend_line = (uint32_t)line;
         return;
     }
-    GROW(G->lines, G->nlines, G->clines, ms_line);
-    G->lines[G->nlines].pc = G->len;
-    G->lines[G->nlines].line = (uint32_t)line;
-    G->nlines++;
+    flush_line(G);
+    G->pend_pc = G->len;
+    G->pend_line = (uint32_t)line;
+    G->has_pend = 1;
 }
+
+#define KHDR ((uint32_t)((sizeof(ms_pool) + 7) & ~(size_t)7))
+#define KSIZE(len) ((uint32_t)((offsetof(ms_str, data) + (len) + 1 + 7) & ~(size_t)7))
 
 static uint32_t const_str(cg *G, const char *s)
 {
     size_t n = strlen(s);
-    for (uint32_t i = 0; i < G->nconsts; i++)
-        if (G->consts[i].u.s->len == n && memcmp(G->consts[i].u.s->data, s, n) == 0)
+    uint32_t h = ms_hash(s, n);
+    for (uint32_t i = 0; i < G->nconsts; i++) {
+        const ms_str *k = (const ms_str *)(G->kbuf + G->koff[i]);
+        if (k->hash == h && k->len == n && memcmp(k->data, s, n) == 0)
             return i;
-    GROW(G->consts, G->nconsts, G->cconsts, ms_value);
-    ms_value v = ms_string_len(G->vm, s, n);
-    if (v.type != MS_STRING)
-        perr(G->P, 0, "out of memory");
-    G->consts[G->nconsts] = v;
+    }
+    if (n > 0xFFFFFF)
+        perr(G->P, 0, "string constant too long");
+    if (G->nconsts > 0xFFFF)
+        perr(G->P, 0, "more than 65536 string constants");
+    uint32_t need = (G->klen ? G->klen : KHDR) + KSIZE(n);
+    if (need > G->kcap) {
+        uint32_t nc = G->kcap ? G->kcap + G->kcap / 2 : 1024;
+        if (nc < need)
+            nc = need;
+        char *nb = (char *)ms_realloc(G->vm, G->kbuf, nc);
+        if (!nb)
+            perr(G->P, 0, "out of memory");
+        G->kbuf = nb;
+        G->kcap = nc;
+    }
+    if (!G->klen) {
+        memset(G->kbuf, 0, KHDR);
+        G->klen = KHDR;
+    }
+    GROW(G->koff, G->nconsts, G->cconsts, uint32_t);
+    ms_str *k = (ms_str *)(G->kbuf + G->klen);
+    k->rc = MS_RC_PINNED;
+    k->len = (uint32_t)n;
+    k->hash = h;
+    memcpy(k->data, s, n + 1);
+    G->koff[G->nconsts] = G->klen;
+    G->klen += KSIZE(n);
     return G->nconsts++;
 }
 
@@ -1178,6 +1275,8 @@ static uint32_t name_id(cg *G, const char *s, int lower)
     uint32_t id = lower ? ms_intern_lower(G->vm, s, strlen(s)) : ms_intern(G->vm, s, strlen(s));
     if (id == MS_NAME_NONE)
         perr(G->P, 0, "out of memory");
+    if (id > 0xFFFF)
+        perr(G->P, 0, "more than 65536 names");
     return id;
 }
 
@@ -1207,7 +1306,7 @@ static void gen_call(cg *G, node *n, int keep)
     }
     if (n->i > 255)
         perr(G->P, n->line, "too many parameters");
-    e32(G, name_id(G, n->s, 1));
+    e16(G, name_id(G, n->s, 1));
     e8(G, n->i);
     e8(G, keep);
 }
@@ -1221,22 +1320,30 @@ static void gen_bool(cg *G, node *n)
     j1 = emit_jump(G, and_ ? OP_JF : OP_JT);
     gen_expr(G, n->b);
     j2 = emit_jump(G, and_ ? OP_JF : OP_JT);
-    e8(G, OP_PUSH_INT);
-    e32(G, and_ ? 1u : 0u);
+    e8(G, OP_PUSH_I8);
+    e8(G, and_ ? 1 : 0);
     jend = emit_jump(G, OP_JMP);
     patch_to(G, j1, G->len);
     patch_to(G, j2, G->len);
-    e8(G, OP_PUSH_INT);
-    e32(G, and_ ? 0u : 1u);
+    e8(G, OP_PUSH_I8);
+    e8(G, and_ ? 0 : 1);
     patch_to(G, jend, G->len);
 }
 
 static void gen_expr(cg *G, node *n)
 {
     switch (n->kind) {
-    case N_INT: e8(G, OP_PUSH_INT); e32(G, (uint32_t)n->i); break;
+    case N_INT:
+        if (n->i >= -128 && n->i <= 127) {
+            e8(G, OP_PUSH_I8);
+            e8(G, n->i);
+        } else {
+            e8(G, OP_PUSH_INT);
+            e32(G, (uint32_t)n->i);
+        }
+        break;
     case N_FLOAT: e8(G, OP_PUSH_FLOAT); ef(G, n->f); break;
-    case N_STR: e8(G, OP_PUSH_STR); e32(G, const_str(G, n->s)); break;
+    case N_STR: e8(G, OP_PUSH_STR); e16(G, (int)const_str(G, n->s)); break;
     case N_NIL: e8(G, OP_PUSH_NIL); break;
     case N_NULL: e8(G, OP_PUSH_NULL); break;
     case N_SCOPE: e8(G, OP_PUSH_LISTENER); e8(G, n->op); break;
@@ -1244,11 +1351,11 @@ static void gen_expr(cg *G, node *n)
         if (n->a->kind == N_SCOPE && scope_is_table(n->a->op)) {
             e8(G, OP_LOAD_SCOPE);
             e8(G, n->a->op);
-            e32(G, name_id(G, n->s, 0));
+            e16(G, name_id(G, n->s, 0));
         } else {
             gen_expr(G, n->a);
             e8(G, OP_GET_FIELD);
-            e32(G, name_id(G, n->s, 0));
+            e16(G, name_id(G, n->s, 0));
         }
         break;
     case N_INDEX: gen_expr(G, n->a); gen_expr(G, n->b); e8(G, OP_GET_INDEX); break;
@@ -1299,11 +1406,11 @@ static void gen_store(cg *G, node *lv)
         if (lv->a->kind == N_SCOPE && scope_is_table(lv->a->op)) {
             e8(G, OP_STORE_SCOPE);
             e8(G, lv->a->op);
-            e32(G, name_id(G, lv->s, 0));
+            e16(G, name_id(G, lv->s, 0));
         } else {
             gen_expr(G, lv->a);
             e8(G, OP_SET_FIELD);
-            e32(G, name_id(G, lv->s, 0));
+            e16(G, name_id(G, lv->s, 0));
         }
         return;
     }
@@ -1327,7 +1434,7 @@ static void gen_store(cg *G, node *lv)
         e8(G, OP_STORE_INDEXED);
         e8(G, table ? IB_SCOPE : IB_FIELD);
         e8(G, table ? b->a->op : 0);
-        e32(G, name_id(G, b->s, 0));
+        e16(G, name_id(G, b->s, 0));
         e8(G, n);
         return;
     }
@@ -1551,17 +1658,20 @@ static void gen_stmt(cg *G, node *n)
 /* entry points                                                         */
 /* ================================================================== */
 
-void ms_script_free(ms_vm *vm, ms_script *s)
+static void script_free(ms_vm *vm, ms_script *s, int keep_pool)
 {
     if (!s)
         return;
-    for (uint32_t i = 0; i < s->nconsts; i++)
-        ms_release(vm, s->consts[i]);
     for (uint32_t i = 0; i < s->nswitches; i++) {
         for (uint32_t k = 0; k < s->switches[i].n; k++)
             ms_release(vm, s->switches[i].cases[k].key);
         ms_free(vm, s->switches[i].cases);
     }
+    if (keep_pool && s->pool) {
+        s->pool->next = vm->retired;
+        vm->retired = s->pool;
+    } else
+        ms_free(vm, s->pool);
     ms_free(vm, s->consts);
     ms_free(vm, s->switches);
     ms_free(vm, s->labels);
@@ -1569,6 +1679,28 @@ void ms_script_free(ms_vm *vm, ms_script *s)
     ms_free(vm, s->code);
     ms_strfree(vm, s->path);
     ms_free(vm, s);
+}
+
+void ms_script_free(ms_vm *vm, ms_script *s) { script_free(vm, s, 0); }
+void ms_script_retire(ms_vm *vm, ms_script *s) { script_free(vm, s, 1); }
+
+/* The constant buffer becomes the script's pool: trim it, point a table into it. */
+static void pool_consts(cg *G)
+{
+    if (!G->nconsts)
+        return;
+    char *nb = (char *)ms_realloc(G->vm, G->kbuf, G->klen);
+    if (nb)
+        G->kbuf = nb;
+    G->ktab = (ms_str **)ms_alloc(G->vm, sizeof(ms_str *) * G->nconsts);
+    if (!G->ktab)
+        perr(G->P, 0, "out of memory");
+    for (uint32_t i = 0; i < G->nconsts; i++)
+        G->ktab[i] = (ms_str *)(G->kbuf + G->koff[i]);
+    ms_free(G->vm, G->koff);
+    G->koff = NULL;
+    G->kpool = (ms_pool *)G->kbuf;
+    G->kbuf = NULL;
 }
 
 ms_script *ms_compile(ms_vm *vm, const char *path, const char *text, size_t len, char *err, size_t errlen)
@@ -1599,14 +1731,15 @@ ms_script *ms_compile(ms_vm *vm, const char *path, const char *text, size_t len,
             ms_free(vm, c->breaks.at);
             ms_free(vm, c->conts.at);
         }
-        for (uint32_t i = 0; i < G->nconsts; i++)
-            ms_release(vm, G->consts[i]);
+        ms_free(vm, G->kbuf);
+        ms_free(vm, G->koff);
+        ms_free(vm, G->kpool);
+        ms_free(vm, G->ktab);
         for (uint32_t i = 0; i < G->nsw; i++) {
             for (uint32_t k = 0; k < G->sw[i].n; k++)
                 ms_release(vm, G->sw[i].cases[k].key);
             ms_free(vm, G->sw[i].cases);
         }
-        ms_free(vm, G->consts);
         ms_free(vm, G->sw);
         ms_free(vm, G->labels);
         ms_free(vm, G->lines);
@@ -1617,32 +1750,22 @@ ms_script *ms_compile(ms_vm *vm, const char *path, const char *text, size_t len,
         return NULL;
     }
 
-    nlist prog = {0};
     node *st;
-    while ((st = parse_stmt(P)) != NULL)
-        nl_add(&prog, st);
-    for (st = prog.head; st; st = st->next)
+    while ((st = parse_stmt(P)) != NULL) {
         gen_stmt(G, st);
+        parser_reset(P);
+    }
     e8(G, OP_END);
-
-    S = (ms_script *)ms_alloc(vm, sizeof(ms_script));
-    if (!S)
-        perr(P, 0, "out of memory");
-    S->path = ms_strdup(vm, path);
-    /* growth doubles buffers; give the slack back (matters at GameCube sizes) */
+    flush_line(G);
+    /* growth leaves slack in the buffers; give the slack back (matters at GameCube sizes) */
     {
         uint8_t *c = (uint8_t *)ms_realloc(vm, G->code, G->len);
         if (c)
             G->code = c;
         if (G->nlines) {
-            ms_line *l = (ms_line *)ms_realloc(vm, G->lines, sizeof(ms_line) * G->nlines);
+            uint8_t *l = (uint8_t *)ms_realloc(vm, G->lines, G->nlines);
             if (l)
                 G->lines = l;
-        }
-        if (G->nconsts) {
-            ms_value *k = (ms_value *)ms_realloc(vm, G->consts, sizeof(ms_value) * G->nconsts);
-            if (k)
-                G->consts = k;
         }
         if (G->nlabels) {
             ms_label *lb = (ms_label *)ms_realloc(vm, G->labels, sizeof(ms_label) * G->nlabels);
@@ -1650,16 +1773,24 @@ ms_script *ms_compile(ms_vm *vm, const char *path, const char *text, size_t len,
                 G->labels = lb;
         }
     }
+    pool_consts(G);
+
+    S = (ms_script *)ms_alloc(vm, sizeof(ms_script));
+    if (!S)
+        perr(P, 0, "out of memory");
+    memset(S, 0, sizeof(*S));
+    S->path = ms_strdup(vm, path);
     S->code = G->code;
     S->code_len = G->len;
-    S->consts = G->consts;
+    S->consts = G->ktab;
     S->nconsts = G->nconsts;
+    S->pool = G->kpool;
     S->labels = G->labels;
     S->nlabels = G->nlabels;
     S->switches = G->sw;
     S->nswitches = G->nsw;
     S->lines = G->lines;
-    S->nlines = G->nlines;
+    S->lines_len = G->nlines;
     arena_free(&P->ar);
     ms_free(vm, P);
     ms_free(vm, G);
@@ -1674,10 +1805,29 @@ const ms_label *ms_find_label(const ms_script *s, uint32_t name)
     return NULL;
 }
 
+static uint32_t read_varint(const uint8_t **p, const uint8_t *end)
+{
+    uint32_t v = 0;
+    for (int sh = 0; *p < end && sh < 35; sh += 7) {
+        uint8_t b = *(*p)++;
+        v |= (uint32_t)(b & 0x7F) << sh;
+        if (!(b & 0x80))
+            break;
+    }
+    return v;
+}
+
 uint32_t ms_line_for_pc(const ms_script *s, uint32_t pc)
 {
-    uint32_t line = 0;
-    for (uint32_t i = 0; i < s->nlines && s->lines[i].pc <= pc; i++)
-        line = s->lines[i].line;
-    return line;
+    const uint8_t *p = s->lines, *end = s->lines + s->lines_len;
+    uint32_t at = 0, line = 0, cur = 0;
+    while (p < end) {
+        at += read_varint(&p, end);
+        uint32_t z = read_varint(&p, end);
+        if (at > pc)
+            break;
+        line += (z & 1) ? (uint32_t)(-(int32_t)(z >> 1)) : z >> 1;
+        cur = line;
+    }
+    return cur;
 }

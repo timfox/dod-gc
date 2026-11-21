@@ -104,11 +104,7 @@ void ms_destroy(ms_vm *vm)
         thread_free(vm, vm->threads);
         vm->threads = n;
     }
-    while (vm->scripts) {
-        ms_script *n = vm->scripts->next;
-        ms_script_free(vm, vm->scripts);
-        vm->scripts = n;
-    }
+    /* values first: they may point into the scripts' constant pools */
     while (vm->entvars) {
         ms_entvars *n = vm->entvars->next;
         ms_table_free(vm, &vm->entvars->vars);
@@ -118,6 +114,16 @@ void ms_destroy(ms_vm *vm)
     ms_table_free(vm, &vm->level_vars);
     ms_table_free(vm, &vm->game_vars);
     ms_table_free(vm, &vm->parm_vars);
+    while (vm->scripts) {
+        ms_script *n = vm->scripts->next;
+        ms_script_free(vm, vm->scripts);
+        vm->scripts = n;
+    }
+    while (vm->retired) {
+        ms_pool *n = vm->retired->next;
+        ms_free(vm, vm->retired);
+        vm->retired = n;
+    }
     for (uint32_t i = 0; i < vm->ncmds; i++) {
         ms_cmd *c = vm->cmds[i];
         while (c) {
@@ -246,7 +252,7 @@ int ms_load_text(ms_vm *vm, const char *path, const char *text, size_t len)
             ms_script *old = *pp;
             s->next = old->next;
             *pp = s;
-            ms_script_free(vm, old);
+            ms_script_retire(vm, old);   /* variables may still hold its constants */
             return 1;
         }
     }
@@ -897,10 +903,13 @@ static void interpret(ms_vm *vm, ms_thread *t)
         case OP_PUSH_NIL: push(vm, t, ms_nil()); break;
         case OP_PUSH_NULL: { ms_value v = ms_nil(); v.type = MS_NULL; push(vm, t, v); break; }
         case OP_PUSH_INT: push(vm, t, ms_int((int32_t)rd32(code + t->pc))); t->pc += 4; break;
+        case OP_PUSH_I8: push(vm, t, ms_int((int8_t)code[t->pc])); t->pc += 1; break;
         case OP_PUSH_FLOAT: push(vm, t, ms_float(rdf(code + t->pc))); t->pc += 4; break;
         case OP_PUSH_STR: {
-            ms_value v = t->script->consts[rd32(code + t->pc)];
-            t->pc += 4;
+            ms_value v;
+            v.type = MS_STRING;
+            v.u.s = t->script->consts[rd16(code + t->pc)];
+            t->pc += 2;
             ms_retain(v);
             push(vm, t, v);
             break;
@@ -933,8 +942,8 @@ static void interpret(ms_vm *vm, ms_thread *t)
         }
         case OP_LOAD_SCOPE: {
             int sc = code[t->pc];
-            uint32_t name = rd32(code + t->pc + 1);
-            t->pc += 5;
+            uint32_t name = rd16(code + t->pc + 1);
+            t->pc += 3;
             ms_value out = ms_nil();
             if ((sc == SC_LEVEL || sc == SC_GAME)) {
                 ms_value l = ms_nil();
@@ -952,8 +961,8 @@ static void interpret(ms_vm *vm, ms_thread *t)
         }
         case OP_STORE_SCOPE: {
             int sc = code[t->pc];
-            uint32_t name = rd32(code + t->pc + 1);
-            t->pc += 5;
+            uint32_t name = rd16(code + t->pc + 1);
+            t->pc += 3;
             ms_value v = pop(t);
             if (sc == SC_LEVEL || sc == SC_GAME) {
                 ms_value l = ms_nil();
@@ -972,8 +981,8 @@ static void interpret(ms_vm *vm, ms_thread *t)
             break;
         }
         case OP_GET_FIELD: {
-            uint32_t name = rd32(code + t->pc);
-            t->pc += 4;
+            uint32_t name = rd16(code + t->pc);
+            t->pc += 2;
             ms_value obj = pop(t);
             ms_value out = get_field(vm, t, &obj, name);
             ms_release(vm, obj);
@@ -981,8 +990,8 @@ static void interpret(ms_vm *vm, ms_thread *t)
             break;
         }
         case OP_SET_FIELD: {
-            uint32_t name = rd32(code + t->pc);
-            t->pc += 4;
+            uint32_t name = rd16(code + t->pc);
+            t->pc += 2;
             ms_value obj = pop(t);
             ms_value v = pop(t);
             set_field(vm, t, &obj, name, v);
@@ -999,9 +1008,9 @@ static void interpret(ms_vm *vm, ms_thread *t)
         }
         case OP_STORE_INDEXED: {
             int kind = code[t->pc], sc = code[t->pc + 1];
-            uint32_t name = rd32(code + t->pc + 2);
-            int n = code[t->pc + 6];
-            t->pc += 7;
+            uint32_t name = rd16(code + t->pc + 2);
+            int n = code[t->pc + 4];
+            t->pc += 5;
             ms_value idx[32];
             for (int k = n - 1; k >= 0; k--)
                 idx[k] = pop(t);
@@ -1144,10 +1153,10 @@ static void interpret(ms_vm *vm, ms_thread *t)
         }
         case OP_CMD:
         case OP_METHOD: {
-            uint32_t name = rd32(code + t->pc);
-            int argc = code[t->pc + 4];
-            int keep = code[t->pc + 5];
-            t->pc += 6;
+            uint32_t name = rd16(code + t->pc);
+            int argc = code[t->pc + 2];
+            int keep = code[t->pc + 3];
+            t->pc += 4;
             ms_call c;
             memset(&c, 0, sizeof(c));
             c.vm = vm;

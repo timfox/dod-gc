@@ -1,7 +1,7 @@
 # Vendored MOHAA script VM
 
 Copied unchanged from [timfox/mohaa-gc](https://github.com/timfox/mohaa-gc) `script/`
-at commit `b0bf50f`. Edit it there, then copy it here again:
+at commit `f61d960`. Edit it there, then copy it here again:
 
 ```bash
 scripts/sync-mohaa-vm.sh /path/to/mohaa-gc

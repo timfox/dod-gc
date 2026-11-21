@@ -70,6 +70,9 @@ void DodGrunt_Spawn(DodGruntPool *p, int i, int team, float x, float y, float z,
 	p->target[i] = 0;
 	p->team[i] = (unsigned char)team;
 	p->blocked[i] = 0;
+	p->script[i] = 0;
+	p->order[i] = DOD_GRUNT_ORDER_NONE;
+	p->order_done[i] = 0;
 	p->state[i] = rush ? DOD_GRUNT_ADVANCE : DOD_GRUNT_WANDER;
 	if (i >= p->cap)
 		p->cap = i + 1;
@@ -103,6 +106,28 @@ void DodGrunt_Looked(DodGruntPool *p, int i, float now, int visible, int target,
 	p->stats.looks++;
 	/* +-25% jitter keeps the looks spread out over time. */
 	p->next_look[i] = now + DOD_GRUNT_SENSE_INTERVAL * (0.75f + 0.5f * DodGrunt_Rand(p));
+	if (p->script[i]) {
+		/* A script actor: off means blind, a move order wins over fighting, and it holds instead of wandering. */
+		const int attack = (p->script[i] & DOD_GRUNT_ATTACK) != 0;
+		if ((p->script[i] & DOD_GRUNT_AI_OFF) || p->order[i] != DOD_GRUNT_ORDER_NONE) {
+			p->target[i] = 0;
+			return;
+		}
+		if (visible) {
+			p->target[i] = (signed char)target;
+			p->target_x[i] = tx;
+			p->target_y[i] = ty;
+			p->target_seen[i] = now;
+			p->state[i] = (dist <= DOD_GRUNT_CLOSE * 3.0f) ? DOD_GRUNT_SHOOT : (attack ? DOD_GRUNT_ADVANCE : DOD_GRUNT_HOLD);
+			if (p->state[i] == DOD_GRUNT_HOLD)
+				p->heading[i] = DodGrunt_YawTo(p->x[i], p->y[i], tx, ty);
+			return;
+		}
+		p->target[i] = 0;
+		if (p->state[i] == DOD_GRUNT_SHOOT)
+			p->state[i] = attack ? DOD_GRUNT_ADVANCE : DOD_GRUNT_HOLD;
+		return;
+	}
 	if (visible) {
 		p->target[i] = (signed char)target;
 		p->target_x[i] = tx;
@@ -122,7 +147,29 @@ void DodGrunt_Move(DodGruntPool *p, int i, float now, float dt)
 	const int remembers = now - p->target_seen[i] < DOD_GRUNT_MEMORY;
 	if (!alive(p, i))
 		return;
+	if (p->order[i] != DOD_GRUNT_ORDER_NONE) {
+		const float dx = p->order_x[i] - p->x[i], dy = p->order_y[i] - p->y[i];
+		if (dx * dx + dy * dy <= DOD_GRUNT_ARRIVE * DOD_GRUNT_ARRIVE) {
+			p->order[i] = DOD_GRUNT_ORDER_NONE;
+			p->order_done[i] = 1;
+			p->state[i] = DOD_GRUNT_HOLD;
+		} else {
+			/* a blocked check turned the heading away; the next unblocked frame aims at the point again */
+			if (!p->blocked[i])
+				p->heading[i] = DodGrunt_YawTo(p->x[i], p->y[i], p->order_x[i], p->order_y[i]);
+			speed = p->order[i] == DOD_GRUNT_ORDER_RUN ? DOD_GRUNT_RUN : DOD_GRUNT_WALK;
+			p->state[i] = p->order[i] == DOD_GRUNT_ORDER_RUN ? DOD_GRUNT_ADVANCE : DOD_GRUNT_WANDER;
+			/* never step past the point in one frame */
+			if (speed * dt > sqrtf(dx * dx + dy * dy))
+				speed = sqrtf(dx * dx + dy * dy) / (dt > 0.0f ? dt : 1.0f);
+		}
+		want_yaw = p->heading[i];
+		goto turn_and_step;
+	}
 	switch (p->state[i]) {
+	case DOD_GRUNT_HOLD:
+		want_yaw = p->heading[i];
+		break;
 	case DOD_GRUNT_SHOOT:
 		if (remembers)
 			want_yaw = DodGrunt_YawTo(p->x[i], p->y[i], p->target_x[i], p->target_y[i]);
@@ -148,6 +195,7 @@ void DodGrunt_Move(DodGruntPool *p, int i, float now, float dt)
 		want_yaw = p->heading[i];
 		break;
 	}
+turn_and_step:
 	if (p->blocked[i])
 		speed = 0.0f;
 	/* The body turns at up to 360 degrees per second. */
@@ -242,7 +290,9 @@ int DodGrunt_Hurt(DodGruntPool *p, int i, int damage, float now)
 	p->hp[i] = 0;
 	p->state[i] = DOD_GRUNT_DEAD;
 	p->target[i] = 0;
-	p->respawn_at[i] = now + DOD_GRUNT_RESPAWN;
+	p->order[i] = DOD_GRUNT_ORDER_NONE;
+	/* a script actor stays dead: the mission counts its kills */
+	p->respawn_at[i] = p->script[i] ? 1e30f : now + DOD_GRUNT_RESPAWN;
 	p->stats.deaths++;
 	return 1;
 }
@@ -250,4 +300,79 @@ int DodGrunt_Hurt(DodGruntPool *p, int i, int damage, float now)
 int DodGrunt_RespawnDue(const DodGruntPool *p, int i, float now)
 {
 	return p->state[i] == DOD_GRUNT_DEAD && p->respawn_at[i] <= now;
+}
+
+/* ---- script control ---- */
+
+int DodGrunt_FreeScriptSlot(const DodGruntPool *p)
+{
+	int i;
+	for (i = DOD_GRUNT_MAX - 1; i >= 0; i--)
+		if (p->state[i] == DOD_GRUNT_FREE)
+			return i;
+	return -1;
+}
+
+void DodGrunt_SpawnScripted(DodGruntPool *p, int i, int team, float x, float y, float z, float yaw, float now)
+{
+	DodGrunt_Spawn(p, i, team, x, y, z, yaw, now, 0);
+	p->script[i] = DOD_GRUNT_SCRIPTED;
+	p->state[i] = DOD_GRUNT_HOLD;
+}
+
+void DodGrunt_SetAI(DodGruntPool *p, int i, int on)
+{
+	if (on) {
+		p->script[i] &= (unsigned char)~DOD_GRUNT_AI_OFF;
+		return;
+	}
+	p->script[i] |= DOD_GRUNT_AI_OFF;
+	p->script[i] &= (unsigned char)~DOD_GRUNT_ATTACK;
+	p->target[i] = 0;
+	if (alive(p, i) && p->order[i] == DOD_GRUNT_ORDER_NONE)
+		p->state[i] = DOD_GRUNT_HOLD;
+}
+
+void DodGrunt_SetAttack(DodGruntPool *p, int i, int on)
+{
+	if (on) {
+		p->script[i] |= DOD_GRUNT_ATTACK;
+		p->script[i] &= (unsigned char)~DOD_GRUNT_AI_OFF;
+	} else
+		p->script[i] &= (unsigned char)~DOD_GRUNT_ATTACK;
+}
+
+void DodGrunt_OrderMove(DodGruntPool *p, int i, float x, float y, int run)
+{
+	if (!alive(p, i))
+		return;
+	p->order[i] = (unsigned char)(run ? DOD_GRUNT_ORDER_RUN : DOD_GRUNT_ORDER_WALK);
+	p->order_x[i] = x;
+	p->order_y[i] = y;
+	p->order_done[i] = 0;
+	p->target[i] = 0;
+	p->blocked[i] = 0;
+	p->state[i] = run ? DOD_GRUNT_ADVANCE : DOD_GRUNT_WANDER;
+	p->heading[i] = DodGrunt_YawTo(p->x[i], p->y[i], x, y);
+}
+
+void DodGrunt_OrderStop(DodGruntPool *p, int i)
+{
+	p->order[i] = DOD_GRUNT_ORDER_NONE;
+	if (alive(p, i))
+		p->state[i] = DOD_GRUNT_HOLD;
+}
+
+void DodGrunt_Face(DodGruntPool *p, int i, float tx, float ty)
+{
+	if (p->order[i] == DOD_GRUNT_ORDER_NONE)
+		p->heading[i] = DodGrunt_YawTo(p->x[i], p->y[i], tx, ty);
+}
+
+int DodGrunt_TakeOrderDone(DodGruntPool *p, int i)
+{
+	if (!p->order_done[i])
+		return 0;
+	p->order_done[i] = 0;
+	return 1;
 }

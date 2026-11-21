@@ -28,6 +28,16 @@ extern "C" {
 enum { DOD_MOHAA_ORIGIN = 0, DOD_MOHAA_ANGLES = 1 };
 enum { DOD_MOHAA_TARGETNAME = 0, DOD_MOHAA_CLASSNAME = 1, DOD_MOHAA_MODEL = 2 };
 enum { DOD_MOHAA_HIDDEN = 0, DOD_MOHAA_NOTSOLID = 1 };
+/* Sound channels, from the ubersound alias's channel name. */
+enum { DOD_MOHAA_CHAN_AUTO = 0, DOD_MOHAA_CHAN_VOICE, DOD_MOHAA_CHAN_ITEM, DOD_MOHAA_CHAN_BODY, DOD_MOHAA_CHAN_WEAPON };
+/* Sound aliases come from maps/<map>.snd, written by mohaa-gc tools/ubersound.py (lines "alias sample volume mindist
+   channel"; repeated aliases are variants picked at random). At most this many rows are kept. */
+#define DOD_MOHAA_MAX_SOUNDS 256
+/* Orders to a script actor (a MOHAA AI soldier, played by a grunt). pos is in GoldSrc units. */
+enum {
+	DOD_MOHAA_AI_ON = 0, DOD_MOHAA_AI_OFF, DOD_MOHAA_ATTACK,	/* attackplayer */
+	DOD_MOHAA_WALKTO, DOD_MOHAA_RUNTO, DOD_MOHAA_TURNTO, DOD_MOHAA_STOP
+};
 enum { DOD_MOHAA_PRINT_CONSOLE = 0, DOD_MOHAA_PRINT_HUD = 1, DOD_MOHAA_PRINT_CENTER = 2, DOD_MOHAA_PRINT_ERROR = 3 };
 
 /* Entity ids are opaque to this file: the backend packs edict index and serial so a
@@ -49,7 +59,14 @@ typedef struct DodMohaaBackend {
 	void (*set_velocity)(uint32_t id, const float vel[3], const float avel[3]);
 	void (*use_targets)(const char *targetname);                 /* "trigger $name" */
 	uint32_t (*spawn)(const char *classname, const char *const *keys, const char *const *values, int count);
-	void (*sound)(uint32_t id, const char *sample, int loop);   /* loop -1 stops the loop */
+	/* Play a sample (relative to sound/, e.g. "mohaa/mechanics/door_01.wav") on an entity. loop 1 plays it on the
+	   static channel (the wav's own loop marker repeats it), loop -1 stops that sample. attn is GoldSrc attenuation. */
+	void (*sound)(uint32_t id, const char *sample, int loop, float volume, float attn, int channel);
+	/* At level start, for each sample maps/<map>.snd names. NULL: nothing to precache (host tests). */
+	void (*precache_sound)(const char *sample);
+	/* An order to an actor; returns 0 when id is not one. The game sends "movedone" when a walk/run
+	   order arrives and "death" when the actor dies, through Dod_MohaaNotify. NULL: no actors. */
+	int (*actor)(uint32_t id, int order, const float pos[3]);
 	void *(*alloc)(void *ptr, size_t old_size, size_t new_size); /* NULL: malloc */
 } DodMohaaBackend;
 

@@ -3,10 +3,14 @@
 #include "util.h"
 #include "cbase.h"
 #include "player.h"
+#include "gamerules.h"
+#include "dod_game.h"
+#include "dod_runtime.h"
 #include "dod_mohaa.h"
 #include "dod_mohaa_ents.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 /* Script memory cap in KiB. MEM1 is tight on GameCube (see docs/MEMORY.md); a level whose
@@ -171,6 +175,8 @@ static void M_SetFlag( uint32_t id, int flag, int on )
 static void M_Remove( uint32_t id )
 {
 	edict_t *e = EdictFor( id );
+	if( e && DodGrunts_ScriptRemove( e ) )
+		return;	/* an actor: its grunt slot goes with it */
 	CBaseEntity *ent = e ? CBaseEntity::Instance( e ) : NULL;
 	if( ent && !ent->IsPlayer() )
 		UTIL_Remove( ent );
@@ -193,8 +199,49 @@ static void M_UseTargets( const char *targetname )
 	FireTargets( targetname, NULL, NULL, USE_TOGGLE, 0 );
 }
 
+/* A MOHAA AI soldier: "spawn actor ..." or "spawn models/human/<who>.tik ...". */
+static int IsActorClass( const char *classname )
+{
+	return !strcmp( classname, "actor" ) || !strncmp( classname, "models/human/", 13 ) || !strncmp( classname, "human/", 6 );
+}
+
+static uint32_t SpawnActor( const char *classname, const char *const *keys, const char *const *values, int count )
+{
+	Vector origin = g_vecZero;
+	float yaw = 0.0f;
+	const char *targetname = NULL;
+	/* German models play the Axis, everyone else the Allies (MOHAA's own split is by model too) */
+	int team = strstr( classname, "german" ) ? DOD_TEAM_AXIS : DOD_TEAM_ALLIES;
+	for( int i = 0; i < count; i++ ) {
+		if( !strcmp( keys[i], "origin" ) )
+			sscanf( values[i], "%f %f %f", &origin.x, &origin.y, &origin.z );
+		else if( !strcmp( keys[i], "angle" ) )
+			yaw = (float)atof( values[i] );
+		else if( !strcmp( keys[i], "angles" ) )
+			sscanf( values[i], "%*f %f", &yaw );
+		else if( !strcmp( keys[i], "targetname" ) )
+			targetname = values[i];
+		else if( !strcmp( keys[i], "model" ) && strstr( values[i], "german" ) )
+			team = DOD_TEAM_AXIS;
+	}
+	edict_t *e = DodGrunts_ScriptSpawn( team, origin, yaw );
+	if( !e )
+		return 0;
+	if( targetname )
+		e->v.targetname = ALLOC_STRING( targetname );
+	return IdFor( e );
+}
+
+static int M_Actor( uint32_t id, int order, const float pos[3] )
+{
+	edict_t *e = EdictFor( id );
+	return e ? DodGrunts_ScriptOrder( e, order, pos ) : 0;
+}
+
 static uint32_t M_Spawn( const char *classname, const char *const *keys, const char *const *values, int count )
 {
+	if( IsActorClass( classname ) )
+		return SpawnActor( classname, keys, values, count );
 	/* MOHAA's script helpers have no GoldSrc class: a point entity holds their place */
 	if( !strcmp( classname, "script_model" ) || !strcmp( classname, "script_origin" ) || !strcmp( classname, "script_object" ) )
 		classname = "info_target";
@@ -217,13 +264,33 @@ static uint32_t M_Spawn( const char *classname, const char *const *keys, const c
 	return IdFor( e );
 }
 
-static void M_Sound( uint32_t id, const char *sample, int loop )
+static void M_Precache( const char *sample )
 {
-	/* MOHAA plays ubersound aliases ("door_open"), not wav paths, and GoldSrc can only play
-	 * precached samples. Until the alias table is converted, log what a mission asks for. */
-	(void)id;
-	if( loop >= 0 )
-		ALERT( at_aiconsole, "mohaa: sound %s%s not mapped yet\n", sample, loop ? " (loop)" : "" );
+	/* the table outlives this call only as long as the level: give the engine its own copy */
+	PRECACHE_SOUND( (char *)STRING( ALLOC_STRING( sample ) ) );
+}
+
+static void M_Sound( uint32_t id, const char *sample, int loop, float volume, float attn, int channel )
+{
+	edict_t *e = EdictFor( id );
+	if( !e )
+		return;
+	if( loop < 0 ) {
+		STOP_SOUND( e, CHAN_STATIC, sample );
+		return;
+	}
+	int chan = CHAN_AUTO;
+	if( loop )
+		chan = CHAN_STATIC;	/* repeats by the wav's own loop marker */
+	else if( channel == DOD_MOHAA_CHAN_VOICE )
+		chan = CHAN_VOICE;
+	else if( channel == DOD_MOHAA_CHAN_ITEM )
+		chan = CHAN_ITEM;
+	else if( channel == DOD_MOHAA_CHAN_BODY )
+		chan = CHAN_BODY;
+	else if( channel == DOD_MOHAA_CHAN_WEAPON )
+		chan = CHAN_WEAPON;
+	EMIT_SOUND_DYN( e, chan, sample, volume, attn, 0, PITCH_NORM );
 }
 
 void DodGC_MohaaLevelInit( void )
@@ -252,10 +319,14 @@ void DodGC_MohaaLevelInit( void )
 	b.use_targets = M_UseTargets;
 	b.spawn = M_Spawn;
 	b.sound = M_Sound;
+	b.precache_sound = M_Precache;
+	b.actor = M_Actor;
 	size_t budget = (size_t)CVAR_GET_FLOAT( "mohaa_script_kb" ) * 1024u;
-	if( Dod_MohaaLevelInit( &b, STRING( gpGlobals->mapname ), gpGlobals->time, budget ) )
+	if( Dod_MohaaLevelInit( &b, STRING( gpGlobals->mapname ), gpGlobals->time, budget ) ) {
+		DodGrunts_PrecacheBodies();	/* the mission's soldiers wear the sides' player bodies */
 		ALERT( at_console, "mohaa: running maps/%s.scr (budget %u KiB)\n", STRING( gpGlobals->mapname ),
 			(unsigned)( budget / 1024u ) );
+	}
 }
 
 void DodGC_MohaaThink( void )
