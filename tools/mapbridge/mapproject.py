@@ -79,3 +79,47 @@ def seed():
     add(d, "dod_charlie_bunker", title="Charlie: bunker interior", parent="dod_charlie", bsp="dod_charlie", rotation=False,
         objectives=["Clear the bunker"], notes="sub-level placeholder: same stock BSP until it gets its own scene")
     return d
+
+# ---- stock DoD maps -------------------------------------------------------------------------------------------------------
+THEATERS = [   # (campaign, [maps in play order])
+    ("Normandy", ["dod_charlie", "dod_caen", "dod_merderet", "dod_saints", "dod_falaise", "dod_chemille"]),
+    ("Italy", ["dod_anzio", "dod_vicenza"]),
+    ("Western Front", ["dod_glider", "dod_kalt", "dod_jagd", "dod_donner", "dod_flugplatz"]),
+    ("Other", ["dod_avalanche", "dod_escape", "dod_flash", "dod_forest", "dod_kraftstoff", "dod_northbound", "dod_sturm", "dod_switch", "dod_zalec"]),
+]
+TITLES = {"dod_charlie": "Charlie (Omaha Beach)", "dod_caen": "Caen", "dod_merderet": "Merderet", "dod_saints": "Saints", "dod_falaise": "Falaise",
+          "dod_chemille": "Chemille", "dod_anzio": "Anzio", "dod_vicenza": "Vicenza", "dod_glider": "Glider", "dod_kalt": "Kalt", "dod_jagd": "Jagd",
+          "dod_donner": "Donner", "dod_flugplatz": "Flugplatz", "dod_avalanche": "Avalanche", "dod_escape": "Escape", "dod_flash": "Flash",
+          "dod_forest": "Forest", "dod_kraftstoff": "Kraftstoff", "dod_northbound": "Northbound", "dod_sturm": "Sturm", "dod_switch": "Switch", "dod_zalec": "Zalec"}
+
+def _brief(name):
+    try: t = open(os.path.join(STOCK, name + ".txt"), errors="replace").read().strip()
+    except OSError: return ""
+    return " ".join(t.split())[:600]
+
+def _facts(name):
+    """Objectives from the baked entity list: control points, spawns."""
+    f = os.path.expanduser("~/.cache/gsbridge/ref/%s.json" % name)
+    try: ents = json.load(open(f))["ents"]
+    except (OSError, ValueError, KeyError): return []
+    cp = sum(1 for e in ents if e["class"] == "dod_control_point"); out = []
+    if cp: out.append("Capture and hold %d control points" % cp)
+    if any(e["class"] == "dod_object" for e in ents): out.append("Complete the map objectives")
+    return out
+
+def preload_stock(d, keep_live=True):
+    """Add every stock BSP to the project (idempotent): title, briefing text from the map's .txt, objectives from its entities,
+    and a progression chain Normandy -> Italy -> Western Front -> Other. Existing entries keep what the user edited."""
+    have = {n[:-4] for n in os.listdir(STOCK) if n.endswith(".bsp")}
+    chain = [n for _, ms in THEATERS for n in ms if n in have] + sorted(have - {n for _, ms in THEATERS for n in ms})
+    for i, n in enumerate(chain):
+        m = get(d, n)
+        if not m:
+            m = add(d, n, title=TITLES.get(n, n[4:].title()), bsp=n, notes=_brief(n), objectives=_facts(n))
+        theater = next((c for c, ms in THEATERS if n in ms), "Other")
+        if "[" not in m["notes"] and not m["notes"].startswith("Campaign:"): m["notes"] = "Campaign: %s\n%s" % (theater, m["notes"])
+        if not m["next"] and i + 1 < len(chain): m["next"] = chain[i + 1]
+    live = get(d, "dod_live")
+    if live and keep_live and live["next"] in ("", "dod_charlie"): live["next"] = chain[0] if chain else ""
+    # remove the first-run sample's hand-made chain entries that no longer match the real chain
+    return d, chain

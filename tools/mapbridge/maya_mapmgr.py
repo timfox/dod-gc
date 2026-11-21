@@ -18,6 +18,7 @@ def _data():
     if _d is None:
         _d = mp.load()
         if not _d["maps"]: _d = mp.seed(); mp.save(_d)
+        if not any(m["bsp"] == "dod_anzio" or m["name"] == "dod_anzio" for m in _d["maps"]): mp.preload_stock(_d); mp.save(_d)   # first run: all stock maps
     return _d
 
 def _label(m):
