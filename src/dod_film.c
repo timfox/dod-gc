@@ -256,7 +256,7 @@ int DodFilm_ParseCast(DodFilmCast *cast, const char *text, char *err, int err_si
 			continue;
 		}
 		if (!strcmp(tok[0], "actor")) {
-			int team, cls = 0, prop = 0;
+			int team, cls = 0;
 			if (ntok < 3)
 				return set_err(err, err_size, lineno, "actor needs a name and a team");
 			if (cast->actor_count >= DOD_FILM_MAX_ACTORS)
@@ -264,17 +264,12 @@ int DodFilm_ParseCast(DodFilmCast *cast, const char *text, char *err, int err_si
 			team = team_from_name(tok[2]);
 			if (!team)
 				return set_err(err, err_size, lineno, "team must be allies or axis");
-			if (ntok >= 4 && !strcmp(tok[3], "vehicle")) {
-				prop = ntok >= 5 ? atoi(tok[4]) : 0;
-				if (prop < 1 || prop > DOD_FILM_MAX_PROPS)
-					return set_err(err, err_size, lineno, "vehicle needs a prop number 1..8");
-			} else if (ntok >= 4 && (cls = class_from_name(tok[3])) < 0)
+			if (ntok >= 4 && (cls = class_from_name(tok[3])) < 0)
 				return set_err(err, err_size, lineno, "unknown class");
 			cur = &cast->actors[cast->actor_count++];
 			snprintf(cur->name, sizeof(cur->name), "%s", tok[1]);
 			cur->team = team;
 			cur->player_class = cls;
-			cur->prop = prop;
 			continue;
 		}
 		if (!strcmp(tok[0], "vehicle")) {
