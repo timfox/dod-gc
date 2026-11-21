@@ -224,8 +224,29 @@ static void test_named_sequences(void)
 	assert(DodFilm_PlayFromName(DodFilm_PlayName(DOD_FILM_PLAY_UPPER_LOOP)) == DOD_FILM_PLAY_UPPER_LOOP);
 }
 
+static void test_vehicles(void)
+{
+	DodFilmCast cast;
+	char err[96], path[64];
+	assert(DodFilm_ParseCast(&cast,
+		"act 1\n"
+		"vehicle v0 sherman\n"
+		"key 0 100 200 -500 166 stand\n"
+		"key 8 400 200 -500 - stand\n"
+		"actor a1 allies rifleman\n"
+		"key 0 0 0 0 - run\n", err, sizeof(err)) == 2);
+	assert(!strcmp(cast.actors[0].model, "sherman") && cast.actors[0].team == 0);
+	assert(cast.actors[0].key_count == 2 && cast.actors[1].model[0] == '\0');
+	assert(DodFilm_ParseCast(&cast, "act 1\nvehicle v0\n", err, sizeof(err)) < 0);
+	DodFilm_VehiclePath("sherman", path, sizeof(path));
+	assert(!strcmp(path, "models/mapmodels/sherman.mdl"));
+	DodFilm_VehiclePath("models/film/panzer4.mdl", path, sizeof(path));
+	assert(!strcmp(path, "models/film/panzer4.mdl"));
+}
+
 int main(void)
 {
+	test_vehicles();
 	test_named_sequences();
 	test_parse();
 	test_errors();
