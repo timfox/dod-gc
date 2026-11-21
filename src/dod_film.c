@@ -208,6 +208,15 @@ static int class_from_name(const char *s)
 	return -1;
 }
 
+void DodFilm_VehiclePath(const char *name, char *out, int size)
+{
+	const size_t n = strlen(name);
+	if (n > 4 && !strcmp(name + n - 4, ".mdl"))
+		snprintf(out, (size_t)size, "%s", name);
+	else
+		snprintf(out, (size_t)size, "models/mapmodels/%s.mdl", name);
+}
+
 int DodFilm_ParseCast(DodFilmCast *cast, const char *text, char *err, int err_size)
 {
 	char line[256];
@@ -261,6 +270,18 @@ int DodFilm_ParseCast(DodFilmCast *cast, const char *text, char *err, int err_si
 			snprintf(cur->name, sizeof(cur->name), "%s", tok[1]);
 			cur->team = team;
 			cur->player_class = cls;
+			continue;
+		}
+		if (!strcmp(tok[0], "vehicle")) {
+			if (ntok < 3)
+				return set_err(err, err_size, lineno, "vehicle needs a name and a model");
+			if (cast->actor_count >= DOD_FILM_MAX_ACTORS)
+				return set_err(err, err_size, lineno, "too many actors");
+			cur = &cast->actors[cast->actor_count++];
+			snprintf(cur->name, sizeof(cur->name), "%s", tok[1]);
+			snprintf(cur->model, sizeof(cur->model), "%s", tok[2]);
+			cur->team = 0;
+			cur->player_class = 0;
 			continue;
 		}
 		if (!strcmp(tok[0], "key")) {
