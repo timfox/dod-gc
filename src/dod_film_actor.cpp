@@ -616,6 +616,16 @@ static void DodFilm_FireFx( const DodFilmFx *f )
 	case DOD_FX_KIND_BLOOD:
 		DodFilm_Blood( o, Vector( 0, 0, 1.0f ), 1.6f * s );
 		break;
+	case DOD_FX_KIND_GIBS: {
+		/* a scripted body blown apart: that side's gibs (the other side's if only those loaded) */
+		int team = f->team == DOD_TEAM_AXIS ? DOD_TEAM_AXIS : DOD_TEAM_ALLIES;
+		if( !g_film_gibs[team] )
+			team = DOD_TEAM_AXIS + DOD_TEAM_ALLIES - team;
+		DodFilm_Gibs( o, Vector( 0, 0, 0 ), team );
+		DodFilm_Blood( o + Vector( 0, 0, 16.0f ), Vector( 0.7f, 0.7f, 0.3f ), 1.5f * s );
+		DodFilm_Blood( o + Vector( 0, 0, 16.0f ), Vector( -0.7f, -0.7f, 0.3f ), 1.5f * s );
+		break;
+	}
 	case DOD_FX_KIND_TRACER:
 		MESSAGE_BEGIN( MSG_BROADCAST, SVC_TEMPENTITY );
 			WRITE_BYTE( TE_TRACER );
