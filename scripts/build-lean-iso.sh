@@ -228,6 +228,9 @@ rm -rf "$LEAN/models/player"
 # The two team gib models (allied_gibs/axis_gibs, about 54 KB each): film deaths by a shell burst come
 # apart with them (dod_film_actor.cpp DodFilm_Gibs). Only a film disc carries them.
 rm -f "$LEAN/models/allied_gibs.mdl" "$LEAN/models/axis_gibs.mdl"
+# Our own cinematic vehicle models (tools/vehicle/obj_to_mdl.py: content/gopex/models/film/<name>.mdl, a
+# cast's "vehicle <name> models/film/<name>.mdl"). Only a film disc carries them.
+rm -rf "$LEAN/models/film"
 if [[ -f "$LEAN/listenserver.cfg" ]]; then
 	awk -v b="$FILM_BEGIN" -v e="$FILM_END" '$0==b{skip=1;next} $0==e{skip=0;next} !skip' \
 		"$LEAN/listenserver.cfg" > "$LEAN/listenserver.cfg.tmp"
@@ -255,6 +258,12 @@ if [[ -n "$FILM" ]]; then
 			echo "warning: film: $DODGC_CONTENT_DOD/models/$g missing; deaths by a burst bleed but do not gib" >&2
 		fi
 	done
+	gopex_film="$SCRIPT_DIR/../content/gopex/models/film"
+	if compgen -G "$gopex_film/*.mdl" > /dev/null; then
+		mkdir -p "$LEAN/models/film"
+		cp -f "$gopex_film"/*.mdl "$LEAN/models/film/"
+		echo "==> film: $(ls "$LEAN/models/film"/*.mdl | wc -l) vehicle model(s) from content/gopex"
+	fi
 	{ echo "$FILM_BEGIN"; cat "$film_cfg"; echo "$FILM_END"; } >> "$LEAN/listenserver.cfg"
 	echo "==> film: $(ls "$LEAN/cine"/*.cam | wc -l) camera path(s), $(ls "$LEAN/cine"/*.act 2>/dev/null | wc -l) cast(s), session $(basename "$film_cfg")"
 fi

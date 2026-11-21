@@ -339,6 +339,18 @@ static void DodFilm_PlaceVehicle( CDodFilmActor *ent, const DodFilmSample *s, fl
 		DodFilm_OriginZ( s->origin, DOD_POSE_STAND ) - DodFilm_PoseHeight( DOD_POSE_STAND ) );
 	UTIL_SetOrigin( ent->pev, origin );
 	ent->pev->angles = Vector( 0.0f, s->yaw, 0.0f );
+	/* The turret: bone controller 0 of a film vehicle model (tools/vehicle/obj_to_mdl.py: -180..180 degrees
+	 * about the turret ring). It holds its gun on the cast's aim point as the hull turns and drives; with no
+	 * aim it points ahead. A model without a controller ignores it. */
+	{
+		const DodFilmActor *a = &g_film_cast.actors[ent->m_actor];
+		float turret = 0.0f;
+		if( a->has_aim ) {
+			turret = atan2f( a->aim[1] - origin.y, a->aim[0] - origin.x ) * 57.29578f - s->yaw;
+			turret = fmodf( turret + 540.0f, 360.0f ) - 180.0f;
+		}
+		ent->SetBoneController( 0, turret );
+	}
 	if( t >= 0.0f )
 		ent->m_phase = fmodf( ent->m_phase + dt * ent->m_flFrameRate, 256.0f );
 	ent->pev->frame = ent->m_phase;
