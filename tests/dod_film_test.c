@@ -120,9 +120,33 @@ static void test_sample(void)
 	assert(near(s.origin[0], 400, 1e-3f) && !s.moving && s.pose == DOD_POSE_CROUCH && near(s.yaw, 0, 1e-3f));
 	DodFilm_Sample(&cast.actors[0], 9.0f, &s);
 	assert(near(s.yaw, 90, 1e-3f) && s.pose == DOD_POSE_CROUCH);
+	/* he turns to the 90 over half a second round the key, not in one frame */
+	DodFilm_Sample(&cast.actors[0], 5.75f, &s);
+	assert(near(s.yaw, 0, 1e-3f));
+	DodFilm_Sample(&cast.actors[0], 6.0f, &s);
+	assert(near(s.yaw, 45, 1e-3f));
+	DodFilm_Sample(&cast.actors[0], 5.9f, &s);
+	assert(s.yaw > 1.0f && s.yaw < 45.0f);
+	DodFilm_Sample(&cast.actors[0], 6.25f, &s);
+	assert(near(s.yaw, 90, 1e-3f));
 	/* one key: holds it */
 	DodFilm_Sample(&cast.actors[1], 3.0f, &s);
 	assert(s.origin[1] == 20 && near(s.yaw, 180, 1e-3f) && s.pose == DOD_POSE_AIM);
+}
+
+static void test_turn_short_way(void)
+{
+	DodFilmCast cast;
+	DodFilmSample s;
+	char err[96];
+	/* 170 to -170 turns 20 degrees through 180, not 340 the long way */
+	assert(DodFilm_ParseCast(&cast, "act 1\nactor a1 allies\nkey 0 0 0 0 170 aim\nkey 2 0 0 0 -170 aim\n"
+		"key 3 0 0 0 -170 aim\n", err, sizeof(err)) == 1);
+	DodFilm_Sample(&cast.actors[0], 2.0f, &s);
+	assert(near(fmodf(s.yaw + 360.0f, 360.0f), 180.0f, 1e-3f));
+	/* and once round, he holds the new facing */
+	DodFilm_Sample(&cast.actors[0], 2.6f, &s);
+	assert(near(fmodf(s.yaw + 360.0f, 360.0f), 190.0f, 1e-3f));
 }
 
 static void test_poses(void)
@@ -206,6 +230,7 @@ int main(void)
 	test_parse();
 	test_errors();
 	test_sample();
+	test_turn_short_way();
 	test_fx();
 	test_poses();
 	return 0;
