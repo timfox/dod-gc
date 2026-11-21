@@ -75,4 +75,11 @@ BOOL DodGC_TeamSpawnPoint( DodTeam team, Vector *origin, float *yaw );
 /* True on a map a film plan precached actors for (cine/cast.txt): the human there is a camera. */
 int DodFilm_IsFilmMap( void );
 
+/* Shared effect quality level 0..1 (smoothed frame time and free edicts) and the gib budget that floats with it. */
+float DodGC_QualityLevel( void );
+int DodGC_GibLimit( void );
+int DodGC_GibsAllowed( int wanted );
+void DodGC_PrecacheGibs( void );
+const char *DodGC_GibModel( entvars_t *pevVictim );
+
 #endif

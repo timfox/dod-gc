@@ -11,4 +11,4 @@ DODGC_ENGINE_REF="master"
 # some machines. The published fork branch below is what dod-gc integrates into; the commit is pinned.
 DODGC_HLSDK_URL="https://github.com/timfox/hlsdk-portable.git"
 DODGC_HLSDK_BRANCH="claude/dod-hlsdk-integration"
-DODGC_HLSDK_COMMIT="f85de9104c47d55c793b2b767cc61590d673cc45"
+DODGC_HLSDK_COMMIT="0e324dac6ec23a721bcaf2788dbd7368add3b2a8"

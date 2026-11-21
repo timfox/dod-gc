@@ -225,9 +225,17 @@ rm -rf "$LEAN/cine"
 # stages player bodies of its own (the disc builder reads the retail ones), so this folder only ever
 # holds a plan's, and a disc built without --film goes back to retail.
 rm -rf "$LEAN/models/player"
-# The two team gib models (allied_gibs/axis_gibs, about 54 KB each): film deaths by a shell burst come
-# apart with them (dod_film_actor.cpp DodFilm_Gibs). Only a film disc carries them.
-rm -f "$LEAN/models/allied_gibs.mdl" "$LEAN/models/axis_gibs.mdl"
+# The two team gib models (allied_gibs/axis_gibs, about 54 KB each): every disc carries them, for the live
+# gibs a death throws (DodGC_PrecacheGibs, loaded on demand) and the film deaths by a shell burst
+# (dod_film_actor.cpp DodFilm_Gibs).
+for g in allied_gibs.mdl axis_gibs.mdl; do
+	if [[ -f "$DODGC_CONTENT_DOD/models/$g" ]]; then
+		mkdir -p "$LEAN/models"
+		cp -f "$DODGC_CONTENT_DOD/models/$g" "$LEAN/models/"
+	else
+		echo "warning: $DODGC_CONTENT_DOD/models/$g missing; deaths will not gib with the side's own model" >&2
+	fi
+done
 # Our own cinematic vehicle models (tools/vehicle/obj_to_mdl.py: content/gopex/models/film/<name>.mdl, a
 # cast's "vehicle <name> models/film/<name>.mdl"). Only a film disc carries them.
 rm -rf "$LEAN/models/film"
@@ -250,14 +258,6 @@ if [[ -n "$FILM" ]]; then
 		cp -rf "$FILM/models/player/." "$LEAN/models/player/"
 		echo "==> film: $(find "$LEAN/models/player" -name '*.mdl' | wc -l) team body model(s) from the plan"
 	fi
-	for g in allied_gibs.mdl axis_gibs.mdl; do
-		if [[ -f "$DODGC_CONTENT_DOD/models/$g" ]]; then
-			mkdir -p "$LEAN/models"
-			cp -f "$DODGC_CONTENT_DOD/models/$g" "$LEAN/models/"
-		else
-			echo "warning: film: $DODGC_CONTENT_DOD/models/$g missing; deaths by a burst bleed but do not gib" >&2
-		fi
-	done
 	gopex_film="$SCRIPT_DIR/../content/gopex/models/film"
 	if compgen -G "$gopex_film/*.mdl" > /dev/null; then
 		mkdir -p "$LEAN/models/film"
