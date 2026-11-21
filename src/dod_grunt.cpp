@@ -356,8 +356,14 @@ static void GruntShoot( int i )
 		return;
 	TraceResult tr;
 	UTIL_TraceLine( from, aim + dir * 8.0f, dont_ignore_monsters, e->edict(), &tr );
-	if( tr.pHit != pl->edict() )
+	if( tr.pHit != pl->edict() ) {
+		static int miss_logs;
+		if( miss_logs++ < 8 )
+			ALERT( at_console, "GRUNT %d shot missed its man: hit %s (fraction %.2f of %.0f), target at %.0f %.0f %.0f solid %d movetype %d\n", i,
+				tr.pHit ? STRING( tr.pHit->v.classname ) : "nothing", tr.flFraction, dist,
+				pl->pev->origin.x, pl->pev->origin.y, pl->pev->origin.z, (int)pl->pev->solid, (int)pl->pev->movetype );
 		return;	/* something stepped in between */
+	}
 	g_pool.stats.hits++;
 	ClearMultiDamage();
 	pl->TraceAttack( e->pev, ( gun ? gun->damage : 30.0f ) * 0.6f, dir, &tr, DMG_BULLET | DMG_NEVERGIB );
