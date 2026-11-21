@@ -72,6 +72,9 @@ static int DodFilm_VehiclePrecached( const char *name )
  * the GameCube heap has free once a map is up, so it never loaded and no burst drew;
  * explode1.spr is a fraction of that. 0 falls back to g_sModelIndexFireball. */
 static int g_film_fireball;
+/* The sides' gib models (models/allied_gibs.mdl, axis_gibs.mdl), precached when cine/cast.txt has a
+ * "gibs" line: index by team, 0 when not loaded. */
+static int g_film_gibs[DOD_TEAM_AXIS + 1];
 
 static int DodFilm_PoolLive( int i )
 {
@@ -562,6 +565,34 @@ static void DodFilm_FireFx( const DodFilmFx *f )
 	case DOD_FX_KIND_BLOOD:
 		DodFilm_Blood( o, Vector( 0, 0, 1.0f ), s );
 		break;
+	case DOD_FX_KIND_GIBS: {
+		/* the body comes apart: pieces of the side's gib model thrown up and out, and a lot of blood */
+		const int team = f->team == DOD_TEAM_AXIS ? DOD_TEAM_AXIS : DOD_TEAM_ALLIES;
+		const int model = g_film_gibs[team] ? g_film_gibs[team] : g_film_gibs[DOD_TEAM_AXIS + DOD_TEAM_ALLIES - team];
+		if( model ) {
+			MESSAGE_BEGIN( MSG_BROADCAST, SVC_TEMPENTITY );
+				WRITE_BYTE( TE_BREAKMODEL );
+				WRITE_COORD( o.x );
+				WRITE_COORD( o.y );
+				WRITE_COORD( o.z + 24.0f );
+				WRITE_COORD( 24 );	/* size of the box the pieces start in */
+				WRITE_COORD( 24 );
+				WRITE_COORD( 48 );
+				WRITE_COORD( 0 );	/* velocity: up, spread by the random part */
+				WRITE_COORD( 0 );
+				WRITE_COORD( 160.0f * s );
+				WRITE_BYTE( DodFilm_Byte( 22.0f * s ) );	/* random velocity, x10 */
+				WRITE_SHORT( model );
+				WRITE_BYTE( DodFilm_Byte( 6.0f + 4.0f * s ) );	/* pieces */
+				WRITE_BYTE( 80 );	/* life, x0.1 s: they lie a while before they fade */
+				WRITE_BYTE( BREAK_FLESH );
+			MESSAGE_END();
+		}
+		DodFilm_Blood( o + Vector( 0, 0, 24.0f ), Vector( 0, 0, 1.0f ), 2.0f * s );
+		DodFilm_Blood( o + Vector( 0, 0, 16.0f ), Vector( 0.7f, 0.7f, 0.3f ), 1.5f * s );
+		DodFilm_Blood( o + Vector( 0, 0, 16.0f ), Vector( -0.7f, -0.7f, 0.3f ), 1.5f * s );
+		break;
+	}
 	case DOD_FX_KIND_TRACER:
 		MESSAGE_BEGIN( MSG_BROADCAST, SVC_TEMPENTITY );
 			WRITE_BYTE( TE_TRACER );
@@ -731,6 +762,7 @@ void DodFilm_Init( void )
 	memset( g_film_gun, 0, sizeof( g_film_gun ) );
 	memset( g_film_vehicle, 0, sizeof( g_film_vehicle ) );
 	g_film_fireball = 0;
+	memset( g_film_gibs, 0, sizeof( g_film_gibs ) );
 	byte *text = LOAD_FILE_FOR_ME( "cine/cast.txt", &length );
 	if( !text )
 		return;
@@ -766,6 +798,14 @@ void DodFilm_Init( void )
 				p++;
 			if( p < end )
 				p++;
+			if( !strncmp( line, "gibs", 4 ) && ( !line[4] || line[4] == ' ' || line[4] == '\r' ) ) {
+				for( int team = DOD_TEAM_ALLIES; team <= DOD_TEAM_AXIS; team++ )
+					if( g_film_precached[team] && !g_film_gibs[team] ) {
+						g_film_gibs[team] = PRECACHE_MODEL( (char *)( team == DOD_TEAM_AXIS ? "models/axis_gibs.mdl" : "models/allied_gibs.mdl" ) );
+						ALERT( at_console, "FILM: precached %s gibs\n", team == DOD_TEAM_AXIS ? "axis" : "allied" );
+					}
+				continue;
+			}
 			char vname[DOD_FILM_NAME];
 			if( sscanf( line, "vehicle %31s", vname ) == 1 ) {
 				int slot = -1;
