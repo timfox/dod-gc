@@ -1681,13 +1681,92 @@ int CHalfLifeDoD::DeadPlayerAmmo( CBasePlayer *pPlayer )
 	return GR_PLR_DROP_AMMO_ACTIVE;
 }
 
-#define DOD_GIB_SECONDS 6.0f
+/* Shared effect quality level, 0 (thin everything) to 1 (full): the smoothed frame time against the 60 FPS
+ * budget (full at 16.7 ms or less, zero at 20 ms) and the free edicts (full at 90 free, zero at 30; the engine
+ * tip is 460 and a map already uses about 425). Effects ask this instead of carrying fixed caps, so each live
+ * limit floats under a hard ceiling. Free heap is not visible to the game DLL; the engine side reads it. */
+static float g_dod_frame_ms = 16.7f;
+float DodGC_QualityLevel( void )
+{
+	static float last_time = -1.0f;
+	if( gpGlobals->time != last_time ) {
+		last_time = gpGlobals->time;
+		const float ms = gpGlobals->frametime * 1000.0f;
+		if( ms > 0.0f && ms < 500.0f )
+			g_dod_frame_ms += ( ms - g_dod_frame_ms ) * 0.05f;
+	}
+	float fq = ( 20.0f - g_dod_frame_ms ) / ( 20.0f - 16.7f );
+	float eq = ( (float)( gpGlobals->maxEntities - g_engfuncs.pfnNumberOfEntities() ) - 30.0f ) / 60.0f;
+	if( fq < 0.0f ) fq = 0.0f; else if( fq > 1.0f ) fq = 1.0f;
+	if( eq < 0.0f ) eq = 0.0f; else if( eq > 1.0f ) eq = 1.0f;
+	return fq < eq ? fq : eq;
+}
 
-/* Remove gibs older than DOD_GIB_SECONDS (all of them and any weapon box when `all`, at a round
- * restart). Edicts past the clients; the first sighting stamps the gib's unused fuser4. */
+/* Gibs: a hard ceiling of DOD_GIB_CEILING live pieces, and a live limit and lifetime that float with the
+ * quality level (a gibbed man throws 5 pieces). Under pressure the oldest go first and a death throws fewer. */
+#define DOD_GIB_CEILING 24
+#define DOD_GIB_LIFE_MAX 8.0f
+#define DOD_GIB_LIFE_MIN 2.0f
+static int g_dod_gibs_live;
+
+int DodGC_GibLimit( void )
+{
+	return (int)( (float)DOD_GIB_CEILING * DodGC_QualityLevel() );
+}
+
+/* How many of `wanted` pieces a death may throw now (and counts them as live). */
+int DodGC_GibsAllowed( int wanted )
+{
+	int room = DodGC_GibLimit() - g_dod_gibs_live;
+	if( room < 0 ) room = 0;
+	if( wanted > room ) wanted = room;
+	g_dod_gibs_live += wanted;
+	return wanted;
+}
+
+static float DodGC_GibLife( void )
+{
+	return DOD_GIB_LIFE_MIN + ( DOD_GIB_LIFE_MAX - DOD_GIB_LIFE_MIN ) * DodGC_QualityLevel();
+}
+
+/* Retail DoD throws its own side's gibs (allied_gibs.mdl, axis_gibs.mdl, about 54 KB each; hgibs.mdl is 71 KB and is
+ * not on the lean disc). A model that is not on the disc is skipped, and the other side's or hgibs stands in. */
+static const char *g_dod_gib_model[2];	/* allies, axis; NULL when absent */
+void DodGC_PrecacheGibs( void )
+{
+	static const char *names[2] = { "models/allied_gibs.mdl", "models/axis_gibs.mdl" };
+	for( int i = 0; i < 2; i++ ) {
+		int len = 0;
+		byte *f = LOAD_FILE_FOR_ME( (char *)names[i], &len );
+		g_dod_gib_model[i] = NULL;
+		if( f ) {
+			FREE_FILE( f );
+			PRECACHE_MODEL( (char *)names[i] );
+			g_dod_gib_model[i] = names[i];
+		}
+	}
+}
+
+const char *DodGC_GibModel( entvars_t *pevVictim )
+{
+	CBaseEntity *v = pevVictim ? CBaseEntity::Instance( pevVictim ) : NULL;
+	const DodTeam team = v && v->IsPlayer() ? DodGC_TeamForPlayer( (CBasePlayer *)v ) : DOD_TEAM_UNASSIGNED;
+	const int i = team == DOD_TEAM_AXIS ? 1 : 0;
+	if( g_dod_gib_model[i] )
+		return g_dod_gib_model[i];
+	if( g_dod_gib_model[1 - i] )
+		return g_dod_gib_model[1 - i];
+	return NULL;	/* the caller keeps hgibs.mdl */
+}
+
+/* Remove gibs older than their lifetime, then the oldest while over the live limit (all of them and any weapon
+ * box when `all`, at a round restart). Edicts past the clients; the first sighting stamps the gib's unused
+ * fuser4, and edict order is roughly spawn order. */
 static void DodGC_TrimEdicts( BOOL all )
 {
-	int removed = 0;
+	int removed = 0, live = 0;
+	const float life = DodGC_GibLife();
+	const int limit = DodGC_GibLimit();
 	for( int i = gpGlobals->maxClients + 1; i < gpGlobals->maxEntities; i++ ) {
 		edict_t *e = INDEXENT( i );
 		if( !e || e->free || !e->v.classname )
@@ -1697,8 +1776,10 @@ static void DodGC_TrimEdicts( BOOL all )
 		if( FStrEq( cn, "gib" ) ) {
 			if( e->v.fuser4 == 0.0f )
 				e->v.fuser4 = gpGlobals->time;
-			if( !all && gpGlobals->time - e->v.fuser4 <= DOD_GIB_SECONDS )
+			if( !all && gpGlobals->time - e->v.fuser4 <= life ) {
+				live++;
 				continue;
+			}
 			ent = CBaseEntity::Instance( e );
 			if( ent ) { UTIL_Remove( ent ); removed++; }
 		} else if( all && FStrEq( cn, "weaponbox" ) ) {
@@ -1706,6 +1787,16 @@ static void DodGC_TrimEdicts( BOOL all )
 			if( ent ) { ( (CWeaponBox *)ent )->Kill(); removed++; }
 		}
 	}
+	/* Over the live limit: drop the oldest survivors (lowest edict index first) until it fits. */
+	for( int i = gpGlobals->maxClients + 1; live > limit && i < gpGlobals->maxEntities; i++ ) {
+		edict_t *e = INDEXENT( i );
+		CBaseEntity *ent;
+		if( !e || e->free || !e->v.classname || ( e->v.flags & FL_KILLME ) || !FStrEq( STRING( e->v.classname ), "gib" ) )
+			continue;
+		ent = CBaseEntity::Instance( e );
+		if( ent ) { UTIL_Remove( ent ); removed++; live--; }
+	}
+	g_dod_gibs_live = live;
 	if( all && removed )
 		ALERT( at_console, "DoD round cleanup: removed %d gibs/weapon boxes\n", removed );
 }
