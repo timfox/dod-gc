@@ -958,6 +958,17 @@ BOOL CHalfLifeDoD::ClientCommand( CBasePlayer *pPlayer, const char *pcmd )
 			DodGC_Voice( pPlayer, voice, FALSE );
 		return TRUE;
 	}
+	/* dod_fists: unarmed melee. Stock DoD has no fists, so this reuses the melee weapon with an empty view model: the same
+	 * swing, no blade on screen. Picking the weapon up again (a deploy) puts the knife view model back. */
+	if( FStrEq( pcmd, "dod_fists" ) ) {
+		if( pPlayer->m_pActiveItem && FClassnameIs( pPlayer->m_pActiveItem->pev, "weapon_crowbar" ) ) {
+			if( FStrEq( STRING( pPlayer->pev->viewmodel ), "models/null.mdl" ) )
+				pPlayer->m_pActiveItem->Deploy();
+			else
+				pPlayer->pev->viewmodel = MAKE_STRING( "models/null.mdl" );
+		}
+		return TRUE;
+	}
 	if( FStrEq( pcmd, "dod_achievements" ) ) {
 		DodGC_AchListing( pPlayer );
 		return TRUE;
@@ -1218,7 +1229,10 @@ static void DodGC_AchOnKill( CBasePlayer *pVictim, entvars_t *pKiller, entvars_t
 	const DodTeam kteam = DodGC_TeamForPlayer( kp );
 	const DodPlayerState *st = Dod_GetPlayer( DodGC_PlayerIndex( kp ) );
 	DodAchState *ach = DodGC_Achievements();
-	const DodKillWeapon weapon = DodAch_ClassifyKill( cls, kteam == DOD_TEAM_AXIS );
+	DodKillWeapon weapon = DodAch_ClassifyKill( cls, kteam == DOD_TEAM_AXIS );
+	/* Knuckleduster: the melee weapon with its view model hidden (`dod_fists`) is the fists */
+	if( ( weapon == DOD_KW_KNIFE || weapon == DOD_KW_SHOVEL ) && FStrEq( STRING( kp->pev->viewmodel ), "models/null.mdl" ) )
+		weapon = DOD_KW_FISTS;
 	DodGC_AchAnnounce( kp, DodAch_RecordKill( ach, weapon, st ? st->player_class : DOD_CLASS_NONE ) );
 }
 
