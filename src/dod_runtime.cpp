@@ -15,6 +15,7 @@
 #include "dod_achievements.h"
 #include "dod_bot.h"
 #include "dod_bots.h"
+#include "dod_mohaa_ents.h"
 #include "animation.h"
 #include "pm_defs.h"
 
@@ -605,6 +606,7 @@ CHalfLifeDoD::CHalfLifeDoD()
 	}
 	DodGrunts_Init();
 	DodFilm_Init();	/* after the country and paratroopers: they pick the actors' bodies */
+	DodGC_MohaaLevelInit();	/* MOHAA maps: run maps/<map>.scr (nothing happens on DoD maps) */
 	Dod_ClearObjectives();
 	round_seconds = CVAR_GET_FLOAT( "mp_timelimit" ) * 60.0f;
 	if( round_seconds <= 0.0f )
@@ -2010,6 +2012,7 @@ void CHalfLifeDoD::Think( void )
 	DodBots_Think();
 	DodFilm_Think();
 	DodGrunts_Think();
+	DodGC_MohaaThink();
 	DodGC_SpectatorThink();
 	DodGC_UpdateMovement();
 	DodGC_ManageWeaponBoxes();
