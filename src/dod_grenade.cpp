@@ -33,6 +33,7 @@ void DodGrenade_Precache( void )
 {
 	DodGrenadeDef allies, axis;
 
+	PRECACHE_MODEL( (char *)"models/null.mdl" );	/* the empty view model of the fists (dod_fists), 2 KB */
 	if( !Dod_GetGrenade( DOD_TEAM_ALLIES, &allies ) || !Dod_GetGrenade( DOD_TEAM_AXIS, &axis ) )
 		return;
 	/* Both sides are needed: a client can pick either team after the map
