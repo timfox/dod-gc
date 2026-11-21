@@ -724,6 +724,46 @@ float Dod_GrenadeThrowSpeed(const DodGrenadeDef *def, float view_pitch)
 	return speed > def->throw_speed ? def->throw_speed : speed;
 }
 
+int Dod_GrenadeLobPitch(const DodGrenadeDef *def, float distance, float dz, float *view_pitch, float *landed)
+{
+	const float grav = 400.0f, dt = 0.02f;	/* sv_gravity 800 x the grenade's 0.5 */
+	float best_err = 1e9f, best_pitch = 0.0f, best_range = 0.0f;
+	int vp;
+
+	if (!def || !view_pitch || distance <= 0.0f)
+		return 0;
+	for (vp = -80; vp <= 80; vp++) {
+		const float pitch = Dod_GrenadeThrowPitch((float)vp) * (3.14159265f / 180.0f);
+		const float speed = Dod_GrenadeThrowSpeed(def, (float)vp);
+		float x = 0.0f, z = 0.0f, vx = cosf(pitch) * speed, vz = -sinf(pitch) * speed, t;
+		float range = -1.0f, err;
+		for (t = 0.0f; t < def->fuse; t += dt) {
+			const float pz = z;
+			x += vx * dt;
+			vz -= grav * dt;
+			z += vz * dt;
+			if (vz < 0.0f && pz >= dz && z < dz) {	/* coming down through the target's height */
+				range = x;
+				break;
+			}
+		}
+		if (range < 0.0f)
+			continue;
+		err = range > distance ? range - distance : distance - range;
+		if (err < best_err) {
+			best_err = err;
+			best_pitch = (float)vp;
+			best_range = range;
+		}
+	}
+	if (best_err > distance * 0.12f + 24.0f)
+		return 0;
+	*view_pitch = best_pitch;
+	if (landed)
+		*landed = best_range;
+	return 1;
+}
+
 float Dod_GrenadeFuseLeft(const DodGrenadeDef *def, float held_seconds)
 {
 	float left;

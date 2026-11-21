@@ -255,6 +255,9 @@ float Dod_GrenadeThrowPitch(float view_pitch);
 /* Throw speed for a view pitch in degrees, clamped to the def's maximum.
  * Looking up lobs further, down is a short toss. */
 float Dod_GrenadeThrowSpeed(const DodGrenadeDef *def, float view_pitch);
+/* The view pitch (degrees, negative looks up) that lands a thrown grenade about `distance` units away and `dz` units above the thrower's eye
+ * (HL grenade: gravity 0.5 x 800, no air drag). Returns 0 when the target is out of range; *landed gets the range the pitch reaches. */
+int Dod_GrenadeLobPitch(const DodGrenadeDef *def, float distance, float dz, float *view_pitch, float *landed);
 /* Fuse left after cooking for held_seconds; never negative. */
 float Dod_GrenadeFuseLeft(const DodGrenadeDef *def, float held_seconds);
 

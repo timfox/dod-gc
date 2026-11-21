@@ -625,6 +625,17 @@ static void test_grenades(void)
 		assert(s >= 0.0f && s <= allies.throw_speed);
 	}
 	assert(Dod_GrenadeThrowSpeed(0, 0.0f) == 0.0f);
+	{
+		float vp = 0.0f, landed = 0.0f;
+		int d;
+		for (d = 300; d <= 600; d += 100) {
+			assert(Dod_GrenadeLobPitch(&allies, (float)d, 0.0f, &vp, &landed));
+			assert(fabsf(landed - (float)d) < (float)d * 0.12f + 24.0f);
+			assert(vp > -80.0f && vp < 80.0f);
+		}
+		assert(!Dod_GrenadeLobPitch(&allies, 5000.0f, 0.0f, &vp, &landed));
+		assert(!Dod_GrenadeLobPitch(0, 300.0f, 0.0f, &vp, &landed));
+	}
 	assert(Dod_GrenadeThrowPitch(0.0f) == -10.0f);
 	assert(fabsf(Dod_GrenadeThrowPitch(-90.0f) + 90.0f) < 0.001f);
 	assert(fabsf(Dod_GrenadeThrowPitch(90.0f) - 90.0f) < 0.001f);
