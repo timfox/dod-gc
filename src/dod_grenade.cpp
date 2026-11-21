@@ -82,6 +82,12 @@ CGrenade *DodGrenade_Throw( CBasePlayer *pPlayer, float held )
 
 	if( strcmp( def.world_model, "models/w_grenade.mdl" ) )
 		SET_MODEL( ENT( pGrenade->pev ), def.world_model );
+	/* ShootTimed's SET_MODEL hits the engine's weapon-model stub on this route (models/w_*: modelindex 0, SOLID_NOT, MOVETYPE_NONE),
+	 * which froze every grenade where it was released. Put back what CGrenade::Spawn set. */
+	pGrenade->pev->movetype = MOVETYPE_BOUNCE;
+	pGrenade->pev->solid = SOLID_BBOX;
+	UTIL_SetSize( pGrenade->pev, Vector( 0, 0, 0 ), Vector( 0, 0, 0 ) );
+	UTIL_SetOrigin( pGrenade->pev, pGrenade->pev->origin );
 	pGrenade->pev->dmg = def.damage;
 	pGrenade->pev->sequence = 0;
 	pGrenade->pev->framerate = 1.0f;
