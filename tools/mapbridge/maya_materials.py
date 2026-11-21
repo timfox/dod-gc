@@ -22,8 +22,18 @@ def safe(name):
 
 def material(name):
     """Create (or return) the lambert+file texture for a WAD texture name."""
-    idx = _index()[name]; sg = "gs_" + safe(name) + "_SG"
+    sg = "gs_" + safe(name) + "_SG"
     if cmds.objExists(sg): return sg
+    idx = _index().get(name)
+    if idx is None:      # not in any WAD we extracted: show it exactly like the engine does, the pink/black checker (name kept for the .map)
+        import missing_tex
+        sh = cmds.shadingNode("lambert", asShader=True, name="gs_" + safe(name))
+        cmds.addAttr(sh, ln="gs_texture", dt="string"); cmds.setAttr(sh + ".gs_texture", name, type="string")
+        f = cmds.shadingNode("file", asTexture=True, isColorManaged=True); cmds.setAttr(f + ".fileTextureName", missing_tex.path(), type="string")
+        cmds.setAttr(f + ".filterType", 0); p2 = cmds.shadingNode("place2dTexture", asUtility=True); cmds.connectAttr(p2 + ".outUV", f + ".uvCoord")
+        cmds.setAttr(p2 + ".repeatU", 8); cmds.setAttr(p2 + ".repeatV", 8); cmds.connectAttr(f + ".outColor", sh + ".color")
+        sgn = cmds.sets(renderable=True, noSurfaceShader=True, empty=True, name=sg); cmds.connectAttr(sh + ".outColor", sgn + ".surfaceShader")
+        return sgn
     sh = cmds.shadingNode("lambert", asShader=True, name="gs_" + safe(name))
     cmds.addAttr(sh, ln="gs_texture", dt="string"); cmds.setAttr(sh + ".gs_texture", name, type="string")
     f = cmds.shadingNode("file", asTexture=True, isColorManaged=True, name="gsf_" + safe(name))

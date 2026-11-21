@@ -19,7 +19,9 @@ def bake(bsp, outdir, name="dod_live"):
     src = Path(tempfile.mkdtemp(prefix="bl_src_")); (src / "maps").mkdir()
     try:
         shutil.copy(bsp, src / "maps" / (name + ".bsp"))
-        for w in (CONTENT / "dod").glob("*.wad"): (src / w.name).symlink_to(w)           # map WADs resolve like the real build
+        skip = set(os.environ.get("BAKE_SKIP_WADS", "").split(","))      # test hook: pretend these WADs are unavailable to the baker
+        for w in (CONTENT / "dod").glob("*.wad"):
+            if w.name not in skip: (src / w.name).symlink_to(w)           # map WADs resolve like the real build
         for w in (CONTENT / "valve").glob("*.wad"):
             if not (src / w.name).exists(): (src / w.name).symlink_to(w)
         (src / "media").mkdir()
@@ -27,6 +29,14 @@ def bake(bsp, outdir, name="dod_live"):
         out = media / ("wd_%s.gcd" % name)
         wd.bake(src / "maps" / (name + ".bsp"), out); wd.bake_lightfaces(src / "maps" / (name + ".bsp"), out.with_name(out.stem + "_lf.gcd"))
     finally: shutil.rmtree(src, ignore_errors=True)
+    drop = [n for n in os.environ.get("BAKE_DROP_TEX", "").split(",") if n]       # test hook: make these textures "missing" in the pack
+    if drop and (media / ("wt_%s.gct" % name)).exists():
+        import struct
+        pth = media / ("wt_%s.gct" % name); b = bytearray(pth.read_bytes()); cnt = struct.unpack_from(">I", b, 4)[0]
+        for i in range(cnt):
+            nm = bytes(b[12 + i * 28:12 + i * 28 + 16]).split(b"\0")[0].decode("latin-1").lower()
+            if nm in [d.lower() for d in drop]: b[12 + i * 28:12 + i * 28 + 16] = b"zz_dropped".ljust(16, b"\0")
+        pth.write_bytes(bytes(b))
     return sorted(p for p in media.iterdir())
 
 if __name__ == "__main__":

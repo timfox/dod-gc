@@ -61,9 +61,13 @@ def load(mapname, at=None):
             if kind == "alpha" or g["tex"].startswith("{"): cmds.connectAttr(f + ".outTransparency", sh + ".transparency")
             elif kind in ("trans", "add"):
                 t = 1.0 - (g.get("amt", 255) / 255.0 if kind == "trans" else 0.6); cmds.setAttr(sh + ".transparency", t, t, t, type="double3")
-        if not (kind == "water" or (g["png"] and os.path.exists(g["png"]))):   # texture not in any WAD we have (retail HL wads not shipped here): flat neutral, named colours honoured
-            named = {"yellow": (0.9, 0.8, 0.1), "black": (0.04, 0.04, 0.04), "red": (0.7, 0.1, 0.1), "white": (0.9, 0.9, 0.9)}
-            cmds.setAttr(sh + ".color", *named.get(g["tex"].lower(), (0.55, 0.55, 0.55)), type="double3")
+        if not (kind == "water" or (g["png"] and os.path.exists(g["png"]))):   # texture the engine could not load either: the same pink/black checker
+            import missing_tex
+            f = cmds.shadingNode("file", asTexture=True, isColorManaged=True)
+            cmds.setAttr(f + ".fileTextureName", missing_tex.path(), type="string"); cmds.setAttr(f + ".filterType", 0)
+            p2 = cmds.shadingNode("place2dTexture", asUtility=True); cmds.connectAttr(p2 + ".outUV", f + ".uvCoord")
+            cmds.setAttr(p2 + ".repeatU", 8); cmds.setAttr(p2 + ".repeatV", 8)
+            cmds.connectAttr(f + ".outColor", sh + ".color")
         cmds.sets(name, e=True, forceElement=sg)
         cmds.addAttr(name, ln="ref_texture", dt="string"); cmds.setAttr(name + ".ref_texture", g["tex"] + ("  [" + kind + "]" if kind != "opaque" else ""), type="string")
         cmds.parent(name, root, relative=True)
