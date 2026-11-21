@@ -319,6 +319,27 @@ Not verified in Dolphin yet: viewmodel animation, throw feel, the explosion and
 particle rendering, and the Mk2 versus stick world models. The rules core, the
 integration anchors, audio staging and the prefetch manifest have host tests.
 
+## MOHAA mission scripts
+
+Original MOHAA `.scr` (Morpheus) mission scripts run against DoD-GC entities. The VM lives in `src/mohaa/`, a clean-room MIT
+copy of [timfox/mohaa-gc](https://github.com/timfox/mohaa-gc) `script/` (no OpenMoHAA code: it is GPL-2 and cannot link with
+the HLSDK). `dod_mohaa.c` binds the MOHAA commands and is host-tested in `tests/dod_mohaa_test.c`; `dod_mohaa_ents.cpp` is the
+engine glue. The game rules constructor calls `DodGC_MohaaLevelInit`, `Think` calls `DodGC_MohaaThink`, and a firing
+`trigger_multiple`/`trigger_once` notifies `trigger` waiters.
+
+- **Off unless the map has a script.** No VM is created and nothing is allocated unless `maps/<map>.scr` exists.
+- **Bound.** `wait`, `waittill`, threads, `exec`, the level/game/local/parm scopes, `$targetname` (and `$player`), and on
+  entities `hide`/`show`, `solid`/`notsolid`, `remove`, `origin`/`angles`/`health`, `moveto`, `moveup`..`movewest`,
+  `rotateto`, `rotatex/y/z`, `move`/`waitmove`, `time`; on threads `trigger`, `spawn`, `centerprint`, `iprintln`. Positions are
+  scaled by 72/94, the factor the map converter uses. `level waittill prespawn`/`spawn` fire on the first two ticks.
+- **Not yet.** Sounds are logged, not played (ubersound aliases are not converted). `.tik` models are skipped on `spawn`. No
+  AI, camera, HUD objectives or `exec global/*.scr` libraries beyond what the map ships. An unknown command is reported once
+  and skipped, so a mission keeps running.
+- **Memory.** `mohaa_script_kb` (default 384) caps the VM; a level whose scripts do not fit is refused at load, not run half
+  way. m1l1 with its globals peaked at about 660 KB on the host, over this budget, so the larger missions need precompiled
+  bytecode or ARAM before they fit.
+- **Updating the VM.** Change it in mohaa-gc, then `scripts/sync-mohaa-vm.sh /path/to/mohaa-gc`.
+
 ## Build integration
 
 `scripts/integrate-dod-gameplay.py` copies the tracked runtime into the linked

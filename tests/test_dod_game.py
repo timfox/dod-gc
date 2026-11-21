@@ -141,6 +141,23 @@ class DodGameRulesTests(unittest.TestCase):
             )
             subprocess.run([str(binary)], check=True)
 
+    def test_native_mohaa_scripts(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            binary = Path(tmp) / "dod-mohaa"
+            subprocess.run(
+                [
+                    "cc", "-std=c99", "-Wall", "-Wextra", "-Werror",
+                    "-fsanitize=address,undefined",
+                    "-I", str(ROOT / "src"), "-I", str(ROOT / "src/mohaa"),
+                    str(ROOT / "src/dod_mohaa.c"),
+                    *[str(p) for p in sorted((ROOT / "src/mohaa").glob("ms_*.c"))],
+                    str(ROOT / "tests/dod_mohaa_test.c"),
+                    "-o", str(binary), "-lm",
+                ],
+                check=True,
+            )
+            subprocess.run([str(binary)], check=True)
+
 
 if __name__ == "__main__":
     unittest.main()

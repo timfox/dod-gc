@@ -310,6 +310,18 @@ def integrate_film_actors(dlls: Path) -> None:
 		'\t\t\tif( !FClassnameIs( ent, "env_sky" ) && !FClassnameIs( ent, "film_actor" ) )\n')
 
 
+def integrate_mohaa_trigger_event(dlls: Path) -> None:
+	"""MOHAA mission scripts wait on triggers ("$t waittill trigger"): tell the script VM when a trigger fires."""
+	triggers = dlls / "triggers.cpp"
+	replace_once(triggers, '#include "gamerules.h"\n', '#include "gamerules.h"\n#include "dod_mohaa_ents.h"\n')
+	replace_once(triggers,
+		'\tif( !FStringNull( pev->noise ) )\n\t\tEMIT_SOUND( ENT( pev ), CHAN_VOICE, STRING( pev->noise ), 1, ATTN_NORM );\n\n'
+		'\t// don\'t trigger again until reset\n',
+		'\tDodGC_MohaaEntityEvent( edict(), "trigger" );\n'
+		'\tif( !FStringNull( pev->noise ) )\n\t\tEMIT_SOUND( ENT( pev ), CHAN_VOICE, STRING( pev->noise ), 1, ATTN_NORM );\n\n'
+		'\t// don\'t trigger again until reset\n')
+
+
 def integrate_doddetect(dlls: Path) -> None:
 	"""info_doddetect is linked to a plain point entity in the SDK; the game's CDoDDetect (dod_runtime.cpp) takes the class name to read the
 	respawn factors, so the SDK's link line goes."""
@@ -656,7 +668,10 @@ DOD_DLL_SOURCES = (
 	"dod_film.c", "dod_film.h", "dod_film_actor.cpp",
 	"dod_achievements.c", "dod_achievements.h",
 	"dod_grunts.c", "dod_grunts.h", "dod_grunt.cpp",
+	"dod_mohaa.c", "dod_mohaa.h", "dod_mohaa_ents.cpp", "dod_mohaa_ents.h",
 )
+# The MOHAA script VM (src/mohaa/, vendored from timfox/mohaa-gc), copied flat into dlls/.
+MOHAA_VM_SOURCES = ("morpheus.h", "ms_internal.h", "ms_value.c", "ms_compile.c", "ms_vm.c", "ms_builtins.c")
 # Client HUD sources, copied into cl_dll/ (dod_hud.h is shared with the DLL).
 DOD_CLIENT_SOURCES = (
 	("dod_hud.h", "dod_hud.h"),
@@ -682,6 +697,8 @@ def sync_dod_sources(src: Path, dlls: Path) -> list[str]:
 			removed.append(stale.name)
 	for name in DOD_DLL_SOURCES:
 		shutil.copy2(src / name, dlls / name)
+	for name in MOHAA_VM_SOURCES:
+		shutil.copy2(src / "mohaa" / name, dlls / name)
 	return removed
 
 
@@ -991,6 +1008,7 @@ def main() -> int:
 	integrate_usercmd(dlls)
 	integrate_film_actors(dlls)
 	integrate_doddetect(dlls)
+	integrate_mohaa_trigger_event(dlls)
 	integrate_pm_layout_hook(dlls)
 	integrate_precache_bodies_hook(dlls)
 	integrate_weaponbox_null_check(dlls)
@@ -1008,7 +1026,7 @@ def main() -> int:
 	replace_once(
 		dlls / "CMakeLists.txt",
 		"\tmultiplay_gamerules.cpp\n",
-		"\tmultiplay_gamerules.cpp\n\tdod_game.c\n\tdod_weapons.c\n\tdod_runtime.cpp\n\tdod_grenade.cpp\n\tdod_weapon.cpp\n\tdod_bots.c\n\tdod_bot.cpp\n\tdod_film.c\n\tdod_film_actor.cpp\n\tdod_achievements.c\n\tdod_grunts.c\n\tdod_grunt.cpp\n",
+		"\tmultiplay_gamerules.cpp\n\tdod_game.c\n\tdod_weapons.c\n\tdod_runtime.cpp\n\tdod_grenade.cpp\n\tdod_weapon.cpp\n\tdod_bots.c\n\tdod_bot.cpp\n\tdod_film.c\n\tdod_film_actor.cpp\n\tdod_achievements.c\n\tdod_grunts.c\n\tdod_grunt.cpp\n\tdod_mohaa.c\n\tdod_mohaa_ents.cpp\n\tms_value.c\n\tms_compile.c\n\tms_vm.c\n\tms_builtins.c\n",
 	)
 	replace_once(
 		dlls / "wscript",
@@ -1019,7 +1037,9 @@ def main() -> int:
 		"\tsource += bld.path.ant_glob('dod_bots.c')\n"
 		"\tsource += bld.path.ant_glob('dod_film.c')\n"
 		"\tsource += bld.path.ant_glob('dod_achievements.c')\n"
-		"\tsource += bld.path.ant_glob('dod_grunts.c')\n",
+		"\tsource += bld.path.ant_glob('dod_grunts.c')\n"
+		"\tsource += bld.path.ant_glob('dod_mohaa.c')\n"
+		"\tsource += bld.path.ant_glob('ms_*.c')\n",
 	)
 	replace_once(
 		dlls / "gamerules.cpp",
