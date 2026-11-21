@@ -16,7 +16,7 @@ export DODGC_CONTENT_DOD=$C DODGC_STAGE_WORLDDL=0 DODGC_ENGINE="$ENGINE"
 source $S/env.sh
 R=$W/repack; mkdir -p $R/dod $R/valve
 DODGC_LEAN_DOD=$R/dod DODGC_LEAN_VALVE=$R/valve bash $S/stage-lean-dod.sh --map dod_live --full-map
-printf '%-2048s' "0 dod_live" > $R/dod/livemap.txt
+printf '%-2048s' "L 0 dod_live" > $R/dod/livemap.txt
 printf 'video prog\nlistenserver dod_live\ngcworldrender\ngcplayerinput\n' > $R/dod/gamecube.cfg
 printf 'gc_livemap 1\n' >> $R/dod/listenserver.cfg
 TMPDIR="${XASH3D_GC_ISO_CACHE:-/tmp}" python3 "$ENGINE/scripts/build-gamecube-disc.py" --dol "$DOL" --data $R/dod --gamedir dod \

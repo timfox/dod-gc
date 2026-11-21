@@ -13,7 +13,7 @@ slow passes for lit builds. Never launches or kills Dolphin.
 """
 import argparse, os, shutil, subprocess, sys, time, tempfile
 HERE = os.path.dirname(os.path.abspath(__file__)); sys.path.insert(0, HERE)
-import isoslot
+import isoslot, json
 BIN = os.path.join(HERE, "bin")
 WADDIR = "/home/tim/Desktop/dod-gc/content/dod"
 SLOT_BSP = "/xash3d/dod/maps/dod_live.bsp"
@@ -39,10 +39,19 @@ def build(mapfile, work, vis, rad):
             rc, dt = run(tool, args, b, name + ".log"); times[name] = dt
             if rc != 0:
                 tail = open(os.path.join(b, name + ".log")).read()[-1200:]
+                open(os.path.join(work, "last_error.txt"), "w").write("%s failed: %s" % (name, tail[-400:]))
                 print("[watch] %s FAILED (rc=%d) - game keeps the previous map\n%s" % (name, rc, tail)); return None, times
         out = os.path.join(work, "live.bsp"); shutil.copy(os.path.join(b, "dod_live.bsp"), out)
         return out, times
     finally: shutil.rmtree(b, ignore_errors=True)
+
+def status(work, **kw):
+    """Machine-readable status for the Maya panel (~/.cache/gsbridge/status.json)."""
+    f = os.path.join(work, "status.json")
+    try: cur = json.load(open(f))
+    except Exception: cur = {}
+    cur.update(kw, updated=time.time())
+    json.dump(cur, open(f + ".tmp", "w")); os.replace(f + ".tmp", f)
 
 def main():
     global SLOT_BSP, SLOT_TXT
@@ -55,18 +64,21 @@ def main():
     os.makedirs(a.work, exist_ok=True); mapfile = os.path.join(a.work, "live.map")
     slot_bsp = isoslot.find(a.iso, SLOT_BSP); slot_txt = isoslot.find(a.iso, SLOT_TXT)
     print("[watch] slots: bsp lba=%d size=%d  livemap lba=%d size=%d" % (*slot_bsp, *slot_txt))
+    status(a.work, state="watching", iso=a.iso, pid=os.getpid())
     serial, last = int(time.time()) % 1000000000, 0.0  # time-based: monotonic across restarts
     while True:
         try: m = os.stat(mapfile).st_mtime
         except FileNotFoundError: m = 0
         if m and m != last:
-            last = m; t0 = time.time()
+            last = m; t0 = time.time(); status(a.work, state="compiling")
             bsp, times = build(mapfile, a.work, a.vis, a.rad)
+            if not bsp: status(a.work, state="error", error=open(os.path.join(a.work, "last_error.txt")).read() if os.path.exists(os.path.join(a.work, "last_error.txt")) else "compile failed")
             if bsp:
                 try:
                     isoslot.write(a.iso, SLOT_BSP, bsp, slot_bsp); serial += 1
-                    tf = os.path.join(a.work, "livemap.txt"); open(tf, "w").write("%d dod_live\n" % serial)
+                    tf = os.path.join(a.work, "livemap.txt"); open(tf, "w").write("L %d dod_live\n" % serial)
                     isoslot.write(a.iso, SLOT_TXT, tf, slot_txt)   # trigger LAST, after the BSP is on disc
+                    status(a.work, state="pushed", serial=serial, times=times, pushed_at=time.time(), total=time.time() - t0, error="")
                     print("[watch] #%d compiled %s, patched %s in %.2fs total" % (serial,
                           " ".join("%s=%.2fs" % kv for kv in times.items()), os.path.basename(a.iso), time.time() - t0))
                 except SystemExit as e: print("[watch] patch failed:", e)

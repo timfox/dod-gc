@@ -15,6 +15,8 @@ Scene conventions (kept deliberately small):
     exports "_light"; double underscore after key_ -> leading underscore).
     A mesh with gs_classname becomes a brush entity (func_*); a locator/null
     becomes a point entity at its translate.
+  * info_player_* locators mark the player's FEET: export adds 37 units (a spawn at floor+24 puts the
+    standing hull inside the floor and the player falls through).
   * Maya units: 1 cm = UNITS_PER_CM GoldSrc units (default 0.3937 = inches...
     use 1.0 if you model in GoldSrc units directly). Y-up scenes are rotated to Z-up.
 """
@@ -27,6 +29,7 @@ MAPNAME = "live"
 WAD = "dod_caen.wad"
 DEFAULT_TEXTURE = "m_wall11"
 UNITS_PER_CM = 1.0
+PLAYER_ORIGIN_ABOVE_FLOOR = 37   # GoldSrc standing player origin is 36 above his feet; +1 so he is not embedded
 
 def _conv(p, yup):
     x, y, z = (c * UNITS_PER_CM for c in p)
@@ -36,7 +39,9 @@ def _tex(mesh, cmds):
     sgs = cmds.listConnections(mesh, type="shadingEngine") or []
     for sg in sgs:
         sh = cmds.listConnections(sg + ".surfaceShader") or []
-        if sh: return sh[0].split(":")[-1]
+        if sh:
+            if cmds.attributeQuery("gs_texture", node=sh[0], exists=True): return cmds.getAttr(sh[0] + ".gs_texture")
+            return sh[0].split(":")[-1]
     return DEFAULT_TEXTURE
 
 def _polys(mesh, cmds, yup):
@@ -77,7 +82,10 @@ def export_now(path=None):
             ents.append({"keys": keys, "brushes": [(_polys(node, cmds, yup), _tex(shapes[0], cmds))]})
         else:
             t = cmds.xform(node, q=True, ws=True, t=True)
-            o = _conv(t, yup); keys["origin"] = "%d %d %d" % tuple(round(c) for c in o)
+            o = _conv(t, yup)
+            if keys["classname"].startswith("info_player"):
+                o = (o[0], o[1], o[2] + PLAYER_ORIGIN_ABOVE_FLOOR)   # locator = feet; hull 1 needs origin >= 36 above the floor
+            keys["origin"] = "%d %d %d" % tuple(round(c) for c in o)
             if cmds.attributeQuery("gs_yaw", node=node, exists=True):
                 keys["angles"] = "0 %d 0" % cmds.getAttr(node + ".gs_yaw")
             ents.append({"keys": keys})
