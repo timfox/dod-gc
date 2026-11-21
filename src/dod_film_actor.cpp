@@ -565,7 +565,20 @@ static void DodFilm_FireFx( const DodFilmFx *f )
 		DodFilm_Smoke( o + Vector( 0, 0, 16.0f * s ), 18.0f * s, 12 );
 		break;
 	case DOD_FX_KIND_SMOKE:
+		/* TE_SMOKE draws the puff in a near-black grey (20..35 of 255), which vanishes
+		 * against a night street or a shadowed wall: in the ep02 captures not one of 50
+		 * smoke cues read. A lit puff of the same sprite (TE_SPRITE draws additive, at
+		 * this brightness) round the dark one gives the column a body the camera sees. */
 		DodFilm_Smoke( o, 30.0f * s, 6 );
+		MESSAGE_BEGIN( MSG_BROADCAST, SVC_TEMPENTITY );
+			WRITE_BYTE( TE_SPRITE );
+			WRITE_COORD( o.x );
+			WRITE_COORD( o.y );
+			WRITE_COORD( o.z + 56.0f * s );
+			WRITE_SHORT( g_sModelIndexSmoke );
+			WRITE_BYTE( DodFilm_Byte( 36.0f * s ) );
+			WRITE_BYTE( 90 );
+		MESSAGE_END();
 		break;
 	case DOD_FX_KIND_BLOOD:
 		DodFilm_Blood( o, Vector( 0, 0, 1.0f ), s );
