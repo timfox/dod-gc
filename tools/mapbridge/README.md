@@ -29,4 +29,6 @@
 - `maps.lst` (the Create Game list, in project order) and `mapcycle.txt` (the rotation; only maps on the disc);
 - retail HUD, the engine's baked render packs for every map, and a build stamp: `build-info.txt` on the disc and `dodgc-release.iso.build-info.txt` beside it (dod-gc, engine, game SDK and submodule commit hashes).
 It boots like the normal DoD disc (intro, menu); the map list in Create Game follows your project. Put the ISO on SD/USB for Swiss, or run it in Dolphin.
-Limits: Maya maps with `env_model` props need a baked prop pack to show them on hardware (the build continues without one); one run takes a few minutes the first time because every map's render packs are baked, then it is cached.
+Props: the disc builder bakes prop packs (`env_model` instances with their textures) for every Maya map automatically, so props show on hardware. A map with no props just has no pack. The first run takes a few minutes because every map's render packs are baked; later runs are cached.
+
+**Live-disc slots:** the dev disc reads whole padded files on every reload, so it uses compact slots (BSP 1 MiB, textures 1.5 MiB, display lists 0.5 MiB). A bigger map is reported in plain words; rebuild with `gsbridge disc --big` (3 MiB BSP, slower reloads).

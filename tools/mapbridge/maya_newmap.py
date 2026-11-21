@@ -87,6 +87,8 @@ def create(name, wad="dod_caen.wad", sky="", size=1024, height=256, save=True):
             mp.save(d)
         except Exception as e: cmds.warning("[gsbridge] could not add %s to the Map Manager project: %s" % (name, e))
         me.install()
+        try: me.export_now()      # first export: writes the per-map .map the release disc uses
+        except Exception as e: cmds.warning("[gsbridge] first export failed: %s" % e)
     try: cmds.viewFit(allObjects=True)
     except Exception: pass      # no viewport (batch mode)
     print("[gsbridge] new map %s created (%s, sky %s); save pushes it to the game" % (name, wad, sky or "default"))

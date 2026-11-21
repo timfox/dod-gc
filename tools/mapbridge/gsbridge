@@ -20,6 +20,7 @@ case "${1:-status}" in
   compiler)
     "$HERE/build_compiler.sh" && say "compilers built in $HERE/bin" ;;
   disc)
+    [ "${2:-}" = "--big" ] && export GS_SLOTS=big
     need "$DOL" "the engine DOL: cp <engine>/OUT/bin/dodgc.dol $DOL (see DESIGN.md for the build recipe)"
     [ -f "$WORK/live.bsp" ] || { say "no map yet: save once in Maya (or run: gsbridge new)"; SEED="$HERE/seed/room.bsp"; }
     "$HERE/build_slot_disc.sh" "$DOL" "$ISO" "${SEED:-$WORK/live.bsp}" > "$WORK/disc.log" 2>&1 && say "disc built: $ISO" || { say "disc build FAILED, see $WORK/disc.log"; tail -5 "$WORK/disc.log"; exit 1; } ;;

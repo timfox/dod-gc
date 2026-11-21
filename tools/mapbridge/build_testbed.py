@@ -29,33 +29,34 @@ box("wallL", (-656, -240, -16), (-640, 1100, 288), "m_wall11"); box("wallR", (64
 box("wallN", (-640, -256, -16), (640, -240, 288), "m_wall11"); box("wallF", (-640, 1100, -16), (640, 1116, 288), "m_wall11")
 # backdrop: a bright striped wall behind the stations so transparency is obvious
 box("backdrop", (-620, 880, 0), (620, 896, 256), "c2_wood")
-X = [-480, -240, 0, 240, 480]; Y = 600
+X = [-170, -90, 0, 90, 170]; Y = 700   # centre lane (x=0) stays clear: the test player auto-runs +Y from x=0
 # 1 masked rail across the whole hall ('{' texture: index 255 transparent). It is solid, so the auto-running test player
 #   stops against it (y=384) with every station in view, instead of running into the far wall.
 if "fence" in FEAT:
-    box("rail", (-640, 400, 0), (640, 404, 128), "{m_railing1")
+    box("curb", (-640, 500, 0), (640, 510, 20), "m_floor1")                 # low solid stopper: the auto-running player halts at y=484
+    box("fence", (-100, 600, 0), (100, 604, 128), "{m_railing1")             # free-standing masked panel, 116 units in front of the stopper
 # 2 translucent func_wall (rendermode 2 = texture alpha, renderamt 128)
 if "glass" in FEAT:
-    b = box("glass", (X[1]-48, Y, 0), (X[1]+48, Y+8, 128), "m_wall11", parent=None); attrs(b, "func_wall", rendermode=2, renderamt=128, rendercolor="0 0 0")
+    b = box("glass", (X[0]-32, Y, 0), (X[0]+32, Y+8, 100), "m_wall11", parent=None); attrs(b, "func_wall", rendermode=2, renderamt=128, rendercolor="0 0 0")
 # 3 additive func_wall (rendermode 5, renderamt 200)
 if "glow" in FEAT:
-    b = box("glow", (X[2]-48, Y, 0), (X[2]+48, Y+8, 128), "c2_wood", parent=None); attrs(b, "func_wall", rendermode=5, renderamt=200, rendercolor="0 0 0")
+    b = box("glow", (X[1]-32, Y, 0), (X[1]+32, Y+8, 100), "c2_wood", parent=None); attrs(b, "func_wall", rendermode=5, renderamt=200, rendercolor="0 0 0")
 # 4 water: func_water with a '!' texture
 if "water" in FEAT:
-    b = box("pool", (X[3]-96, Y-96, 0), (X[3]+96, Y+96, 24), "!K_water1", parent=None); attrs(b, "func_water", WaveHeight="3.2", skin="-3")
+    b = box("pool", (X[3]-56, Y-60, 0), (X[3]+56, Y+60, 24), "!K_water1", parent=None); attrs(b, "func_water", WaveHeight="3.2", skin="-3")
 # 5 alpha-test func_illusionary on a normal texture (rendermode 4: index 255 pixels vanish)
 if "ghost" in FEAT:
-    b = box("ghost", (X[4]-48, Y, 0), (X[4]+48, Y+8, 128), "m_wall11", parent=None); attrs(b, "func_illusionary", rendermode=4, renderamt=255, rendercolor="0 0 0", skin="-1")
+    b = box("ghost", (X[4]-32, Y, 0), (X[4]+32, Y+8, 100), "m_wall11", parent=None); attrs(b, "func_illusionary", rendermode=4, renderamt=255, rendercolor="0 0 0", skin="-1")
 # props
-for i, (mdl, x) in enumerate((("models/mapmodels/sandbags.mdl", -300), ("models/mapmodels/pine_tree.mdl", 300)) if "props" in FEAT else ()):
-    ent("prop%d" % i, "env_model", (x, 300, 0), model=mdl)
+for i, (mdl, x) in enumerate((("models/mapmodels/sandbags.mdl", -220), ("models/mapmodels/pine_tree.mdl", 220)) if "props" in FEAT else ()):
+    ent("prop%d" % i, "env_model", (x, 330, 0), model=mdl)
 # lights: red, blue, warm white
 if "lights" in FEAT:
     ent("lt_r", "light", (-480, 400, 160), _light="255 40 40 400")
     ent("lt_b", "light", (480, 400, 160), _light="40 80 255 400")
     ent("lt_w", "light", (0, 200, 200), _light="255 240 200 500")
 # spawns face +Y (yaw 90); locators are FEET
-for n, cls, p, yaw in (("sp_a", "info_player_allies", (-60, -150, 0), 90), ("sp_x", "info_player_axis", (60, -150, 0), 90)):
+for n, cls, p, yaw in (("sp_a", "info_player_allies", (0, -150, 0), 90), ("sp_x", "info_player_axis", (0, -120, 0), 90)):
     l = ent(n, cls, p); cmds.addAttr(l, ln="gs_yaw", at="long"); cmds.setAttr(l + ".gs_yaw", yaw)
 ent("detect", "info_doddetect", (0, 0, 0))
 me.export_now()

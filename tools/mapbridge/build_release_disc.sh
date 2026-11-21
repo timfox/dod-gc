@@ -37,6 +37,7 @@ while read -r NAME SCENE; do
       || { echo "no exported .map for $NAME: open $SCENE in Maya and save once (it keeps ~/gsbridge/maps/$NAME.map)"; exit 1; }
   fi
   if ! grep -q "^( " "$MAPF"; then echo "    $NAME: map has no brushes, skipped ($MAPF)"; continue; fi
+  if [ -n "$SCENE" ] && [ -f "$SCENE" ] && [ "$SCENE" -nt "$MAPF" ]; then echo "    WARNING: $SCENE is newer than its exported $MAPF: open it in Maya and save so the disc gets the latest edits"; fi
   echo "    $NAME  ($MAPF)"
   python3 "$HERE/compile_map.py" "$MAPF" "$W/maps/$NAME.bsp" || exit 1
 done < "$W/mayamaps.txt"

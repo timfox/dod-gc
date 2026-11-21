@@ -18,7 +18,8 @@ BIN = os.path.join(HERE, "bin")
 WADDIR = "/home/tim/Desktop/dod-gc/content/dod"
 SLOT_BSP = "/xash3d/dod/maps/dod_live.bsp"
 SLOT_TXT = "/xash3d/dod/livemap.txt"
-PACKS = {"wt_dod_live.gct": 2 << 20, "wd_dod_live.gcd": 1 << 20, "wd_dod_live_lf.gcd": 1 << 20, "wd_dod_live_sb.gcd": 64 << 10}   # fixed slot sizes (media/)
+PACKS = {"wt_dod_live.gct": 0, "wd_dod_live.gcd": 0, "wd_dod_live_lf.gcd": 0, "wd_dod_live_sb.gcd": 0}   # name -> slot size, filled from the disc at start
+SLOT_HELP = "the map outgrew the dev disc slot: rebuild the live disc with GS_SLOTS=big gsbridge disc (slower reloads, room for big maps)"
 
 def run(tool, args, cwd, log):
     t = time.time()
@@ -74,7 +75,7 @@ def bake_packs(bsp, work):
     if r.returncode: print("[watch] pack bake FAILED:", r.stderr[-300:]); return {}
     sb = os.path.join(out, "media", "wd_dod_live_sb.gcd")
     if os.path.exists(sb):      # the sb header records the wd size = the padded slot size
-        with open(sb, "r+b") as fh: fh.seek(8); fh.write(struct.pack(">I", PACKS["wd_dod_live.gcd"]))
+        with open(sb, "r+b") as fh: fh.seek(8); fh.write(struct.pack(">I", PACKS["wd_dod_live.gcd"]))      # = the wd slot size on this disc
     return {n: os.path.join(out, "media", n) for n in PACKS if os.path.exists(os.path.join(out, "media", n))}
 
 _lock = threading.Lock()
@@ -123,7 +124,7 @@ def main():
     try:
         if not os.path.exists(a.iso): raise SystemExit("disc image %s does not exist" % a.iso)
         slot_bsp = slot(a.iso, SLOT_BSP); slot_txt = slot(a.iso, SLOT_TXT)
-        for n in PACKS: slot(a.iso, "/xash3d/dod/media/" + n)
+        for n in PACKS: PACKS[n] = slot(a.iso, "/xash3d/dod/media/" + n)[1]
     except (SystemExit, OSError) as e:
         print("[watch] cannot use the disc: %s" % e); status(a.work, state="error", error="disc not usable: %s (build one with build_slot_disc.sh)" % e); return
     print("[watch] slots: bsp lba=%d size=%d  livemap lba=%d size=%d" % (*slot_bsp, *slot_txt))
@@ -162,8 +163,10 @@ def main():
                         stages["bake"] = round(time.time() - t1, 2); t2 = time.time()
                         for n, pth in packs.items():     # packs first, BSP second, trigger last
                             try: isoslot.write(a.iso, "/xash3d/dod/media/" + n, pth, slot(a.iso, "/xash3d/dod/media/" + n), PACKS[n])
-                            except SystemExit as e: print("[watch] pack slot", n, e)
-                        isoslot.write(a.iso, SLOT_BSP, bsp, slot_bsp); serial += 1
+                            except SystemExit as e: raise RuntimeError("%s (%s)" % (e, SLOT_HELP))
+                        try: isoslot.write(a.iso, SLOT_BSP, bsp, slot_bsp)
+                        except SystemExit as e: raise RuntimeError("%s (%s)" % (e, SLOT_HELP))
+                        serial += 1
                         tf = os.path.join(a.work, "livemap.txt"); open(tf, "w").write("L %d dod_live\n" % serial)
                         isoslot.write(a.iso, SLOT_TXT, tf, slot_txt)   # trigger LAST, after the BSP is on disc
                         stages["patch"] = round(time.time() - t2, 2); total = time.time() - t0; last_hash = h; last_tex = texs
