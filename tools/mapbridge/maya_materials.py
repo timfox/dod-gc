@@ -71,3 +71,31 @@ def fit_uvs(root="gs_world"):
                 u = (x*u_ax[0] + y*u_ax[1] + z*u_ax[2]) / w
                 v = -(x*v_ax[0] + y*v_ax[1] + z*v_ax[2]) / h
                 cmds.polyEditUV(cmds.polyListComponentConversion(c, toUV=True), u=u, v=v, relative=False)
+
+
+def preview_render_modes():
+    """Viewport preview of brush-entity render modes (never affects the export): each brush entity with
+    gs_key_rendermode gets its OWN copy of the shader so shared textures stay opaque on world brushes.
+    2/1 translucent (renderamt), 5/3 additive (approximated as 40% transparent), func_water translucent.
+    renderamt 0 with mode 1/2/3/5 = invisible in the engine -> shown very faint."""
+    n = 0
+    for t in cmds.ls("*", transforms=True):
+        if not cmds.attributeQuery("gs_classname", node=t, exists=True): continue
+        shapes = cmds.listRelatives(t, shapes=True, type="mesh") or []
+        if not shapes: continue
+        def key(k, d=""): return cmds.getAttr("%s.gs_key_%s" % (t, k)) if cmds.attributeQuery("gs_key_" + k, node=t, exists=True) else d
+        mode = int(float(key("rendermode", 0) or 0)); amt = int(float(key("renderamt", 0) or 0)); cls = cmds.getAttr(t + ".gs_classname")
+        sgs = cmds.listConnections(shapes[0], type="shadingEngine") or []
+        if not sgs: continue
+        old = (cmds.listConnections(sgs[0] + ".surfaceShader") or [None])[0]
+        if old is None: continue
+        if cls == "func_water": tr = 0.5
+        elif mode in (1, 2): tr = 1.0 - (amt / 255.0 if amt > 2 else 0.04)
+        elif mode in (3, 5): tr = 0.4 if amt > 2 else 0.96
+        else: continue
+        new = t + "_rm_shader"
+        if not cmds.objExists(new):
+            dup = cmds.duplicate(old, name=new, upstreamNodes=True)[0]
+            sg = cmds.sets(renderable=True, noSurfaceShader=True, empty=True, name=new + "SG"); cmds.connectAttr(dup + ".outColor", sg + ".surfaceShader")
+        cmds.sets(t, e=True, forceElement=new + "SG"); cmds.setAttr(new + ".transparency", tr, tr, tr, type="double3"); n += 1
+    return n

@@ -69,13 +69,16 @@ def export_now(path=None):
     os.makedirs(WORKDIR, exist_ok=True)
     path = path or os.path.join(WORKDIR, MAPNAME + ".map")
     world = []
-    for m in cmds.listRelatives("gs_world", allDescendents=True, type="mesh", fullPath=True) or [] \
-            if cmds.objExists("gs_world") else []:
-        t = cmds.listRelatives(m, parent=True, fullPath=True)[0]
-        world.append((_polys(t, cmds, yup), _tex(m, cmds)))
+    roots = [g for g in cmds.ls("gs_world*", transforms=True) if cmds.getAttr(g + ".visibility")]   # gs_world, gs_world_test, ...
+    for root in roots:
+        for m in cmds.listRelatives(root, allDescendents=True, type="mesh", fullPath=True) or []:
+            t = cmds.listRelatives(m, parent=True, fullPath=True)[0]
+            if not cmds.getAttr(t + ".visibility"): continue            # hidden = not exported
+            world.append((_polys(t, cmds, yup), _tex(m, cmds)))
     ents = []
     for node in cmds.ls("*", transforms=True, long=True):
         if not cmds.attributeQuery("gs_classname", node=node, exists=True): continue
+        if not cmds.getAttr(node + ".visibility"): continue
         keys = _keys(node, cmds)
         shapes = cmds.listRelatives(node, shapes=True, type="mesh", fullPath=True) or []
         if shapes:

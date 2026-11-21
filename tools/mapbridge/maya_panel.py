@@ -80,6 +80,8 @@ def _entity(*_):
     cmds.addAttr(l, ln="gs_yaw", at="long"); cmds.select(l)
 
 def _push(*_):
+    try: mm.preview_render_modes()
+    except Exception as ex: cmds.warning("render-mode preview: %s" % ex)
     me.export_now(); refresh()
 
 def _auto(v):
