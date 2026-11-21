@@ -9,6 +9,7 @@ loads as a locked reference beside your scene. Export writes the game's rotation
 import os, sys
 HERE = os.path.dirname(os.path.abspath(__file__)); sys.path.insert(0, HERE)
 import maya.cmds as cmds
+from maya_safe import safe, cb, Progress
 import mapproject as mp
 
 WCTL = "gsMapMgrCtl"; _ui = {}; _d = None; _sel = None
@@ -92,7 +93,14 @@ def _browse(*_):
     f = cmds.fileDialog2(fileMode=1, caption="Maya scene for this map", fileFilter="Maya (*.mb *.ma)")
     if f: cmds.textField(_ui["scene"], e=True, text=f[0]); _apply()
 
+_busy = [False]
 def _open_entry(name):
+    if _busy[0]: cmds.warning("a map is already loading"); return
+    _busy[0] = True
+    try: _open_entry_impl(name)
+    finally: _busy[0] = False
+
+def _open_entry_impl(name):
     m = mp.get(_data(), name)
     if not m: return
     if m["scene"] and os.path.exists(m["scene"]):
@@ -159,3 +167,8 @@ def show(*_):
     cmds.workspaceControl(WCTL, label="Map Manager", retain=False, initialWidth=380, minimumWidth=300, tabToControl=(tab, -1),
                           uiScript="import maya_mapmgr; maya_mapmgr._ui_script()")
     return WCTL
+
+
+# every entry point is guarded: an error becomes a Maya warning, never an exception in Maya's event loop
+for _n in ['_fill_tree', '_select', '_apply', '_add', '_remove', '_browse', '_open_entry', '_reference', '_export', '_unref', '_build', '_ui_script', 'show']:
+    globals()[_n] = safe(globals()[_n])

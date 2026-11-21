@@ -107,8 +107,12 @@ def main():
     ap.add_argument("--no-packs", action="store_true"); ap.add_argument("--once", action="store_true"); a = ap.parse_args()
     SLOT_BSP, SLOT_TXT = a.slot_bsp, a.slot_txt
     os.makedirs(a.work, exist_ok=True); mapfile = os.path.join(a.work, "live.map")
-    slot_bsp = slot(a.iso, SLOT_BSP); slot_txt = slot(a.iso, SLOT_TXT)
-    for n in PACKS: slot(a.iso, "/xash3d/dod/media/" + n)
+    try:
+        if not os.path.exists(a.iso): raise SystemExit("disc image %s does not exist" % a.iso)
+        slot_bsp = slot(a.iso, SLOT_BSP); slot_txt = slot(a.iso, SLOT_TXT)
+        for n in PACKS: slot(a.iso, "/xash3d/dod/media/" + n)
+    except (SystemExit, OSError) as e:
+        print("[watch] cannot use the disc: %s" % e); status(a.work, state="error", error="disc not usable: %s (build one with build_slot_disc.sh)" % e); return
     print("[watch] slots: bsp lba=%d size=%d  livemap lba=%d size=%d" % (*slot_bsp, *slot_txt))
     status(a.work, state="watching", iso=a.iso, pid=os.getpid(), game_connected=False)
     if a.dolphin_log: threading.Thread(target=tail_dolphin, args=(a.dolphin_log, a.work), daemon=True).start()
@@ -118,38 +122,43 @@ def main():
         try: m = os.stat(mapfile).st_mtime
         except FileNotFoundError: m = 0
         if m and m != last:
-            last = m; t0 = time.time(); stages = {"wait": round(t0 - m, 2) if started_loop and t0 - m < 30 else 0.0}   # save -> watcher noticed (0 for the first pass after start)
-            status(a.work, state="compiling", stages=stages, error="")
-            bsp, times = build(mapfile, a.work, a.vis, a.rad); stages["compile"] = round(sum(times.values()), 2)
-            if not bsp:
-                status(a.work, state="error", error=open(os.path.join(a.work, "last_error.txt")).read() if os.path.exists(os.path.join(a.work, "last_error.txt")) else "compile failed")
-            else:
-                try:
-                    import hashlib
-                    h = hashlib.md5(open(bsp, "rb").read()).hexdigest()
-                    if h == last_hash:
-                        status(a.work, state="unchanged", stages=stages); print("[watch] map unchanged, nothing pushed")
-                        if a.once: return
-                        continue
-                    texs = bsp_texture_names(bsp); skip_wt = texs == last_tex
-                    t1 = time.time()
-                    packs = {}
-                    if not a.no_packs:
-                        os.environ["BAKE_SKIP_WT"] = "1" if skip_wt else "0"
-                        packs = bake_packs(bsp, a.work)
-                    stages["bake"] = round(time.time() - t1, 2); t2 = time.time()
-                    for n, pth in packs.items():     # packs first, BSP second, trigger last
-                        try: isoslot.write(a.iso, "/xash3d/dod/media/" + n, pth, slot(a.iso, "/xash3d/dod/media/" + n), PACKS[n])
-                        except SystemExit as e: print("[watch] pack slot", n, e)
-                    isoslot.write(a.iso, SLOT_BSP, bsp, slot_bsp); serial += 1
-                    tf = os.path.join(a.work, "livemap.txt"); open(tf, "w").write("L %d dod_live\n" % serial)
-                    isoslot.write(a.iso, SLOT_TXT, tf, slot_txt)   # trigger LAST, after the BSP is on disc
-                    stages["patch"] = round(time.time() - t2, 2); total = time.time() - t0; last_hash = h; last_tex = texs
-                    status(a.work, state="pushed", serial=serial, times=times, stages=stages, pushed_at=time.time(), total=total, error="",
-                           wt_reused=skip_wt, reload_seconds=None)
-                    print("[watch] #%d %s total %.2fs%s" % (serial, " ".join("%s=%.2fs" % kv for kv in stages.items()), total, " (textures unchanged, wt kept)" if skip_wt else ""))
-                except SystemExit as e: print("[watch] patch failed:", e)
-            started_loop = True
-            if a.once: return
+            try:
+                last = m; t0 = time.time(); stages = {"wait": round(t0 - m, 2) if started_loop and t0 - m < 30 else 0.0}   # save -> watcher noticed (0 for the first pass after start)
+                status(a.work, state="compiling", stages=stages, error="")
+                bsp, times = build(mapfile, a.work, a.vis, a.rad); stages["compile"] = round(sum(times.values()), 2)
+                if not bsp:
+                    status(a.work, state="error", error=open(os.path.join(a.work, "last_error.txt")).read() if os.path.exists(os.path.join(a.work, "last_error.txt")) else "compile failed")
+                else:
+                    try:
+                        import hashlib
+                        h = hashlib.md5(open(bsp, "rb").read()).hexdigest()
+                        if h == last_hash:
+                            status(a.work, state="unchanged", stages=stages); print("[watch] map unchanged, nothing pushed")
+                            if a.once: return
+                            continue
+                        texs = bsp_texture_names(bsp); skip_wt = texs == last_tex
+                        t1 = time.time()
+                        packs = {}
+                        if not a.no_packs:
+                            os.environ["BAKE_SKIP_WT"] = "1" if skip_wt else "0"
+                            packs = bake_packs(bsp, a.work)
+                        stages["bake"] = round(time.time() - t1, 2); t2 = time.time()
+                        for n, pth in packs.items():     # packs first, BSP second, trigger last
+                            try: isoslot.write(a.iso, "/xash3d/dod/media/" + n, pth, slot(a.iso, "/xash3d/dod/media/" + n), PACKS[n])
+                            except SystemExit as e: print("[watch] pack slot", n, e)
+                        isoslot.write(a.iso, SLOT_BSP, bsp, slot_bsp); serial += 1
+                        tf = os.path.join(a.work, "livemap.txt"); open(tf, "w").write("L %d dod_live\n" % serial)
+                        isoslot.write(a.iso, SLOT_TXT, tf, slot_txt)   # trigger LAST, after the BSP is on disc
+                        stages["patch"] = round(time.time() - t2, 2); total = time.time() - t0; last_hash = h; last_tex = texs
+                        status(a.work, state="pushed", serial=serial, times=times, stages=stages, pushed_at=time.time(), total=total, error="",
+                               wt_reused=skip_wt, reload_seconds=None)
+                        print("[watch] #%d %s total %.2fs%s" % (serial, " ".join("%s=%.2fs" % kv for kv in stages.items()), total, " (textures unchanged, wt kept)" if skip_wt else ""))
+                    except SystemExit as e: print("[watch] patch failed:", e)
+                started_loop = True
+                if a.once: return
+            except Exception as e:      # never let one bad save (disk full, ISO moved, baker error) end the watcher
+                import traceback; traceback.print_exc()
+                status(a.work, state="error", error="watcher: %s" % e)
+                if a.once: return
         time.sleep(0.1)
 if __name__ == "__main__": main()

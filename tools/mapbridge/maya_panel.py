@@ -11,6 +11,7 @@ It never starts or stops Dolphin; the reload is done by the game's gc_livemap po
 import json, os, subprocess, sys, time
 HERE = os.path.dirname(os.path.abspath(__file__)); sys.path.insert(0, HERE)
 import maya.cmds as cmds
+from maya_safe import safe, cb, Progress
 import maya_export as me, maya_materials as mm
 
 WORK = os.path.expanduser(os.environ.get("GSBRIDGE_WORK", "~/.cache/gsbridge"))
@@ -104,6 +105,10 @@ def _watcher(on):
     global _proc
     if on and (not _proc or _proc.poll() is not None):
         iso = cmds.textField(_ui["iso"], q=True, text=True)
+        if not os.path.exists(iso):
+            cmds.warning("disc image %s does not exist; build one with build_slot_disc.sh (see DESIGN.md)" % iso)
+            cmds.checkBox(_ui["watcher_cb"], e=True, value=False) if "watcher_cb" in _ui else None; return
+        os.makedirs(WORK, exist_ok=True)
         _proc = subprocess.Popen([sys.executable, os.path.join(HERE, "watch.py"), "--iso", iso, "--work", WORK],
                                  stdout=open(os.path.join(WORK, "watch.log"), "a"), stderr=subprocess.STDOUT)
     elif not on and _proc and _proc.poll() is None: _proc.terminate()
@@ -116,7 +121,7 @@ def _build():
     _ui["reload"] = cmds.text(label="", align="left", wordWrap=True, font="smallObliqueLabelFont")
     cmds.rowLayout(numberOfColumns=3, adjustableColumn=1)
     _ui["iso"] = cmds.textField(text=ISO, annotation="slot disc the watcher patches")
-    cmds.checkBox(label="Watcher", changeCommand=lambda v: _watcher(v), annotation="start/stop ceres-side compile+patch")
+    _ui["watcher_cb"] = cmds.checkBox(label="Watcher", changeCommand=lambda v: _watcher(v), annotation="start/stop ceres-side compile+patch")
     cmds.button(label="Refresh", command=refresh); cmds.setParent("..")
     cmds.button(label="Export + Compile + Push", height=36, backgroundColor=(0.25, 0.45, 0.3), command=_push)
     cmds.checkBox(label="Auto-push on Save", changeCommand=_auto)
@@ -164,3 +169,8 @@ def _ui_script():
     _filter(); refresh()
     if _timer: cmds.scriptJob(kill=_timer, force=True)
     _timer = cmds.scriptJob(event=["idle", _tick], parent=WIN, protected=True)
+
+
+# every entry point is guarded: an error becomes a Maya warning, never an exception in Maya's event loop
+for _n in ['refresh', '_tick', '_filter', '_preview', '_load_wad', '_assign', '_brush', '_entity', '_push', '_auto', '_watcher', '_build', '_ui_script', 'show']:
+    globals()[_n] = safe(globals()[_n])

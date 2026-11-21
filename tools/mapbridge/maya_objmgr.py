@@ -9,6 +9,7 @@ Placed objects carry gs_classname / gs_key_* so maya_export writes them straight
 import json, os, sys
 HERE = os.path.dirname(os.path.abspath(__file__)); sys.path.insert(0, HERE)
 import maya.cmds as cmds
+from maya_safe import safe, cb, Progress
 WCTL = "gsObjMgrCtl"; CAT = os.path.expanduser("~/.cache/gsbridge/objmgr")
 COLS = 5; _ui = {}; _cat = []; _filters = None
 
@@ -130,3 +131,8 @@ def show(*_):
               uiScript="import maya_objmgr; maya_objmgr._ui_script()")
     kw["tabToControl"] = ("gsBridgeWin" if cmds.workspaceControl("gsBridgeWin", q=True, exists=True) else "AttributeEditor", -1)
     cmds.workspaceControl(WCTL, **kw); return WCTL
+
+
+# every entry point is guarded: an error becomes a Maya warning, never an exception in Maya's event loop
+for _n in ['place', '_fill', '_add_filter', '_del_filter', '_build', '_ui_script', 'show']:
+    globals()[_n] = safe(globals()[_n])

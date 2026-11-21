@@ -47,3 +47,11 @@ engine-livemap.patch: SV_GCLiveMapFrame polls livemap.txt ~1/s, serial change ->
    placeholder TEAM/HP/AMMO bars do not).
 4. Watcher: `live_session.sh <iso>` compiles, bakes wt/wd/lf/sb packs and patches every slot in place on each save.
 Notes: VIS output from the ZHLT fork made the world draw white in-engine; watch.py leaves VIS off unless --vis is given.
+
+## Robustness notes (Maya)
+- Every panel/menu/scriptJob entry point is wrapped (`maya_safe.safe`): an error is a Maya warning, never an exception in the event loop.
+- Stock-map loads share materials across maps and `unload` purges what nothing uses; before this, each load left ~200 lambert/file nodes
+  behind (5,000+ after a session) and loads slowed from 1 s to 4 s until Maya stalled. Progress bar with Esc to cancel; repaint throttled.
+- scriptJobs: one export job (id kept in `__main__`), one preview job per locator and attribute, panel idle job parented to its control.
+- Watcher: one bad save, a full disk or a moved disc image is reported in status.json and the watcher keeps running.
+- Not done: loads still run on Maya's main thread (Maya's API is not thread-safe); they are chunked with a progress bar instead.

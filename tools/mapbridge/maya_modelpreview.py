@@ -23,9 +23,13 @@ def _load(rel, skin):
 def _attr(loc, name, default=""):
     return cmds.getAttr(loc + "." + name) if cmds.attributeQuery(name, node=loc, exists=True) else default
 
+_jobs = {}
 def clear(loc):
     g = loc + "_mdlpreview"
     if cmds.objExists(g): cmds.delete(g)
+    try:
+        from maya_safe import purge_unused; purge_unused(("mdlp_",))
+    except Exception: pass
 
 def build(loc):
     model = _attr(loc, "gs_key_model")
@@ -57,10 +61,15 @@ def build(loc):
 
 def watch(loc):
     """Rebuild when the model or skin key changes on the locator."""
-    for a in ("gs_key_model", "gs_key_skin"):
-        if cmds.attributeQuery(a, node=loc, exists=True):
-            cmds.scriptJob(attributeChange=[loc + "." + a, lambda l=loc: cmds.evalDeferred(lambda: build(l) if cmds.objExists(l) else None)],
-                           killWithScene=True, protected=False)
+    for j in _jobs.pop(loc, []):      # one job per attribute, never stacked by repeated builds
+        try: cmds.scriptJob(kill=j, force=True)
+        except Exception: pass
+    def rebuild(l=loc):
+        try:
+            if cmds.objExists(l): build(l)
+        except Exception as e: cmds.warning("[gsbridge] model preview rebuild failed: %s" % e)
+    _jobs[loc] = [cmds.scriptJob(attributeChange=[loc + "." + a, lambda: cmds.evalDeferred(rebuild)], killWithScene=True, protected=False)
+                  for a in ("gs_key_model", "gs_key_skin") if cmds.attributeQuery(a, node=loc, exists=True)]
 
 def refresh_all():
     for n in cmds.ls("*", transforms=True):

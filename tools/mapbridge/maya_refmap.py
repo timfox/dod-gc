@@ -14,6 +14,7 @@ import json, os, sys
 HERE = os.path.dirname(os.path.abspath(__file__)); sys.path.insert(0, HERE)
 import maya.cmds as cmds
 import maya.api.OpenMaya as om
+from maya_safe import Progress, purge_unused
 REF = os.path.expanduser("~/.cache/gsbridge/ref")
 COLORS = {"info_player": 14, "dod_control_point": 13, "dod_capture_area": 13, "light": 17, "env_model": 6, "ambient_generic": 9, "info_doddetect": 16}
 
@@ -24,8 +25,41 @@ def _bake(mapname):
     return json.load(open(out))
 
 def unload(mapname):
-    for n in ("ref_" + mapname, "REF_" + mapname):
+    for n in ("ref_" + mapname, "REF_" + mapname, "refsky_" + mapname, "refocean_" + mapname):
         if cmds.objExists(n): cmds.delete(n)
+    purge_unused(("refm_", "refsky_", "gsf_"))      # shaders no mesh uses any more (they used to pile up: thousands after a few maps)
+
+def _material(g):
+    """Shared, cached material for a texture group: the same (texture, kind, amount) is created once across every loaded map."""
+    import hashlib
+    kind = g.get("kind", "opaque")
+    key = hashlib.sha1(("%s|%s|%s|%s" % (g.get("png"), g.get("tex"), kind, g.get("amt"))).encode()).hexdigest()[:10]
+    sh = "refm_" + key; sg = sh + "SG"
+    if cmds.objExists(sg): return sg
+    sh = cmds.shadingNode("lambert", asShader=True, name=sh)
+    sg = cmds.sets(renderable=True, noSurfaceShader=True, empty=True, name=sh + "SG"); cmds.connectAttr(sh + ".outColor", sg + ".surfaceShader")
+    kind = g.get("kind", "opaque")
+    if kind == "water":      # engine water: the (animated in-game) texture, alpha-blended over what is behind it
+        if g["png"] and os.path.exists(g["png"]):
+            f = cmds.shadingNode("file", asTexture=True, isColorManaged=True)
+            cmds.setAttr(f + ".fileTextureName", g["png"], type="string"); cmds.connectAttr(f + ".outColor", sh + ".color")
+        else:
+            r, gr, b = [c / 255.0 for c in (g.get("mean") or [40, 70, 90])]; cmds.setAttr(sh + ".color", r, gr, b, type="double3")
+        cmds.setAttr(sh + ".transparency", 0.4, 0.38, 0.35, type="double3"); cmds.setAttr(sh + ".diffuse", 1.0)
+    elif g["png"] and os.path.exists(g["png"]):
+        f = cmds.shadingNode("file", asTexture=True, isColorManaged=True)
+        cmds.setAttr(f + ".fileTextureName", g["png"], type="string"); cmds.connectAttr(f + ".outColor", sh + ".color")
+        if kind == "alpha" or g["tex"].startswith("{"): cmds.connectAttr(f + ".outTransparency", sh + ".transparency")
+        elif kind in ("trans", "add"):
+            t = 1.0 - (g.get("amt", 255) / 255.0 if kind == "trans" else 0.6); cmds.setAttr(sh + ".transparency", t, t, t, type="double3")
+    if not (kind == "water" or (g["png"] and os.path.exists(g["png"]))):   # texture the engine could not load either: the same pink/black checker
+        import missing_tex
+        f = cmds.shadingNode("file", asTexture=True, isColorManaged=True)
+        cmds.setAttr(f + ".fileTextureName", missing_tex.path(), type="string"); cmds.setAttr(f + ".filterType", 0)
+        p2 = cmds.shadingNode("place2dTexture", asUtility=True); cmds.connectAttr(p2 + ".outUV", f + ".uvCoord")
+        cmds.setAttr(p2 + ".repeatU", 8); cmds.setAttr(p2 + ".repeatV", 8)
+        cmds.connectAttr(f + ".outColor", sh + ".color")
+    return sg
 
 def load(mapname, at=None):
     data = _bake(mapname); unload(mapname)
@@ -36,7 +70,11 @@ def load(mapname, at=None):
         at = (gx + 400 - lo[0], -(lo[1] + hi[1]) / 2, 0)
     root = cmds.group(empty=True, name="ref_" + mapname)
     def P(x, y, z): return om.MPoint(x + at[0], z + at[2], -(y + at[1])) if yup else om.MPoint(x + at[0], y + at[1], z + at[2])
+    prog = Progress("Loading %s" % mapname, len(data["groups"]) + 1).__enter__()
     for gi, g in enumerate(data["groups"]):
+        prog.step()
+        if prog.cancelled:
+            prog.__exit__(); unload(mapname); cmds.warning("load of %s cancelled" % mapname); return None
         pts, counts, conn, us, vs = [], [], [], [], []
         for poly in g["polys"]:
             counts.append(len(poly))
@@ -45,33 +83,12 @@ def load(mapname, at=None):
         fn = om.MFnMesh(); obj = fn.create(pts, counts, conn)
         fn.setUVs(us, vs); fn.assignUVs(counts, conn)
         name = cmds.rename(om.MFnDagNode(obj).fullPathName(), "refgeo_%s_%d" % (mapname, gi))
-        sh = cmds.shadingNode("lambert", asShader=True, name="refm_%s_%d" % (mapname, gi))
-        sg = cmds.sets(renderable=True, noSurfaceShader=True, empty=True, name=sh + "SG"); cmds.connectAttr(sh + ".outColor", sg + ".surfaceShader")
-        kind = g.get("kind", "opaque")
-        if kind == "water":      # engine water: the (animated in-game) texture, alpha-blended over what is behind it
-            if g["png"] and os.path.exists(g["png"]):
-                f = cmds.shadingNode("file", asTexture=True, isColorManaged=True)
-                cmds.setAttr(f + ".fileTextureName", g["png"], type="string"); cmds.connectAttr(f + ".outColor", sh + ".color")
-            else:
-                r, gr, b = [c / 255.0 for c in (g.get("mean") or [40, 70, 90])]; cmds.setAttr(sh + ".color", r, gr, b, type="double3")
-            cmds.setAttr(sh + ".transparency", 0.4, 0.38, 0.35, type="double3"); cmds.setAttr(sh + ".diffuse", 1.0)
-        elif g["png"] and os.path.exists(g["png"]):
-            f = cmds.shadingNode("file", asTexture=True, isColorManaged=True)
-            cmds.setAttr(f + ".fileTextureName", g["png"], type="string"); cmds.connectAttr(f + ".outColor", sh + ".color")
-            if kind == "alpha" or g["tex"].startswith("{"): cmds.connectAttr(f + ".outTransparency", sh + ".transparency")
-            elif kind in ("trans", "add"):
-                t = 1.0 - (g.get("amt", 255) / 255.0 if kind == "trans" else 0.6); cmds.setAttr(sh + ".transparency", t, t, t, type="double3")
-        if not (kind == "water" or (g["png"] and os.path.exists(g["png"]))):   # texture the engine could not load either: the same pink/black checker
-            import missing_tex
-            f = cmds.shadingNode("file", asTexture=True, isColorManaged=True)
-            cmds.setAttr(f + ".fileTextureName", missing_tex.path(), type="string"); cmds.setAttr(f + ".filterType", 0)
-            p2 = cmds.shadingNode("place2dTexture", asUtility=True); cmds.connectAttr(p2 + ".outUV", f + ".uvCoord")
-            cmds.setAttr(p2 + ".repeatU", 8); cmds.setAttr(p2 + ".repeatV", 8)
-            cmds.connectAttr(f + ".outColor", sh + ".color")
+        sg = _material(g); kind = g.get("kind", "opaque")
         cmds.sets(name, e=True, forceElement=sg)
         cmds.addAttr(name, ln="ref_texture", dt="string"); cmds.setAttr(name + ".ref_texture", g["tex"] + ("  [" + kind + "]" if kind != "opaque" else ""), type="string")
         cmds.parent(name, root, relative=True)
         if kind == "hidden": cmds.setAttr(name + ".visibility", 0)   # not visible in the engine at spawn (renderamt 0); toggle to inspect
+    prog.__exit__()
     eg = cmds.group(empty=True, name="ref_%s_entities" % mapname); cmds.parent(eg, root, relative=True)
     n = 0
     for e in data["ents"]:

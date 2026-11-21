@@ -66,7 +66,8 @@ def _keys(node, cmds):
 def export_now(path=None):
     import maya.cmds as cmds
     yup = cmds.upAxis(q=True, axis=True) == "y"
-    os.makedirs(WORKDIR, exist_ok=True)
+    try: os.makedirs(WORKDIR, exist_ok=True)
+    except OSError as e: raise RuntimeError("work dir %s is not writable: %s" % (WORKDIR, e))
     path = path or os.path.join(WORKDIR, MAPNAME + ".map")
     world = []
     roots = [g for g in cmds.ls("gs_world*", transforms=True) if cmds.getAttr(g + ".visibility")]   # gs_world, gs_world_test, ...
@@ -98,11 +99,21 @@ def export_now(path=None):
     print("[gsbridge] wrote %s (%d world brushes, %d entities) %s" % (path, len(world), len(ents), time.strftime("%H:%M:%S")))
     return path
 
-_job = None
+def _safe_export():
+    try: export_now()
+    except Exception as e:      # a failed export must never raise inside Maya's save
+        import maya.cmds as cmds
+        cmds.warning("[gsbridge] export failed: %s (the game keeps the previous map)" % e)
+
 def install():
-    """Re-export on every scene save (watcher on ceres picks the .map up)."""
-    import maya.cmds as cmds
+    """Re-export on every scene save (watcher on ceres picks the .map up). The job id lives in __main__ so reloading this module
+    cannot leak a second job."""
+    import maya.cmds as cmds, __main__
+    old = getattr(__main__, "_gsbridge_export_job", None)
+    if old is not None:
+        try: cmds.scriptJob(kill=old, force=True)
+        except Exception: pass
+    __main__._gsbridge_export_job = cmds.scriptJob(event=["SceneSaved", _safe_export], protected=False)
     global _job
-    if _job: cmds.scriptJob(kill=_job, force=True)
-    _job = cmds.scriptJob(event=["SceneSaved", lambda: export_now()], protected=False)
+    _job = __main__._gsbridge_export_job
     print("[gsbridge] installed: save the scene to push the map. workdir=%s" % WORKDIR)

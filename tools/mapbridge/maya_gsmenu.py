@@ -4,7 +4,9 @@ Panels are workspaceControls (dock anywhere, saved in Maya's layout, restored on
 import os, sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 if HERE not in sys.path: sys.path.insert(0, HERE)
-import maya.cmds as cmds, maya.mel as mel
+import maya.cmds as cmds
+from maya_safe import safe, cb, Progress
+import maya.mel as mel
 
 def _open_bridge(*_): import maya_panel; maya_panel.show()
 def _open_objmgr(*_): import maya_objmgr; maya_objmgr.show()
@@ -47,3 +49,8 @@ def install_usersetup(path=None):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     block = "\n%s\nimport sys, maya.cmds as _c\nsys.path.insert(0, %r)\n_c.evalDeferred('import maya_gsmenu; maya_gsmenu.install()')\n%s\n" % (BEGIN, HERE, END)
     open(path, "a").write(block); return path
+
+
+# every entry point is guarded: an error becomes a Maya warning, never an exception in Maya's event loop
+for _n in ['_open_bridge', '_open_objmgr', '_open_mapmgr', '_open_both', '_push', 'install']:
+    globals()[_n] = safe(globals()[_n])
