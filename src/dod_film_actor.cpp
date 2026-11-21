@@ -72,6 +72,16 @@ static int DodFilm_VehiclePrecached( const char *name )
  * the GameCube heap has free once a map is up, so it never loaded and no burst drew;
  * explode1.spr is a fraction of that. 0 falls back to g_sModelIndexFireball. */
 static int g_film_fireball;
+/* Gibs: a man who falls next to a shell burst comes apart. The gib model is loaded only when the cast
+ * has explosions and the file is there (models/hgibs.mdl); 0 means no gibs, only the heavier blood. */
+static int g_film_gibs;
+#define DOD_FILM_GIB_FILE "models/hgibs.mdl"
+#define DOD_FILM_BURSTS 8
+#define DOD_FILM_GIB_RANGE 240.0f	/* a fall this close to a burst ... */
+#define DOD_FILM_GIB_WINDOW 0.8f	/* ... this soon after it */
+static struct { Vector at; float t; } g_film_burst[DOD_FILM_BURSTS];
+static int g_film_burst_next;
+static void DodFilm_Gibs( const Vector &o, const Vector &dir );
 
 static int DodFilm_PoolLive( int i )
 {
@@ -369,7 +379,17 @@ static void DodFilm_Place( int i, float t, float dt )
 		if( s.pose == DOD_POSE_FALLEN && ent->m_pose >= 0 && ent->m_pose != DOD_POSE_FALLEN && t > 0.0f ) {
 			const float yaw = s.yaw * 0.017453293f;
 			const Vector back( -cosf( yaw ), -sinf( yaw ), 0.35f );
-			DodFilm_Blood( origin + Vector( 0, 0, 20.0f ), back, 1.0f );
+			/* a lot of it: the chest wound, a spray from higher up, and a pool where he lands */
+			DodFilm_Blood( origin + Vector( 0, 0, 20.0f ), back, 1.8f );
+			DodFilm_Blood( origin + Vector( 0, 0, 34.0f ), back + Vector( 0, 0, 0.4f ), 1.2f );
+			DodFilm_Blood( origin - Vector( 0, 0, 12.0f ), Vector( 0, 0, 0.2f ), 0.8f );
+			for( int b = 0; b < DOD_FILM_BURSTS; b++ ) {
+				if( g_film_burst[b].t > 0.0f && t - g_film_burst[b].t >= 0.0f && t - g_film_burst[b].t <= DOD_FILM_GIB_WINDOW
+					&& ( g_film_burst[b].at - origin ).Length() <= DOD_FILM_GIB_RANGE ) {
+					DodFilm_Gibs( origin, ( origin - g_film_burst[b].at ).Normalize() );
+					break;
+				}
+			}
 		}
 		int gait = 0;
 		const int upper = s.seq ? -1 : DodFilm_Layered( ent, s.pose, &gait );
@@ -484,6 +504,32 @@ static void DodFilm_Smoke( const Vector &o, float scale, int framerate )
 
 /* Blood: a spurt along dir and a spray around it, both particles (no sprite to load,
  * which MEM1 has no room for). 70 is the red of the HL palette's blood ramp. */
+/* Gibs flung from a man caught by a burst (TE_BREAKMODEL, flesh), with a burst of blood round them. */
+static void DodFilm_Gibs( const Vector &o, const Vector &dir )
+{
+	DodFilm_Blood( o + Vector( 0, 0, 24.0f ), Vector( 0, 0, 1.0f ), 2.2f );
+	DodFilm_Blood( o + Vector( 0, 0, 24.0f ), dir + Vector( 0, 0, 0.6f ), 2.0f );
+	if( !g_film_gibs )
+		return;
+	MESSAGE_BEGIN( MSG_BROADCAST, SVC_TEMPENTITY );
+		WRITE_BYTE( TE_BREAKMODEL );
+		WRITE_COORD( o.x );
+		WRITE_COORD( o.y );
+		WRITE_COORD( o.z + 24.0f );
+		WRITE_COORD( 24.0f );	/* size */
+		WRITE_COORD( 24.0f );
+		WRITE_COORD( 36.0f );
+		WRITE_COORD( dir.x * 220.0f );	/* velocity: away from the burst, and up */
+		WRITE_COORD( dir.y * 220.0f );
+		WRITE_COORD( 240.0f );
+		WRITE_BYTE( 20 );	/* random velocity, in tens */
+		WRITE_SHORT( g_film_gibs );
+		WRITE_BYTE( 8 );	/* count */
+		WRITE_BYTE( 60 );	/* life, tenths of a second */
+		WRITE_BYTE( BREAK_FLESH );
+	MESSAGE_END();
+}
+
 static void DodFilm_Blood( const Vector &o, const Vector &dir, float scale )
 {
 	const int color = 70;
@@ -565,7 +611,7 @@ static void DodFilm_FireFx( const DodFilmFx *f )
 		DodFilm_Smoke( o, 30.0f * s, 6 );
 		break;
 	case DOD_FX_KIND_BLOOD:
-		DodFilm_Blood( o, Vector( 0, 0, 1.0f ), s );
+		DodFilm_Blood( o, Vector( 0, 0, 1.0f ), 1.6f * s );
 		break;
 	case DOD_FX_KIND_TRACER:
 		MESSAGE_BEGIN( MSG_BROADCAST, SVC_TEMPENTITY );
@@ -589,6 +635,12 @@ static void DodFilm_RunFx( float t )
 	int first, end = DodFilm_FxDue( &g_film_cast, g_film_fx_clock, t, &first );
 	for( int i = first; i < end; i++ ) {
 		DodFilm_FireFx( &g_film_cast.fx[i] );
+		if( g_film_cast.fx[i].kind == DOD_FX_KIND_EXPLOSION ) {
+			g_film_burst[g_film_burst_next].at = Vector( g_film_cast.fx[i].origin[0], g_film_cast.fx[i].origin[1],
+				g_film_cast.fx[i].origin[2] );
+			g_film_burst[g_film_burst_next].t = t > 0.0f ? t : 0.001f;
+			g_film_burst_next = ( g_film_burst_next + 1 ) % DOD_FILM_BURSTS;
+		}
 		if( logs < 24 ) {
 			logs++;
 			ALERT( at_console, "FILM FX %s: %d of %d, %s at %.2f s (%.0f %.0f %.0f), fireball %d smoke %d\n", g_film_shot,
@@ -736,10 +788,22 @@ void DodFilm_Init( void )
 	memset( g_film_gun, 0, sizeof( g_film_gun ) );
 	memset( g_film_vehicle, 0, sizeof( g_film_vehicle ) );
 	g_film_fireball = 0;
+	g_film_gibs = 0;
+	memset( g_film_burst, 0, sizeof( g_film_burst ) );
+	g_film_burst_next = 0;
 	byte *text = LOAD_FILE_FOR_ME( "cine/cast.txt", &length );
 	if( !text )
 		return;
 	g_film_fireball = PRECACHE_MODEL( (char *)"sprites/explode1.spr" );
+	if( strstr( (const char *)text, " explosion " ) ) {
+		int gib_len = 0;
+		byte *gib = LOAD_FILE_FOR_ME( (char *)DOD_FILM_GIB_FILE, &gib_len );
+		if( gib ) {
+			FREE_FILE( gib );
+			g_film_gibs = PRECACHE_MODEL( (char *)DOD_FILM_GIB_FILE );
+		}
+		ALERT( at_console, "FILM: gibs %s (%d bytes)\n", g_film_gibs ? "on" : "off, no " DOD_FILM_GIB_FILE, gib_len );
+	}
 	for( int team = DOD_TEAM_ALLIES; team <= DOD_TEAM_AXIS; team++ ) {
 		const char *name = team == DOD_TEAM_AXIS ? "axis" : "allies";
 		const char *hit = strstr( (const char *)text, name );
