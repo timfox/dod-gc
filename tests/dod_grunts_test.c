@@ -190,7 +190,7 @@ static void test_script_actor(void)
 	DodGrunt_Move(&p, i, 1.0f, 0.1f);
 	assert(p.x[i] == x0);
 	/* runto: arrives, holds, reports once */
-	DodGrunt_OrderMove(&p, i, 400, 0, 1);
+	DodGrunt_OrderMove(&p, i, 400, 0, 0, 1);
 	float now = 1.0f;
 	int f;
 	for (f = 0; f < 200 && !p.order_done[i]; f++, now += 0.05f) {
@@ -220,6 +220,76 @@ static void test_script_actor(void)
 	assert(DodGrunt_Hurt(&p, 0, 1000, 0.0f) && DodGrunt_RespawnDue(&p, 0, DOD_GRUNT_RESPAWN));
 }
 
+static int linked(const DodPaths *g, int a, int b)
+{
+	int k;
+	for (k = 0; k < DOD_PATH_LINKS; k++)
+		if (g->link[a][k] == b)
+			return 1;
+	return 0;
+}
+
+/* a wall along x = 0 from y = -50 to 150: only the far end (y > 150) gets round it */
+static int test_walkable(void *ctx, const float a[3], const float b[3])
+{
+	(void)ctx;
+	if ((a[0] < 0) == (b[0] < 0))
+		return 1;
+	{
+		const float t = (0 - a[0]) / (b[0] - a[0]), y = a[1] + t * (b[1] - a[1]);
+		return y > 150.0f || y < -50.0f;
+	}
+}
+
+static void test_paths(void)
+{
+	/* a U round the wall: 0 west, 1 north-west, 2 north-east, 3 east, plus one far away on its own */
+	static const char text[] =
+		"# mohaa path nodes: x y z grav spawnflags targetname\n"
+		"-100 0 0 0 0 start\n"
+		"-100 250 0 0 0 -\n"
+		"100 250 0 1 4 $Corner\n"
+		"100 0 0 0 0 end\n"
+		"5000 5000 0 0 0 alone";	/* no newline and no NUL past the length */
+	DodPaths g;
+	assert(DodPaths_Load(&g, text, sizeof(text) - 1) == 5);
+	assert(DodPaths_Find(&g, "corner") == 2 && DodPaths_Find(&g, "$START") == 0 && DodPaths_Find(&g, "-") == -1);
+	assert(g.pos[4][0] == 5000.0f && DodPaths_Find(&g, "alone") == 4);
+	const int traces = DodPaths_Link(&g, test_walkable, NULL, DOD_PATH_REACH);
+	assert(traces > 0);
+	assert(!linked(&g, 0, 3) && linked(&g, 0, 1) && linked(&g, 1, 2) && linked(&g, 2, 3) && linked(&g, 3, 2));
+	assert(DodPaths_NextHop(&g, 0, 3) == 1);
+	assert(DodPaths_NextHop(&g, 1, 3) == 2);
+	assert(DodPaths_NextHop(&g, 2, 3) == 3);
+	assert(DodPaths_NextHop(&g, 0, 4) == -1 && DodPaths_NextHop(&g, 3, 3) == 3);
+	{
+		const float p[3] = { -90, 10, 0 };
+		assert(DodPaths_Nearest(&g, p) == 0);
+	}
+	/* a scripted grunt west of the wall told to run east goes round it node by node */
+	DodGruntPool p;
+	DodGrunt_Init(&p, 5);
+	p.paths = &g;
+	const int i = DodGrunt_FreeScriptSlot(&p);
+	DodGrunt_SpawnScripted(&p, i, DOD_TEAM_AXIS, -120, 0, 36, 0, 0.0f);
+	DodGrunt_OrderMove(&p, i, 150, 0, 0, 1);
+	assert(p.path_node[i] == 0 && p.goal_node[i] == 3);
+	int f, worst_x_at_wall = 0;
+	float now = 0.0f;
+	for (f = 0; f < 400 && !p.order_done[i]; f++, now += 0.05f) {
+		DodGrunt_Move(&p, i, now, 0.05f);
+		if (fabsf(p.x[i]) < 5.0f && p.y[i] < 150.0f)
+			worst_x_at_wall = 1;	/* crossed x = 0 inside the wall */
+	}
+	assert(p.order_done[i] && !worst_x_at_wall);
+	assert(fabsf(p.x[i] - 150.0f) <= DOD_GRUNT_ARRIVE + 0.01f && p.path_node[i] == DOD_PATH_NONE);
+	/* a goal nearer than the first node goes straight */
+	DodGrunt_OrderMove(&p, i, 160, 10, 0, 0);
+	assert(p.path_node[i] == DOD_PATH_NONE && p.order_x[i] == 160.0f);
+	DodPaths_Free(&g);
+	assert(g.count == 0 && g.block == NULL);
+}
+
 int main(void)
 {
 	test_count();
@@ -234,6 +304,7 @@ int main(void)
 	test_shooting();
 	test_rand_range();
 	test_script_actor();
+	test_paths();
 	printf("dod_grunts_test: ok (row %d bytes, pool %d bytes)\n", DodGrunt_RowBytes(), (int)sizeof(DodGruntPool));
 	return 0;
 }

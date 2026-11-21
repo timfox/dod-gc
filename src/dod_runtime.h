@@ -74,6 +74,11 @@ void DodGrunts_Think( void );
 void DodGrunts_PrecacheBodies( void );
 edict_t *DodGrunts_ScriptSpawn( int team, const Vector &origin, float yaw );
 int DodGrunts_ScriptOrder( edict_t *e, int order, const float pos[3] );
+/* Path nodes for script move orders: load maps/<map>.nodes and link them (returns the node count, 0 none); a node's
+ * index by targetname (-1 none) and its feet origin. */
+int DodGrunts_LoadPaths( const char *mapname );
+int DodGrunts_PathFind( const char *name );
+void DodGrunts_PathPos( int index, float out[3] );
 /* A script removes its actor: frees the slot and the edict. 0: not a script grunt. */
 int DodGrunts_ScriptRemove( edict_t *e );
 /* What the grunts need from the rules: a player's side (a DodTeam) and a random spawn point of a side. */

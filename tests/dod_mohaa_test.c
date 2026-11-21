@@ -133,6 +133,18 @@ static void m_precache(const char *s)
 }
 
 /* actors: classname "actor" in the mock; orders are logged */
+static int m_node_find(const char *name)
+{
+	return strcmp(name, "path7") ? -1 : 7;
+}
+
+static void m_node_pos(int index, float out[3])
+{
+	out[0] = 10.0f * (float)index / 7.0f;
+	out[1] = 20.0f;
+	out[2] = 30.0f;
+}
+
 static int m_actor(uint32_t id, int order, const float pos[3])
 {
 	static const char *names[] = {"ai_on", "ai_off", "attack", "walkto", "runto", "turnto", "stop"};
@@ -167,6 +179,8 @@ static DodMohaaBackend backend(void)
 	b.spawn = m_spawn;
 	b.sound = m_sound;
 	b.actor = m_actor;
+	b.node_find = m_node_find;
+	b.node_pos = m_node_pos;
 	b.precache_sound = m_precache;
 	return b;
 }
@@ -318,6 +332,10 @@ static void test_actors(void)
 		"\t$guy walkto \"node1\"\n"
 		"\t$guy walkto (0 94 0)\n"
 		"\t$guy turnto $crate\n"
+		"\t$guy runto $path7\n"
+		"\t$guy walkto \"path7\"\n"
+		"\tprintln $path7.origin\n"
+		"\t$guy runto $nowhere\n"
 		"\t$guy ai_on\n"
 		"\t$guy attackplayer\n"
 		"\t$guy waittill death\n"
@@ -331,7 +349,10 @@ static void test_actors(void)
 	Dod_MohaaNotify(make_id(guy), "movedone");
 	run(0.35f, 0.5f);
 	assert(strstr(log_buf, "arrived\n<guy walkto 72.0 0.0 0.0>\n<guy walkto 0.0 72.0 0.0>\n<guy turnto 0.0 0.0 0.0>\n"
-		"<guy ai_on 0.0 0.0 0.0>\n<guy attack 0.0 0.0 0.0>\n"));
+		"<guy runto 10.0 20.0 30.0>\n<guy walkto 10.0 20.0 30.0>\n"));
+	assert(strstr(log_buf, "<guy ai_on 0.0 0.0 0.0>\n<guy attack 0.0 0.0 0.0>\n"));
+	assert(strstr(log_buf, "(13.056 26.111 39.167)\n"));	/* $path7.origin, back in MOHAA units */
+	assert(strstr(log_buf, "runto needs a vector, an entity or a node name"));	/* $nowhere */
 	Dod_MohaaNotify(make_id(guy), "death");
 	run(0.55f, 0.7f);
 	assert(strstr(log_buf, "guy died"));

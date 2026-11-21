@@ -99,13 +99,46 @@ static void forget(uint32_t id)
 }
 
 /* destination argument: a vector in MOHAA units, or an entity to move onto */
+/* ---- path nodes seen as entities (DOD_MOHAA_NODE_ID) ---- */
+static int is_node(uint32_t id)
+{
+	return (id & DOD_MOHAA_NODE_ID) != 0;
+}
+
+static int valid(uint32_t id)
+{
+	if (is_node(id))
+		return S.be.node_pos != NULL;
+	return S.be.valid(id);
+}
+
+static void get_vec(uint32_t id, int what, float out[3])
+{
+	if (!is_node(id)) {
+		S.be.get_vec(id, what, out);
+		return;
+	}
+	out[0] = out[1] = out[2] = 0.0f;
+	if (what == DOD_MOHAA_ORIGIN && S.be.node_pos)
+		S.be.node_pos((int)(id & ~DOD_MOHAA_NODE_ID), out);
+}
+
+static int node_origin(const char *name, float out[3])
+{
+	const int k = S.be.node_find && S.be.node_pos ? S.be.node_find(name) : -1;
+	if (k < 0)
+		return 0;
+	S.be.node_pos(k, out);
+	return 1;
+}
+
 static int dest_arg(ms_call *c, int i, float out[3])
 {
 	const ms_value *v = ms_arg(c, i);
 	if (v->type == MS_ENTITY) {
-		if (!S.be.valid(v->u.id))
+		if (!valid(v->u.id))
 			return 0;
-		S.be.get_vec(v->u.id, DOD_MOHAA_ORIGIN, out);
+		get_vec(v->u.id, DOD_MOHAA_ORIGIN, out);
 		return 1;
 	}
 	if (v->type != MS_VECTOR && v->type != MS_STRING)
@@ -117,9 +150,9 @@ static int dest_arg(ms_call *c, int i, float out[3])
 			name++;
 		if ((name[0] >= 'a' && name[0] <= 'z') || (name[0] >= 'A' && name[0] <= 'Z') || name[0] == '_') {
 			uint32_t id = 0;
-			if (S.be.find(name, &id, 1) < 1 || !id || !S.be.valid(id))
-				return 0;
-			S.be.get_vec(id, DOD_MOHAA_ORIGIN, out);
+			if (S.be.find(name, &id, 1) < 1 || !id || !valid(id))
+				return node_origin(name, out);
+			get_vec(id, DOD_MOHAA_ORIGIN, out);
 			return 1;
 		}
 	}
@@ -167,14 +200,23 @@ static void h_print(void *user, int channel, const char *text)
 
 static int h_find(void *user, const char *name, uint32_t *ids, int max)
 {
+	int n;
 	(void)user;
-	return S.be.find(name, ids, max);
+	n = S.be.find(name, ids, max);
+	if (n == 0 && S.be.node_find && S.be.node_pos && max > 0) {
+		const int k = S.be.node_find(name);
+		if (k >= 0) {
+			ids[0] = DOD_MOHAA_NODE_ID | (uint32_t)k;
+			return 1;
+		}
+	}
+	return n;
 }
 
 static int h_valid(void *user, uint32_t id)
 {
 	(void)user;
-	return S.be.valid(id);
+	return valid(id);
 }
 
 static int h_get_field(void *user, const ms_value *l, const char *name, ms_value *out)
@@ -184,13 +226,13 @@ static int h_get_field(void *user, const ms_value *l, const char *name, ms_value
 	if (l->type != MS_ENTITY)
 		return 0;
 	if (!strcmp(name, "origin")) {
-		S.be.get_vec(l->u.id, DOD_MOHAA_ORIGIN, v);
+		get_vec(l->u.id, DOD_MOHAA_ORIGIN, v);
 		scale_out(v, v);
 		*out = ms_vec(v[0], v[1], v[2]);
 		return 1;
 	}
 	if (!strcmp(name, "angles")) {
-		S.be.get_vec(l->u.id, DOD_MOHAA_ANGLES, v);
+		get_vec(l->u.id, DOD_MOHAA_ANGLES, v);
 		*out = ms_vec(v[0], v[1], v[2]);
 		return 1;
 	}
@@ -323,7 +365,7 @@ static int c_move_dir(ms_call *c)
 	if (!m)
 		return ms_call_error(c, "too many moving objects");
 	if (!m->has_dest) {
-		S.be.get_vec(m->id, DOD_MOHAA_ORIGIN, m->dest);
+		get_vec(m->id, DOD_MOHAA_ORIGIN, m->dest);
 		m->has_dest = 1;
 	}
 	if (!strcmp(n, "up")) axis = 2;
@@ -370,8 +412,8 @@ static void start_move(DodMover *m)
 {
 	float org[3], ang[3], vel[3] = {0, 0, 0}, avel[3];
 	int i;
-	S.be.get_vec(m->id, DOD_MOHAA_ORIGIN, org);
-	S.be.get_vec(m->id, DOD_MOHAA_ANGLES, ang);
+	get_vec(m->id, DOD_MOHAA_ORIGIN, org);
+	get_vec(m->id, DOD_MOHAA_ANGLES, ang);
 	if (m->time <= 0.0f) {
 		if (m->has_dest)
 			S.be.set_vec(m->id, DOD_MOHAA_ORIGIN, m->dest);
@@ -633,7 +675,7 @@ static int c_stoploopsound(ms_call *c)
 static void trigger_value(const ms_value *v)
 {
 	if (v->type == MS_ENTITY) {
-		const char *tn = S.be.valid(v->u.id) ? S.be.get_str(v->u.id, DOD_MOHAA_TARGETNAME) : NULL;
+		const char *tn = valid(v->u.id) ? S.be.get_str(v->u.id, DOD_MOHAA_TARGETNAME) : NULL;
 		if (tn && *tn)
 			S.be.use_targets(tn);
 	} else if (v->type == MS_CARRAY || v->type == MS_ARRAY) {
@@ -826,7 +868,7 @@ void Dod_MohaaThink(float now)
 		ms_value ent;
 		if (!m->id || !m->moving || now < m->end_time)
 			continue;
-		if (!S.be.valid(m->id)) {
+		if (!valid(m->id)) {
 			memset(m, 0, sizeof(*m));
 			continue;
 		}

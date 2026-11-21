@@ -18,13 +18,13 @@
 static cvar_t mohaa_script_kb = { "mohaa_script_kb", "384", FCVAR_SERVER };
 static int g_mohaa_cvar_registered;
 
-/* id = edict index (12 bits) | serial number (20 bits): a freed and reused edict does
- * not answer for an old script reference */
+/* id = edict index (12 bits) | serial number (19 bits): a freed and reused edict does
+ * not answer for an old script reference. Bit 31 stays clear: DOD_MOHAA_NODE_ID marks a path node. */
 static uint32_t IdFor( edict_t *e )
 {
 	if( !e || e->free )
 		return 0;
-	return (uint32_t)ENTINDEX( e ) | ( (uint32_t)( e->serialnumber & 0xFFFFF ) << 12 );
+	return (uint32_t)ENTINDEX( e ) | ( (uint32_t)( e->serialnumber & 0x7FFFF ) << 12 );
 }
 
 static edict_t *EdictFor( uint32_t id )
@@ -33,7 +33,7 @@ static edict_t *EdictFor( uint32_t id )
 	if( !id || index <= 0 || index >= gpGlobals->maxEntities )
 		return NULL;
 	edict_t *e = INDEXENT( index );
-	if( !e || e->free || (uint32_t)( e->serialnumber & 0xFFFFF ) != ( id >> 12 ) || !e->pvPrivateData )
+	if( !e || e->free || (uint32_t)( e->serialnumber & 0x7FFFF ) != ( id >> 12 ) || !e->pvPrivateData )
 		return NULL;
 	return e;
 }
@@ -205,6 +205,14 @@ static int IsActorClass( const char *classname )
 	return !strcmp( classname, "actor" ) || !strncmp( classname, "models/human/", 13 ) || !strncmp( classname, "human/", 6 );
 }
 
+static edict_t *SpawnActorAt( int team, const Vector &origin, float yaw, const char *targetname )
+{
+	edict_t *e = DodGrunts_ScriptSpawn( team, origin, yaw );
+	if( e && targetname && targetname[0] )
+		e->v.targetname = ALLOC_STRING( targetname );
+	return e;
+}
+
 static uint32_t SpawnActor( const char *classname, const char *const *keys, const char *const *values, int count )
 {
 	Vector origin = g_vecZero;
@@ -224,12 +232,34 @@ static uint32_t SpawnActor( const char *classname, const char *const *keys, cons
 		else if( !strcmp( keys[i], "model" ) && strstr( values[i], "german" ) )
 			team = DOD_TEAM_AXIS;
 	}
-	edict_t *e = DodGrunts_ScriptSpawn( team, origin, yaw );
-	if( !e )
-		return 0;
-	if( targetname )
-		e->v.targetname = ALLOC_STRING( targetname );
-	return IdFor( e );
+	return IdFor( SpawnActorAt( team, origin, yaw, targetname ) );
+}
+
+/* A soldier placed in the map: mohaa-gc's converter writes MOHAA actors as mohaa_actor (origin at the feet, angle,
+ * targetname, model). The game rules (and so the grunt pool and the script) exist before the map's entities spawn, so
+ * it becomes a script grunt right here and the placeholder goes; "$name" in the script then finds the grunt. */
+class CMohaaActor : public CPointEntity
+{
+public:
+	void Precache( void ) { DodGrunts_PrecacheBodies(); }
+	void Spawn( void )
+	{
+		Precache();
+		const char *model = STRING( pev->model );
+		const int team = strstr( model, "german" ) ? DOD_TEAM_AXIS : DOD_TEAM_ALLIES;
+		pev->model = 0;	/* a .tik name, never a model the engine has */
+		const char *name = pev->targetname ? STRING( pev->targetname ) : NULL;
+		if( !SpawnActorAt( team, pev->origin, pev->angles.y, name ) )
+			ALERT( at_console, "mohaa_actor %s: no grunt slot left\n", name ? name : "" );
+		pev->targetname = 0;	/* the grunt answers to the name now */
+		UTIL_Remove( this );
+	}
+};
+LINK_ENTITY_TO_CLASS( mohaa_actor, CMohaaActor )
+
+static int M_NodeFind( const char *name )
+{
+	return DodGrunts_PathFind( name );
 }
 
 static int M_Actor( uint32_t id, int order, const float pos[3] )
@@ -321,6 +351,9 @@ void DodGC_MohaaLevelInit( void )
 	b.sound = M_Sound;
 	b.precache_sound = M_Precache;
 	b.actor = M_Actor;
+	b.node_find = M_NodeFind;
+	b.node_pos = DodGrunts_PathPos;
+	DodGrunts_LoadPaths( STRING( gpGlobals->mapname ) );	/* before the map's soldiers spawn and the script runs */
 	size_t budget = (size_t)CVAR_GET_FLOAT( "mohaa_script_kb" ) * 1024u;
 	if( Dod_MohaaLevelInit( &b, STRING( gpGlobals->mapname ), gpGlobals->time, budget ) ) {
 		DodGrunts_PrecacheBodies();	/* the mission's soldiers wear the sides' player bodies */

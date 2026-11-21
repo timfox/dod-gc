@@ -93,6 +93,8 @@ static void GruntHide( int i )
 	g_pool.order[i] = DOD_GRUNT_ORDER_NONE;
 }
 
+static DodPaths g_paths;	/* this map's path nodes; g_pool.paths points here when there are any */
+
 void DodGrunts_Init( void )
 {
 	if( !g_registered ) {
@@ -106,6 +108,7 @@ void DodGrunts_Init( void )
 	}
 	/* a new map: the old map's entities are gone with it */
 	memset( g_ents, 0, sizeof( g_ents ) );
+	DodPaths_Free( &g_paths );	/* the last map's nodes; DodGC_MohaaLevelInit loads this map's */
 	DodGrunt_Init( &g_pool, (unsigned)( (int)( gpGlobals->time * 1000.0f ) ^ 0x5bd1e995 ) );
 	memset( &g_last_stats, 0, sizeof( g_last_stats ) );
 	g_next_log = 0.0f;
@@ -249,42 +252,6 @@ static CDodGrunt *GruntDress( int i, int team )
 	if( !body || !body[0] )
 		return NULL;
 	snprintf( model, sizeof( model ), "models/player/%s/%s.mdl", body, body );
-	const float near_d = CVAR_GET_FLOAT( "dod_grunt_near" );
-	bool placed = near_d <= 0.0f;
-	if( near_d > 0.0f ) {
-		for( int k = 1; k <= gpGlobals->maxClients; k++ ) {
-			CBasePlayer *pl = GruntPlayer( k );
-			if( !pl || ( pl->pev->flags & FL_FAKECLIENT ) || DodGC_PlayerTeam( pl ) == team )
-				continue;
-			UTIL_MakeVectors( pl->pev->v_angle );
-			Vector fwd = gpGlobals->v_forward;
-			fwd.z = 0.0f;
-			fwd = fwd.Normalize();
-			/* a few tries at a clear spot in his sight */
-			for( int attempt = 0; attempt < 10; attempt++ ) {
-				const Vector spot = pl->pev->origin + fwd * ( near_d * RANDOM_FLOAT( 0.6f, 1.2f ) ) + gpGlobals->v_right * RANDOM_FLOAT( -300.0f, 300.0f );
-				TraceResult tr;
-				UTIL_TraceLine( spot + Vector( 0, 0, 64 ), spot - Vector( 0, 0, 300 ), ignore_monsters, NULL, &tr );
-				if( tr.fStartSolid || tr.flFraction >= 1.0f )
-					continue;
-				const Vector at = tr.vecEndPos;
-				UTIL_TraceLine( pl->pev->origin + pl->pev->view_ofs, at + Vector( 0, 0, 40 ), ignore_monsters, pl->edict(), &tr );
-				if( tr.flFraction < 1.0f )
-					continue;	/* not in his sight */
-				origin = at;
-				yaw = UTIL_VecToYaw( pl->pev->origin - at );
-				placed = true;
-				break;
-			}
-			break;
-		}
-	}
-	if( !placed )
-		return false;	/* dod_grunt_near: wait until a human has a clear spot in front of him */
-	if( near_d <= 0.0f ) {
-		origin.x += RANDOM_FLOAT( -64.0f, 64.0f );
-		origin.y += RANDOM_FLOAT( -64.0f, 64.0f );
-	}
 	CDodGrunt *e = GruntLive( i ) ? g_ents[i] : NULL;
 	if( !e ) {
 		/* A full edict table hands the game NULL, and GetClassPtr does not survive it. */
@@ -295,7 +262,6 @@ static CDodGrunt *GruntDress( int i, int team )
 			return NULL;
 		g_ents[i] = e;
 	}
-	/* a spread around the spawn so a wave does not stand in one spot */
 	e->pev->classname = MAKE_STRING( "dod_grunt" );
 	e->pev->effects &= ~EF_NODRAW;
 	e->pev->movetype = MOVETYPE_NONE;
@@ -362,12 +328,63 @@ int DodGrunts_ScriptOrder( edict_t *ed, int order, const float pos[3] )
 	case DOD_MOHAA_AI_ON: DodGrunt_SetAI( &g_pool, i, 1 ); break;
 	case DOD_MOHAA_AI_OFF: DodGrunt_SetAI( &g_pool, i, 0 ); break;
 	case DOD_MOHAA_ATTACK: DodGrunt_SetAttack( &g_pool, i, 1 ); break;
-	case DOD_MOHAA_WALKTO: DodGrunt_OrderMove( &g_pool, i, pos[0], pos[1], 0 ); break;
-	case DOD_MOHAA_RUNTO: DodGrunt_OrderMove( &g_pool, i, pos[0], pos[1], 1 ); break;
+	case DOD_MOHAA_WALKTO: DodGrunt_OrderMove( &g_pool, i, pos[0], pos[1], pos[2], 0 ); break;
+	case DOD_MOHAA_RUNTO: DodGrunt_OrderMove( &g_pool, i, pos[0], pos[1], pos[2], 1 ); break;
 	case DOD_MOHAA_TURNTO: DodGrunt_Face( &g_pool, i, pos[0], pos[1] ); break;
 	default: DodGrunt_OrderStop( &g_pool, i ); break;
 	}
 	return 1;
+}
+
+/* ---- path nodes (maps/<map>.nodes from mohaa-gc's converter; see DodPaths in dod_grunts.h) ---- */
+
+/* A grunt can walk from a to b: the crouch-sized hull, lifted so 18-unit steps pass under it, clears the world. */
+static int PathWalkable( void *ctx, const float a[3], const float b[3] )
+{
+	(void)ctx;
+	TraceResult tr;
+	UTIL_TraceHull( Vector( a[0], a[1], a[2] + 37.0f ), Vector( b[0], b[1], b[2] + 37.0f ), ignore_monsters, head_hull, NULL, &tr );
+	return !tr.fStartSolid && tr.flFraction >= 1.0f;
+}
+
+int DodGrunts_LoadPaths( const char *mapname )
+{
+	char path[96];
+	int len = 0;
+	DodPaths_Free( &g_paths );
+	g_pool.paths = NULL;
+	snprintf( path, sizeof( path ), "maps/%s.nodes", mapname );
+	byte *text = LOAD_FILE_FOR_ME( path, &len );
+	if( !text )
+		return 0;
+	const int n = DodPaths_Load( &g_paths, (const char *)text, (size_t)len );
+	FREE_FILE( text );
+	if( n <= 0 )
+		return 0;
+	const int traces = DodPaths_Link( &g_paths, PathWalkable, NULL, DOD_PATH_REACH );
+	int links = 0;
+	for( int i = 0; i < n; i++ )
+		for( int k = 0; k < DOD_PATH_LINKS && g_paths.link[i][k] != DOD_PATH_NONE; k++ )
+			links++;
+	g_pool.paths = &g_paths;
+	ALERT( at_console, "grunts: %d path nodes from %s, %d links (%d traces), %u bytes\n", n, path, links / 2, traces,
+		(unsigned)( n * ( sizeof( float ) * 4 + sizeof( uint32_t ) + sizeof( unsigned short ) * ( DOD_PATH_LINKS + 3 ) ) ) );
+	return n;
+}
+
+int DodGrunts_PathFind( const char *name )
+{
+	return g_pool.paths ? DodPaths_Find( &g_paths, name ) : -1;
+}
+
+void DodGrunts_PathPos( int index, float out[3] )
+{
+	out[0] = out[1] = out[2] = 0.0f;
+	if( g_pool.paths && index >= 0 && index < g_paths.count ) {
+		out[0] = g_paths.pos[index][0];
+		out[1] = g_paths.pos[index][1];
+		out[2] = g_paths.pos[index][2];
+	}
 }
 
 /* Put grunt i into the world: make or reuse its edict, place it at a spawn point of its side. */
@@ -377,12 +394,46 @@ static bool GruntSpawn( int i, int team )
 	float yaw;
 	if( !DodGC_TeamSpawnPoint( (DodTeam)team, &origin, &yaw ) )
 		return false;
+	const float near_d = CVAR_GET_FLOAT( "dod_grunt_near" );
+	bool placed = near_d <= 0.0f;
+	if( near_d > 0.0f ) {
+		for( int k = 1; k <= gpGlobals->maxClients; k++ ) {
+			CBasePlayer *pl = GruntPlayer( k );
+			if( !pl || ( pl->pev->flags & FL_FAKECLIENT ) || DodGC_PlayerTeam( pl ) == team )
+				continue;
+			UTIL_MakeVectors( pl->pev->v_angle );
+			Vector fwd = gpGlobals->v_forward;
+			fwd.z = 0.0f;
+			fwd = fwd.Normalize();
+			/* a few tries at a clear spot in his sight */
+			for( int attempt = 0; attempt < 10; attempt++ ) {
+				const Vector spot = pl->pev->origin + fwd * ( near_d * RANDOM_FLOAT( 0.6f, 1.2f ) ) + gpGlobals->v_right * RANDOM_FLOAT( -300.0f, 300.0f );
+				TraceResult tr;
+				UTIL_TraceLine( spot + Vector( 0, 0, 64 ), spot - Vector( 0, 0, 300 ), ignore_monsters, NULL, &tr );
+				if( tr.fStartSolid || tr.flFraction >= 1.0f )
+					continue;
+				const Vector at = tr.vecEndPos;
+				UTIL_TraceLine( pl->pev->origin + pl->pev->view_ofs, at + Vector( 0, 0, 40 ), ignore_monsters, pl->edict(), &tr );
+				if( tr.flFraction < 1.0f )
+					continue;	/* not in his sight */
+				origin = at;
+				yaw = UTIL_VecToYaw( pl->pev->origin - at );
+				placed = true;
+				break;
+			}
+			break;
+		}
+	}
+	if( !placed )
+		return false;	/* dod_grunt_near: wait until a human has a clear spot in front of him */
+	if( near_d <= 0.0f ) {
+		/* a spread around the spawn so a wave does not stand in one spot */
+		origin.x += RANDOM_FLOAT( -64.0f, 64.0f );
+		origin.y += RANDOM_FLOAT( -64.0f, 64.0f );
+	}
 	CDodGrunt *e = GruntDress( i, team );
 	if( !e )
 		return false;
-	/* a spread around the spawn so a wave does not stand in one spot */
-	origin.x += RANDOM_FLOAT( -64.0f, 64.0f );
-	origin.y += RANDOM_FLOAT( -64.0f, 64.0f );
 	DodGrunt_Spawn( &g_pool, i, team, origin.x, origin.y, origin.z + 36.0f, yaw, gpGlobals->time,
 		(int)CVAR_GET_FLOAT( "dod_grunt_rush" ) != 0 );
 	UTIL_SetOrigin( e->pev, Vector( origin.x, origin.y, origin.z + 36.0f ) );
