@@ -337,28 +337,16 @@ engine glue. The game rules constructor calls `DodGC_MohaaLevelInit`, `Think` ca
   `runto`/`walkto` (a vector, an entity or a node name), `turnto`/`lookat` and `attackplayer` drive it. A move order ends in
   `movedone`, a kill in `death`, so `waittill movedone`/`death` work. A script soldier holds where it stands until it sees
   someone (it turns to them, and shoots inside 660 units), never respawns, and is not counted by `dod_grunts`. It costs a
-  85-byte pool row and one edict; the pool has 48 slots, shared with co-op grunts. Soldiers placed in the map arrive as
-  `mohaa_actor` (mohaa-gc `tools/bsp19_to_map.py` writes them) and become script soldiers as the map spawns, so the
-  script finds them by targetname.
-- **Path nodes.** mohaa-gc writes the map's `info_pathnode`s to `maps/<map>.nodes` instead of the `.map`, so they cost no
-  edicts. They are linked once at level start (up to 8 neighbours within 400 units, one hull trace per pair tried) and a
-  `runto`/`walkto` then walks node to node (A* at each node reached) from the node nearest the soldier to the node nearest
-  the goal, then straight on. A script can name a node like an entity (`$node`, `$node.origin`). About 46 bytes per node
-  (up to 2048), freed at map change.
+  73-byte pool row and one edict; the pool has 48 slots, shared with co-op grunts.
 - **Sounds.** `playsound`/`loopsound`/`stoploopsound` play MOHAA aliases through `maps/<map>.snd`, which mohaa-gc
   `tools/ubersound.py` writes from the retail ubersound tables (alias, sample under `sound/mohaa/`, volume, minimum
   distance, channel; repeated aliases are variants picked at random). The samples are precached at level start, a
   minimum distance of 160 MOHAA units maps to ATTN_NORM, and a loop plays on the static channel (one per entity). An alias
   missing from the table is reported once and stays silent; a map without a table plays nothing.
-- **Music.** mohaa-gc `tools/music.py` turns each `.mus` into `music/<name>.mood` (mood, sample, volume, loop) and the
-  tracks into 22 kHz PCM wavs under `sound/mohaa/music/` (the Gekko cannot afford mp3 decoding). A level plays
-  `music/<map>.mood` from its `normal` mood; `soundtrack music/x.mus` switches tables, `forcemusic <mood> [fallback]`
-  switches mood (a mood without `loop` plays once, then the fallback's loop), and `$player stufftext "tmstart|tmstartloop
-  <file>"` / `"tmstop"` play MOHAA's triggered cues over it. Every player hears it through Xash's `music` command, late
-  joiners included; other `stufftext` commands are dropped. Volume and fade times are not applied.
-- **Not yet.** Dialogue subtitles. `.tik` models are skipped on `spawn`. No
-  camera, HUD objectives or `exec global/*.scr` libraries beyond what the map ships. Without a `.nodes` file a move order
-  heads straight for its point and turns off walls; soldiers have no animations beyond the grunt poses. An unknown command is reported once
+- **Not yet.** Music (`.mp3`) and dialogue subtitles. `.tik` models are skipped on `spawn`. No
+  camera, HUD objectives or `exec global/*.scr` libraries beyond what the map ships. Soldiers have no path graph (a move
+  order heads straight for its point and turns off walls), no animations beyond the grunt poses, and soldiers placed in the
+  map itself are not converted yet (only script-spawned ones exist). An unknown command is reported once
   and skipped, so a mission keeps running.
 - **Memory.** `mohaa_script_kb` (default 384) caps the VM; a level whose scripts do not fit is refused at load, not run half
   way. Retail missions fit: on a 32-bit host build, m1l1 with its globals uses 108 KB and peaks at 190 KB while compiling,

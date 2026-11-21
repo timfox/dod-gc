@@ -42,8 +42,6 @@ enum { DOD_MOHAA_PRINT_CONSOLE = 0, DOD_MOHAA_PRINT_HUD = 1, DOD_MOHAA_PRINT_CEN
 
 /* Entity ids are opaque to this file: the backend packs edict index and serial so a
  * removed-and-reused edict never answers for an old reference. 0 is never valid. */
-#define DOD_MOHAA_NODE_ID 0x80000000u	/* entity ids from the backend keep this bit clear */
-
 typedef struct DodMohaaBackend {
 	char *(*load_file)(const char *path, size_t *len);  /* NULL if missing */
 	void (*free_file)(char *text);
@@ -69,15 +67,6 @@ typedef struct DodMohaaBackend {
 	/* An order to an actor; returns 0 when id is not one. The game sends "movedone" when a walk/run
 	   order arrives and "death" when the actor dies, through Dod_MohaaNotify. NULL: no actors. */
 	int (*actor)(uint32_t id, int order, const float pos[3]);
-	/* Path nodes by targetname, asked when no entity has the name (MOHAA path nodes are not entities here: see
-	   DodPaths in dod_grunts.h). node_find returns the node index or -1; node_pos gives its feet origin. A script
-	   sees a node as an entity with id DOD_MOHAA_NODE_ID | index, which the backend never hands out. NULL: no nodes. */
-	int (*node_find)(const char *name);
-	void (*node_pos)(int index, float out[3]);
-	/* Background music for every player (late joiners too): intro plays once, then loop repeats; loop "" plays
-	   intro once and stops; intro NULL stops the music. Paths are game-relative ("sound/mohaa/music/x.wav"),
-	   PCM wavs written by mohaa-gc tools/music.py. NULL: no music. */
-	void (*music)(const char *intro, const char *loop);
 	void *(*alloc)(void *ptr, size_t old_size, size_t new_size); /* NULL: malloc */
 } DodMohaaBackend;
 

@@ -17,9 +17,6 @@
 
 #include "dod_game.h"
 
-#include <stddef.h>
-#include <stdint.h>
-
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -55,41 +52,6 @@ enum {
 enum { DOD_GRUNT_ORDER_NONE = 0, DOD_GRUNT_ORDER_WALK, DOD_GRUNT_ORDER_RUN };
 #define DOD_GRUNT_ARRIVE 32.0f		/* a move order is done this near its point */
 
-/* Path nodes (MOHAA info_pathnode, from maps/<map>.nodes written by mohaa-gc tools/bsp19_to_map.py). They are not
- * entities: a node costs no edict, only 32 bytes here plus 14 bytes of search scratch. Links are made once at level
- * load with a hull trace each (DodPaths_Link); a move order then walks node to node, one A* per node reached. */
-#define DOD_PATH_MAX 2048		/* nodes kept per map; the rest of a bigger map's nodes are dropped */
-#define DOD_PATH_LINKS 8		/* neighbours per node */
-#define DOD_PATH_TRIES 16		/* nearest candidates traced per node at link time */
-#define DOD_PATH_REACH 400.0f		/* farthest link (MOHAA links nodes up to 512 units; x72/94 is 392) */
-#define DOD_PATH_NONE 0xFFFF
-
-typedef struct DodPaths {
-	int count;
-	float (*pos)[3];			/* feet, GoldSrc units */
-	uint32_t *name;				/* DodPaths_Hash of the targetname, 0 none */
-	unsigned short (*link)[DOD_PATH_LINKS];	/* DOD_PATH_NONE past the last */
-	float *cost;				/* search scratch */
-	unsigned short *from, *heap, *slot;
-	void *block;				/* one allocation holds all of it */
-} DodPaths;
-
-/* Lowercase FNV-1a of a node name (no '$'). */
-uint32_t DodPaths_Hash(const char *name);
-/* Parse a .nodes file ("x y z grav spawnflags targetname" lines, '#' comments). Returns the node count; 0 leaves g
- * empty. The text need not be NUL-terminated. */
-int DodPaths_Load(DodPaths *g, const char *text, size_t len);
-void DodPaths_Free(DodPaths *g);
-/* Link each node to its nearest neighbours within reach that walkable() clears (both ways). Returns traces used. */
-typedef int (*DodPathWalkable)(void *ctx, const float a[3], const float b[3]);
-int DodPaths_Link(DodPaths *g, DodPathWalkable walkable, void *ctx, float reach);
-/* The node named name, or -1. */
-int DodPaths_Find(const DodPaths *g, const char *name);
-/* The node nearest a point (height counts double, to keep to the same floor), or -1 with no nodes. */
-int DodPaths_Nearest(const DodPaths *g, const float p[3]);
-/* The neighbour of from on the shortest route to to; to itself when they are linked, -1 when there is no route. */
-int DodPaths_NextHop(DodPaths *g, int from, int to);
-
 typedef struct DodGruntStats {
 	unsigned looks;		/* line-of-sight traces */
 	unsigned move_traces;	/* collision hull traces */
@@ -122,11 +84,7 @@ typedef struct DodGruntPool {
 	unsigned char script[DOD_GRUNT_MAX];	/* DOD_GRUNT_SCRIPTED | AI_OFF | ATTACK */
 	unsigned char order[DOD_GRUNT_MAX];	/* DOD_GRUNT_ORDER_* */
 	unsigned char order_done[DOD_GRUNT_MAX];	/* set on arrival, cleared by DodGrunt_TakeOrderDone */
-	float order_x[DOD_GRUNT_MAX], order_y[DOD_GRUNT_MAX];	/* the point it heads for now: a path node or the goal */
-	float goal_x[DOD_GRUNT_MAX], goal_y[DOD_GRUNT_MAX];	/* where the order ends */
-	unsigned short path_node[DOD_GRUNT_MAX];	/* the node order_x/y is, DOD_PATH_NONE on the last leg */
-	unsigned short goal_node[DOD_GRUNT_MAX];	/* the node nearest the goal */
-	DodPaths *paths;	/* the map's path nodes, or NULL: orders then go straight */
+	float order_x[DOD_GRUNT_MAX], order_y[DOD_GRUNT_MAX];
 	unsigned rng;
 	int look_cursor;	/* where the look scheduler resumes, so no slot is starved */
 	DodGruntStats stats;
@@ -188,9 +146,8 @@ void DodGrunt_SpawnScripted(DodGruntPool *p, int i, int team, float x, float y, 
 void DodGrunt_SetAI(DodGruntPool *p, int i, int on);
 /* attackplayer: AI on, and run at what it sees instead of holding. */
 void DodGrunt_SetAttack(DodGruntPool *p, int i, int on);
-/* walkto / runto: head for (x, y, z) ignoring what it sees; on arrival it holds and order_done is set. With path
- * nodes it walks node to node from the one nearest it to the one nearest the goal, then straight to the goal. */
-void DodGrunt_OrderMove(DodGruntPool *p, int i, float x, float y, float z, int run);
+/* walkto / runto: head for (x, y) ignoring what it sees; on arrival it holds and order_done is set. */
+void DodGrunt_OrderMove(DodGruntPool *p, int i, float x, float y, int run);
 /* Drop a move order without the done event; the grunt holds where it is. */
 void DodGrunt_OrderStop(DodGruntPool *p, int i);
 /* turnto / lookat: face (tx, ty). A holding grunt turns there; one with a move order keeps walking. */
