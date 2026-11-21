@@ -4,13 +4,13 @@
 set -u
 ISO="${1:?iso}"; OUTD="${2:?outdir}"; shift 2; ME="mapbridge"; LOCK=/tmp/dolphin-ceres.lock; Q=/tmp/dolphin-ceres.queue
 DOLPHIN="${DOLPHIN:-/home/tim/xash3d-gc-hl1/3rdparty/dolphin/build/Binaries/xash-gc-dolphin}"
-mkdir -p "$OUTD"; UD=$(mktemp -d /tmp/mapbridge-ud.XXXX); mkdir -p "$UD/Config"
+mkdir -p "$OUTD"; UD="${SHOT_UD:-$(mktemp -d /tmp/mapbridge-ud.XXXX)}"; mkdir -p "$UD/Config" "$UD/Logs"
 printf "[Options]\nWriteToFile = True\nVerbosity = 5\n[Logs]\nOSREPORT = True\n" > "$UD/Config/Logger.ini"
 ( flock 9; grep -qx "$ME" "$Q" 2>/dev/null || echo "$ME" >> "$Q" ) 9>"$Q.flk"
 echo "[shot] queued $(date +%T)"
 while :; do [ "$(head -1 "$Q" 2>/dev/null)" = "$ME" ] && mkdir "$LOCK" 2>/dev/null && break; sleep 5; done
 echo "$ME" > "$LOCK/name"; echo $$ > "$LOCK/pid"; date +%s > "$LOCK/start"
-cleanup() { [ -n "${DPID:-}" ] && kill "$DPID" 2>/dev/null; ( flock 9; sed -i "/^$ME\$/d" "$Q" ) 9>"$Q.flk"; rm -rf "$LOCK" "$UD"; }
+cleanup() { [ -n "${DPID:-}" ] && kill "$DPID" 2>/dev/null; ( flock 9; sed -i "/^$ME\$/d" "$Q" ) 9>"$Q.flk"; rm -rf "$LOCK"; [ -z "${SHOT_UD:-}" ] && rm -rf "$UD"; }
 trap cleanup EXIT INT TERM
 echo "[shot] lock $(date +%T)"
 shot() { W=$(xwininfo -root -tree 2>/dev/null | grep -E '"GameCube"' | grep -v 800x600 | head -1 | awk '{print $1}'); [ -n "$W" ] && /usr/bin/import -window "$W" "$OUTD/$1.png"; }

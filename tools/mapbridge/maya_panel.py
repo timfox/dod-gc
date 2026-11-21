@@ -14,7 +14,7 @@ import maya.cmds as cmds
 import maya_export as me, maya_materials as mm
 
 WORK = os.path.expanduser(os.environ.get("GSBRIDGE_WORK", "~/.cache/gsbridge"))
-ISO = os.environ.get("GSBRIDGE_ISO", "/home/tim/gsbridge/live_retail.iso")
+ISO = os.environ.get("GSBRIDGE_ISO", "/home/tim/gsbridge/live_sync.iso")
 CLASSES = ["info_player_allies", "info_player_axis", "info_doddetect", "light", "light_environment",
            "dod_control_point", "dod_control_point_master", "dod_capture_area", "ambient_generic", "info_target"]
 WIN = "gsBridgeWin"; _ui = {}; _proc = None; _timer = None
@@ -31,15 +31,26 @@ def refresh(*_):
     s = _status(); st = s.get("state", "watcher not running")
     if _proc and _proc.poll() is not None: st = "watcher exited (rc=%s)" % _proc.returncode
     age = time.time() - s.get("updated", 0) if s else 0
-    if st == "pushed":
-        t = s.get("times", {}); line = "PUSHED #%s  %.2fs  (%s)  %ds ago" % (s.get("serial"), s.get("total", 0),
-            " ".join("%s %.2fs" % kv for kv in t.items()), age)
-        col = (0.2, 0.55, 0.25)
+    stg = s.get("stages", {}); parts = []
+    for k, lab in (("compile", "compile"), ("bake", "bake"), ("patch", "patch")):
+        if k in stg: parts.append("%s %.2fs" % (lab, stg[k]))
+    timing = " · ".join(parts)
+    game = ""
+    if s.get("game_connected"): game = "  |  game linked"
+    if st == "game_reloading": line, col = "RELOADING IN GAME…  (%s)" % timing, (0.7, 0.55, 0.15)
+    elif st == "game_reloaded" or (st == "pushed" and s.get("reload_seconds")):
+        line, col = "GAME RELOADED in %.1fs  (%s)%s" % (s.get("reload_seconds", 0), timing, "  player kept" if s.get("player_restored") else ""), (0.2, 0.55, 0.25)
+    elif st == "pushed":
+        line, col = "PUSHED #%s  (%s)  waiting for the game…%s" % (s.get("serial"), timing, game), (0.25, 0.45, 0.6)
+    elif st == "unchanged": line, col = "No change to the map: nothing pushed  (%s)" % timing, (0.4, 0.4, 0.4)
     elif st == "error": line, col = "COMPILE ERROR - game keeps previous map: " + s.get("error", "")[:160], (0.7, 0.2, 0.2)
-    elif st in ("watching", "compiling"): line, col = st.upper() + "  iso=" + os.path.basename(s.get("iso", "")), (0.3, 0.4, 0.6)
+    elif st in ("watching", "compiling"): line, col = st.upper() + "  iso=" + os.path.basename(s.get("iso", "")) + game, (0.3, 0.4, 0.6)
     else: line, col = st, (0.4, 0.4, 0.4)
     cmds.text(_ui["status"], e=True, label=line, backgroundColor=col)
-    cmds.text(_ui["reload"], e=True, label="Game reload: polled by gc_livemap about every 1 s after a push (check the Dolphin window)")
+    if s.get("game_connected") is False:
+        note = "Game not linked: start Dolphin with live_dolphin.sh so the panel can see reloads"
+    else: note = "Reload is polled by gc_livemap about 3x a second; the player keeps position and view" + ("  · textures unchanged, pack reused" if s.get("wt_reused") else "")
+    cmds.text(_ui["reload"], e=True, label=note)
 
 def _filter(*_):
     q = cmds.textField(_ui["filter"], q=True, text=True).lower()

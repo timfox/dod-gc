@@ -25,7 +25,8 @@ def bake(bsp, outdir, name="dod_live"):
         for w in (CONTENT / "valve").glob("*.wad"):
             if not (src / w.name).exists(): (src / w.name).symlink_to(w)
         (src / "media").mkdir()
-        disc.build_world_texture_packs(src, outdir, Path(tempfile.mkdtemp(prefix="bl_cache_")), {name})
+        if os.environ.get("BAKE_SKIP_WT") != "1":      # the watcher skips the texture pack when the map's texture set did not change
+            disc.build_world_texture_packs(src, outdir, Path(tempfile.mkdtemp(prefix="bl_cache_")), {name})
         out = media / ("wd_%s.gcd" % name)
         wd.bake(src / "maps" / (name + ".bsp"), out); wd.bake_lightfaces(src / "maps" / (name + ".bsp"), out.with_name(out.stem + "_lf.gcd"))
     finally: shutil.rmtree(src, ignore_errors=True)
