@@ -187,6 +187,10 @@ typedef struct DodBotState {
 	int last_tgt;
 	float track_since, last_fight_time, react_until;
 	float burst_until, pause_until;
+	/* hand grenades: 0 idle, 1 drawing, 2 pin out and aiming the lob, 3 thrown, 4 back to the gun */
+	int nade_phase;
+	float nade_until, next_nade;
+	char nade_back[32];
 	float next_unseen_log, last_fire;
 	/* one engagement: from sighting to losing the target for a second (see the log in RunBot) */
 	float eng_start, eng_dist0, eng_dist_min;
@@ -2929,6 +2933,7 @@ static void RunBot( int index, CBasePlayer *pBot )
 	state->was_alive = pBot->IsAlive();
 	if( !pBot->IsAlive() )
 	{
+		state->nade_phase = 0;
 		/* A dead player respawns on a fire press after the death delay. */
 		if( gpGlobals->time >= state->next_respawn_press )
 		{
@@ -3368,6 +3373,91 @@ static void RunBot( int index, CBasePlayer *pBot )
 			state->stage_sightings++;
 			if( move.fire )
 				state->stage_fire_frames++;
+		}
+	}
+	{
+		/* Hand grenades: a spotted enemy 280-650 units away gets a lob now and then. Draw the grenade, aim the arc the
+		 * thrown grenade will fly (Dod_GrenadeLobPitch), hold fire to pull the pin and let go to throw, then go back to the gun. */
+		const float now = gpGlobals->time;
+		DodGrenadeDef gdef;
+		const int gi = pBot->GetAmmoIndex( "Hand Grenade" );
+		const BOOL have_nade = gi >= 0 && pBot->m_rgAmmo[gi] > 0 && Dod_GetGrenade( TeamOf( pBot ), &gdef );
+		CBasePlayerItem *act = pBot->m_pActiveItem;
+		const BOOL holding = act && !strcmp( STRING( act->pev->classname ), "weapon_handgrenade" );
+		float lob_pitch = 0.0f, landed = 0.0f;
+
+		if( state->nade_phase == 0 && fight && have_nade && enemy && state->stage_role == 0 && now >= state->next_nade
+			&& enemy_distance >= 280.0f && enemy_distance <= 650.0f && !holding && act && now >= state->react_until
+			&& Dod_GrenadeLobPitch( &gdef, enemy_distance, enemy->pev->origin.z - eye.z, &lob_pitch, &landed ) )
+		{
+			if( RANDOM_LONG( 0, 99 ) < 35 )
+			{
+				strncpy( state->nade_back, STRING( act->pev->classname ), sizeof( state->nade_back ) - 1 );
+				state->nade_back[sizeof( state->nade_back ) - 1] = 0;
+				pBot->SelectItem( "weapon_handgrenade" );
+				state->nade_phase = 1;
+				state->nade_until = now + 1.1f;
+				ALERT( at_console, "DoD bot %s: draws a grenade for an enemy %.0f units away (lob pitch %.0f, lands %.0f)\n",
+					STRING( pBot->pev->netname ), enemy_distance, lob_pitch, landed );
+			}
+			else
+				state->next_nade = now + 3.0f;	/* decided against it this time */
+		}
+		else if( state->nade_phase )
+		{
+			const BOOL aimed = fight && enemy && have_nade
+				&& Dod_GrenadeLobPitch( &gdef, enemy_distance, enemy->pev->origin.z - eye.z, &lob_pitch, &landed );
+			move.fire = 0;
+			move.reload = 0;
+			if( state->nade_phase <= 3 )
+			{
+				move.forward = move.side = 0.0f;	/* stand still for the throw */
+				move.jump = 0;
+			}
+			if( state->nade_phase == 1 && now >= state->nade_until )
+			{
+				if( !holding || !aimed || enemy_distance < 250.0f )
+					state->nade_phase = 4, state->nade_until = 0.0f;
+				else
+					state->nade_phase = 2, state->nade_until = now + 0.7f;
+			}
+			if( state->nade_phase == 2 )
+			{
+				if( aimed )
+				{
+					state->want_pitch = state->pitch = lob_pitch;
+					state->pitch_vel = 0.0f;
+				}
+				buttons |= IN_ATTACK;	/* pin out and cook */
+				if( now >= state->nade_until )
+				{
+					state->nade_phase = 3;
+					state->nade_until = now + 1.3f;
+				}
+			}
+			else if( state->nade_phase == 3 )
+			{
+				if( aimed )
+					state->want_pitch = state->pitch = lob_pitch;	/* the throw reads the view the frame the fire button is let go */
+				if( now >= state->nade_until )
+					state->nade_phase = 4, state->nade_until = 0.0f;
+			}
+			if( state->nade_phase == 4 )
+			{
+				if( state->nade_until == 0.0f )
+				{
+					if( state->nade_back[0] && holding )
+						pBot->SelectItem( state->nade_back );
+					state->nade_until = now + 0.9f;
+				}
+				else if( now >= state->nade_until )
+				{
+					state->nade_phase = 0;
+					state->next_nade = now + RANDOM_FLOAT( 12.0f, 25.0f );
+				}
+			}
+			if( !pBot->IsAlive() )
+				state->nade_phase = 0;
 		}
 	}
 	if( state->behavior == DOD_ACT_RELOAD )
