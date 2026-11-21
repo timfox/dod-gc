@@ -8,14 +8,15 @@ import maya.cmds as cmds, maya.mel as mel
 
 def _open_bridge(*_): import maya_panel; maya_panel.show()
 def _open_objmgr(*_): import maya_objmgr; maya_objmgr.show()
-def _open_both(*_): _open_bridge(); _open_objmgr()
+def _open_mapmgr(*_): import maya_mapmgr; maya_mapmgr.show()
+def _open_both(*_): _open_bridge(); _open_objmgr(); _open_mapmgr()
 def _push(*_): import maya_export; maya_export.export_now()
 
 def install():
     main = mel.eval("$tmp=$gMainWindow")
     if cmds.menu("GoldSrcMenu", exists=True): cmds.deleteUI("GoldSrcMenu")
     cmds.menu("GoldSrcMenu", label="GoldSrc", parent=main, tearOff=True)
-    for lab, cmd in (("GoldSrc Bridge", _open_bridge), ("Object Manager", _open_objmgr), ("Open both panels", _open_both)):
+    for lab, cmd in (("GoldSrc Bridge", _open_bridge), ("Object Manager", _open_objmgr), ("Map Manager", _open_mapmgr), ("Open all panels", _open_both)):
         cmds.menuItem(label=lab, command=cmd, parent="GoldSrcMenu")
     cmds.menuItem(divider=True, parent="GoldSrcMenu")
     cmds.menuItem(label="Export + Push", command=_push, parent="GoldSrcMenu")
