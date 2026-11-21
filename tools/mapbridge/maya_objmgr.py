@@ -9,7 +9,7 @@ Placed objects carry gs_classname / gs_key_* so maya_export writes them straight
 import json, os, sys
 HERE = os.path.dirname(os.path.abspath(__file__)); sys.path.insert(0, HERE)
 import maya.cmds as cmds
-WIN = "gsObjMgr"; CAT = os.path.expanduser("~/.cache/gsbridge/objmgr")
+WCTL = "gsObjMgrCtl"; CAT = os.path.expanduser("~/.cache/gsbridge/objmgr")
 COLS = 5; _ui = {}; _cat = []; _filters = None
 
 def _load():
@@ -51,6 +51,10 @@ def place(entry, *_):
         cmds.addAttr(o, ln="gs_yaw", at="long")
     for k, v in entry.get("keys", {}).items():
         a = "gs_key_" + k; cmds.addAttr(o, ln=a, dt="string"); cmds.setAttr(o + "." + a, v, type="string")
+    if entry.get("keys", {}).get("model"):          # viewport-only preview of the real .mdl (never exported)
+        try:
+            import maya_modelpreview as mp; mp.build(o)
+        except Exception as ex: cmds.warning("model preview: %s" % ex)
     cmds.select(o); print("[objmgr] placed", entry.get("label", cls), "at", [round(c) for c in pos])
 
 def _filters_get():
@@ -89,14 +93,14 @@ def _menu_filters():
         cmds.menuItem(label=f, parent=_ui["pop"], command=lambda *_a, f=f: (cmds.textField(_ui["filter"], e=True, text=f), _fill()))
     cmds.menuItem(label="(clear)", parent=_ui["pop"], command=lambda *_a: (cmds.textField(_ui["filter"], e=True, text=""), _fill()))
 
-def show(*_):
-    _load()
-    if cmds.window(WIN, exists=True): cmds.deleteUI(WIN)
-    cmds.window(WIN, title="Object Manager", widthHeight=(480, 560), menuBar=True)
+def _build():
+    """Build the manager UI into the current parent layout (a workspaceControl when docked)."""
+    cmds.menuBarLayout()
     cmds.menu(label="Preferences")
     cmds.menuItem(label="Rebuild icons/catalog from stock maps", command=lambda *_a: (__import__("objmgr_catalog").main(), _load(), _fill()))
     cmds.menu(label="Utilities")
     cmds.menuItem(label="Select all entities", command=lambda *_a: cmds.select([n for n in cmds.ls(transforms=True) if cmds.attributeQuery("gs_classname", node=n, exists=True)]))
+    cmds.menuItem(label="Refresh model previews", command=lambda *_a: __import__("maya_modelpreview").refresh_all())
     cmds.menuItem(label="Export + Push", command=lambda *_a: __import__("maya_export").export_now())
     cmds.columnLayout(adjustableColumn=True)
     cmds.rowLayout(numberOfColumns=4, adjustableColumn=2)
@@ -105,12 +109,24 @@ def show(*_):
     _ui["pop"] = cmds.popupMenu(parent=_ui["filter"])
     cmds.button(label="Add Filter", command=_add_filter); cmds.button(label="Delete Filter", command=_del_filter)
     cmds.setParent("..")
-    _ui["tabs"] = cmds.tabLayout(innerMarginWidth=4, innerMarginHeight=4, height=500)
+    _ui["tabs"] = cmds.tabLayout(innerMarginWidth=4, innerMarginHeight=4)
     _ui["grids"] = {}; _ui["scrolls"] = {}
     for tab in dict.fromkeys(e["tab"] for e in _cat):
         sc = cmds.scrollLayout(childResizable=True, horizontalScrollBarThickness=0); _ui["scrolls"][tab] = sc
         _ui["grids"][tab] = cmds.gridLayout(numberOfColumns=COLS, cellWidth=88, cellHeight=84)
         cmds.setParent(_ui["tabs"])
     for tab, sc in _ui["scrolls"].items(): cmds.tabLayout(_ui["tabs"], e=True, tabLabel=(sc, tab))
-    _menu_filters(); _fill(); cmds.showWindow(WIN)
-    return WIN
+    _menu_filters(); _fill()
+
+def _ui_script():
+    """workspaceControl uiScript: also what Maya calls to restore the panel on relaunch."""
+    _load(); _build()
+
+def show(*_):
+    """Open (or raise) the dockable Object Manager. Tabs next to the GoldSrc Bridge panel if it is open."""
+    if cmds.workspaceControl(WCTL, q=True, exists=True):
+        cmds.workspaceControl(WCTL, e=True, restore=True); return WCTL
+    kw = dict(label="Object Manager", retain=False, initialWidth=430, minimumWidth=300,
+              uiScript="import maya_objmgr; maya_objmgr._ui_script()")
+    kw["tabToControl"] = ("gsBridgeWin" if cmds.workspaceControl("gsBridgeWin", q=True, exists=True) else "AttributeEditor", -1)
+    cmds.workspaceControl(WCTL, **kw); return WCTL

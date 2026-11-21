@@ -128,8 +128,10 @@ def _build():
 
 def show(*_):
     global _timer
-    if cmds.workspaceControl(WIN, q=True, exists=True): cmds.deleteUI(WIN)
-    cmds.workspaceControl(WIN, label="GoldSrc Bridge", retain=False, floating=False, uiScript="import maya_panel; maya_panel._ui_script()")
+    if cmds.workspaceControl(WIN, q=True, exists=True):
+        cmds.workspaceControl(WIN, e=True, restore=True); return WIN
+    cmds.workspaceControl(WIN, label="GoldSrc Bridge", retain=False, initialWidth=300, minimumWidth=240,
+                          tabToControl=("AttributeEditor", -1), uiScript="import maya_panel; maya_panel._ui_script()")
     return WIN
 
 def _ui_script():

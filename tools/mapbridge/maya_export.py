@@ -86,8 +86,10 @@ def export_now(path=None):
             if keys["classname"].startswith("info_player"):
                 o = (o[0], o[1], o[2] + PLAYER_ORIGIN_ABOVE_FLOOR)   # locator = feet; hull 1 needs origin >= 36 above the floor
             keys["origin"] = "%d %d %d" % tuple(round(c) for c in o)
-            if cmds.attributeQuery("gs_yaw", node=node, exists=True):
-                keys["angles"] = "0 %d 0" % cmds.getAttr(node + ".gs_yaw")
+            yaw = cmds.getAttr(node + ".gs_yaw") if cmds.attributeQuery("gs_yaw", node=node, exists=True) else 0
+            r = cmds.xform(node, q=True, ws=True, ro=True)            # rotating the locator in the viewport = entity angles
+            if not yaw: yaw = r[1] if yup else r[2]
+            if yaw or "angles" in keys: keys["angles"] = "0 %d 0" % round(yaw)
             ents.append({"keys": keys})
     gsmap.write_map(path, world, ents, WAD)
     print("[gsbridge] wrote %s (%d world brushes, %d entities) %s" % (path, len(world), len(ents), time.strftime("%H:%M:%S")))
