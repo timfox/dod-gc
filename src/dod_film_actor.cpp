@@ -51,6 +51,19 @@ static float g_film_fx_clock;	/* the shot time fx have been fired up to */
 static char g_film_shot[32];
 static int g_film_commands_added;
 static int g_film_precached[4];	/* by DodTeam */
+/* Vehicle props (tanks, jeeps, trucks) the plan's casts drive: "vehicle <model>" lines in cine/cast.txt,
+ * precached with the map like the bodies. A few per map: each is a large studio model. */
+#define DOD_FILM_MAX_VEHICLE_MODELS 4
+static char g_film_vehicle[DOD_FILM_MAX_VEHICLE_MODELS][DOD_FILM_VEHICLE_NAME];
+static int g_film_vehicle_count;
+
+static int DodFilm_VehiclePrecached( const char *name )
+{
+	for( int v = 0; v < g_film_vehicle_count; v++ )
+		if( !strcmp( g_film_vehicle[v], name ) )
+			return 1;
+	return 0;
+}
 /* The class guns cine/cast.txt asked for ("gun <team> <class>" lines), by DodTeam and DodClass.
  * Each costs a file read and a resident mesh, so a side carries at most DOD_FILM_GUNS_PER_SIDE
  * models (its rifle counts as one); a class whose gun was not precached carries the rifle. */
@@ -316,6 +329,17 @@ static void DodFilm_Place( int i, float t, float dt )
 	if( !ent )
 		return;
 	DodFilm_Sample( &g_film_cast.actors[i], t, &s );
+	if( g_film_cast.actors[i].vehicle[0] ) {
+		/* A vehicle sits on the floor under it (its model's origin is at its base) and turns as it drives:
+		 * no pose, no gait, its first sequence held. */
+		const float floor_z = DodFilm_OriginZ( s.origin, DOD_POSE_STAND ) - DodFilm_PoseHeight( DOD_POSE_STAND );
+		UTIL_SetOrigin( ent->pev, Vector( s.origin[0], s.origin[1], floor_z ) );
+		ent->pev->angles = Vector( 0.0f, s.yaw, 0.0f );
+		ent->pev->sequence = 0;
+		ent->pev->frame = 0.0f;
+		ent->pev->framerate = 0.0f;
+		return;
+	}
 	s.pose = DodFilm_GaitPose( s.pose, s.moving, s.speed );
 	const int named = s.seq ? DodFilm_Named( ent, s.seq ) : -1;
 	if( named < 0 )
@@ -594,8 +618,15 @@ static void DodFilm_CastCommand( void )
 	for( int i = 0; i < g_film_cast.actor_count; i++ ) {
 		const DodFilmActor *a = &g_film_cast.actors[i];
 		char model[96];
-		DodFilm_BodyPath( a->team, model, sizeof( model ) );
-		if( !model[0] || !g_film_precached[a->team] ) {
+		if( a->vehicle[0] ) {
+			snprintf( model, sizeof( model ), "models/mapmodels/%s.mdl", a->vehicle );
+			if( !DodFilm_VehiclePrecached( a->vehicle ) ) {
+				ALERT( at_console, "FILM VEHICLE %s: %s was not precached (cine/cast.txt)\n", a->name, model );
+				continue;
+			}
+		} else
+			DodFilm_BodyPath( a->team, model, sizeof( model ) );
+		if( !a->vehicle[0] && ( !model[0] || !g_film_precached[a->team] ) ) {
 			ALERT( at_console, "FILM ACTOR %s: the %s body was not precached (cine/cast.txt)\n", a->name,
 				a->team == DOD_TEAM_AXIS ? "axis" : "allies" );
 			continue;
@@ -622,6 +653,22 @@ static void DodFilm_CastCommand( void )
 		ent->pev->takedamage = DAMAGE_NO;
 		ent->pev->iuser4 = DODGC_FILM_ACTOR_TAG;
 		SET_MODEL( ent->edict(), model );
+		if( a->vehicle[0] ) {
+			ent->pev->body = 0;
+			ent->pev->skin = 0;
+			ent->pev->weaponmodel = 0;
+			ent->pev->controller[2] = 0;
+			ent->pev->controller[3] = 0;
+			ent->m_actor = i;
+			ent->m_pose = -1;
+			ent->m_seq = 0;
+			ent->m_gait = 0;
+			ent->m_phase = 0.0f;
+			g_film_ents[i] = ent;
+			DodFilm_Place( i, gpGlobals->time - g_film_start, 0.0f );
+			placed++;
+			continue;
+		}
 		const char *body = DodGC_BodyModelForTeam( (DodTeam)a->team );
 		DodClass cls = a->player_class > DOD_CLASS_NONE ? (DodClass)a->player_class : DOD_CLASS_RIFLEMAN;
 		ent->pev->body = Dod_PlayerBodyValue( body, cls, i + 1 );
@@ -661,6 +708,8 @@ void DodFilm_Init( void )
 	memset( &g_film_cast, 0, sizeof( g_film_cast ) );
 	memset( g_film_precached, 0, sizeof( g_film_precached ) );
 	memset( g_film_gun, 0, sizeof( g_film_gun ) );
+	memset( g_film_vehicle, 0, sizeof( g_film_vehicle ) );
+	g_film_vehicle_count = 0;
 	g_film_fireball = 0;
 	byte *text = LOAD_FILE_FOR_ME( "cine/cast.txt", &length );
 	if( !text )
@@ -697,6 +746,21 @@ void DodFilm_Init( void )
 				p++;
 			if( p < end )
 				p++;
+			char vname[DOD_FILM_VEHICLE_NAME + 8];
+			if( sscanf( line, "vehicle %31s", vname ) == 1 ) {
+				char path[96];
+				if( !DodFilm_VehicleNameOk( vname ) || DodFilm_VehiclePrecached( vname ) )
+					continue;
+				if( g_film_vehicle_count >= DOD_FILM_MAX_VEHICLE_MODELS ) {
+					ALERT( at_console, "FILM: vehicle %s left out (%d models a map)\n", vname, DOD_FILM_MAX_VEHICLE_MODELS );
+					continue;
+				}
+				snprintf( path, sizeof( path ), "models/mapmodels/%s.mdl", vname );
+				PRECACHE_MODEL( (char *)STRING( ALLOC_STRING( path ) ) );
+				memcpy( g_film_vehicle[g_film_vehicle_count++], vname, strlen( vname ) + 1 );	/* VehicleNameOk: it fits */
+				ALERT( at_console, "FILM: precached %s for vehicles\n", path );
+				continue;
+			}
 			if( sscanf( line, "gun %15s %15s", tname, cname ) != 2 )
 				continue;
 			const int team = !strcmp( tname, "axis" ) ? DOD_TEAM_AXIS : !strcmp( tname, "allies" ) ? DOD_TEAM_ALLIES : 0;
