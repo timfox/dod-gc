@@ -109,3 +109,28 @@ def preview_render_modes():
             sg = cmds.sets(renderable=True, noSurfaceShader=True, empty=True, name=new + "SG"); cmds.connectAttr(dup + ".outColor", sg + ".surfaceShader")
         cmds.sets(t, e=True, forceElement=new + "SG"); cmds.setAttr(new + ".transparency", tr, tr, tr, type="double3"); n += 1
     return n
+
+
+def style_entities():
+    """Viewport colours that mirror what the entity does in game: lights take their _light colour, spawns their team colour,
+    control points red.  Pure display (override colours); never exported."""
+    n = 0
+    for t in cmds.ls("*", transforms=True):
+        if not cmds.attributeQuery("gs_classname", node=t, exists=True): continue
+        cls = cmds.getAttr(t + ".gs_classname"); rgb = None
+        if cls.startswith("light") and cmds.attributeQuery("gs_key__light", node=t, exists=True):
+            try:
+                v = [float(x) for x in cmds.getAttr(t + ".gs_key__light").split()[:3]]
+                rgb = tuple(max(0.05, min(1.0, c / 255.0)) for c in v)
+            except ValueError: pass
+        elif cls == "info_player_allies" or cls == "info_initial_player_allies": rgb = (0.35, 0.6, 1.0)
+        elif cls == "info_player_axis" or cls == "info_initial_player_axis": rgb = (0.85, 0.85, 0.85)
+        elif cls.startswith("dod_control_point") or cls == "dod_capture_area": rgb = (1.0, 0.25, 0.2)
+        elif cls == "env_model": rgb = (0.4, 0.8, 0.4)
+        if rgb is None: continue
+        shapes = cmds.listRelatives(t, shapes=True) or [t]
+        try:
+            cmds.setAttr(shapes[0] + ".overrideEnabled", 1); cmds.setAttr(shapes[0] + ".overrideRGBColors", 1)
+            cmds.setAttr(shapes[0] + ".overrideColorRGB", *rgb); n += 1
+        except Exception: pass
+    return n

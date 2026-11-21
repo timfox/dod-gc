@@ -76,6 +76,9 @@ def create(name, wad="dod_caen.wad", sky="", size=1024, height=256, save=True):
     _ent("sun", "light_environment", (0, 0, height - 8), _light="255 245 220 180", pitch="-60")
     _ent("lamp1", "light", (-h // 2, 0, height - 32), _light="255 240 200 250"); _ent("lamp2", "light", (h // 2, 0, height - 32), _light="255 240 200 250")
     cmds.select(clear=True)
+    if sky:
+        try: __import__("maya_refmap").sky_preview(sky)
+        except Exception as e: cmds.warning("[gsbridge] sky preview skipped: %s" % e)
     if save:
         os.makedirs(MAPS, exist_ok=True); path = os.path.join(MAPS, name + ".mb")
         cmds.file(rename=path); cmds.file(save=True, type="mayaBinary")

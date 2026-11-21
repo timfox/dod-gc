@@ -163,3 +163,24 @@ def ocean(mapname, size=30000.0):
     lay = "REF_" + mapname
     if cmds.objExists(lay): cmds.editDisplayLayerMembers(lay, nm)
     return nm
+
+
+def sky_preview(skyname, size=None):
+    """Skybox of the scene's map (gs_settings.gs_skyname) around gs_world, unlit, in the locked reference layer REF_sky.
+    PNGs come from bake_skies.py (run once; Maya has no PIL)."""
+    tex = os.path.expanduser("~/.cache/gsbridge/tex")
+    faces = {k: os.path.join(tex, "sky_%s%s.png" % (skyname, k)) for k in ("ft", "bk", "lf", "rt", "up", "dn")}
+    if not all(os.path.exists(p) for p in faces.values()):
+        cmds.warning("sky %r not converted: run python3 %s" % (skyname, os.path.join(HERE, "bake_skies.py"))); return None
+    bb = cmds.exactWorldBoundingBox("gs_world") if cmds.objExists("gs_world") else [-512, -512, 0, 512, 512, 256]
+    half = max(bb[3] - bb[0], bb[4] - bb[1], bb[5] - bb[2]) * 3 + 20000
+    data = {"bounds": [[bb[0], bb[1], bb[2]], [bb[3], bb[4], bb[5]]], "sky": {"name": skyname, "faces": faces}}
+    import tempfile, json
+    old = _bake
+    try:
+        globals()["_bake"] = lambda m: data
+        n = skybox("scene_sky", half)
+    finally: globals()["_bake"] = old
+    if n and not cmds.objExists("REF_sky"):
+        lay = cmds.createDisplayLayer(name="REF_sky", empty=True); cmds.editDisplayLayerMembers(lay, n); cmds.setAttr(lay + ".displayType", 2)
+    return n

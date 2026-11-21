@@ -116,7 +116,7 @@ def _hw_disc(*_):
     cmds.inViewMessage(amg="Building ~/gsbridge/out/%s.iso (log: %s)" % (name, log), pos="topCenter", fade=True)
 
 def _push(*_):
-    try: mm.preview_render_modes()
+    try: mm.preview_render_modes(); mm.style_entities()
     except Exception as ex: cmds.warning("render-mode preview: %s" % ex)
     me.export_now(); refresh()
 
