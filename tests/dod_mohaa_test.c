@@ -116,7 +116,21 @@ static uint32_t m_spawn(const char *cls, const char *const *k, const char *const
 	}
 	return make_id(i);
 }
-static void m_sound(uint32_t id, const char *s, int loop) { snprintf(ent(id)->sound, 64, "%s%s", loop > 0 ? "loop:" : "", s); }
+static char precached[512];
+static void m_sound(uint32_t id, const char *s, int loop, float vol, float attn, int chan)
+{
+	char line[160];
+	snprintf(ent(id)->sound, 64, "%s%s", loop > 0 ? "loop:" : (loop < 0 ? "stop:" : ""), s);
+	snprintf(line, sizeof(line), "<sound %s %s %d %.2f %.2f %d>\n", ent(id)->targetname, s, loop, vol, attn, chan);
+	logf_(line);
+}
+static void m_precache(const char *s)
+{
+	if (strlen(precached) + strlen(s) + 2 > sizeof(precached))
+		return;
+	strcat(precached, s);
+	strcat(precached, ";");
+}
 
 /* actors: classname "actor" in the mock; orders are logged */
 static int m_actor(uint32_t id, int order, const float pos[3])
@@ -153,6 +167,7 @@ static DodMohaaBackend backend(void)
 	b.spawn = m_spawn;
 	b.sound = m_sound;
 	b.actor = m_actor;
+	b.precache_sound = m_precache;
 	return b;
 }
 
@@ -162,6 +177,7 @@ static void reset(void)
 	memset(ents, 0, sizeof(ents));
 	memset(files, 0, sizeof(files));
 	log_buf[0] = 0;
+	precached[0] = 0;
 }
 
 static int near(float a, float b) { return fabsf(a - b) < 0.01f; }
@@ -225,7 +241,8 @@ static void test_level_flow_and_movers(void)
 	Dod_MohaaThink(0.10f);                      /* spawn: the move starts */
 	assert(strstr(log_buf, "spawned"));
 	assert(near(ents[door].vel[2], 36.0f));     /* 72 GoldSrc units over 2 s */
-	assert(!strcmp(ents[door].sound, "door_open"));
+	assert(!ents[door].sound[0]);	/* no maps/m1l1.snd: aliases play nothing (and are reported) */
+	assert(strstr(log_buf, "sound 'door_open' is not in this map's sound table"));
 	run(0.15f, 2.0f);
 	assert(!strstr(log_buf, "door at"));
 	run(2.05f, 2.3f);
@@ -321,6 +338,61 @@ static void test_actors(void)
 	assert(strstr(log_buf, "ai_on: not an actor"));	/* a func_wall is no soldier: reported, script goes on */
 }
 
+static void test_sounds(void)
+{
+	DodMohaaBackend b = backend();
+	int door, i, a = 0, bb = 0;
+	reset();
+	door = add("door", "func_door", 0, 0, 0);
+	add("siren", "info_target", 0, 0, 0);
+	files[0][0] = "maps/s.scr";
+	files[0][1] =
+		"main:\n"
+		"\t$door playsound door_open\n"
+		"\t$siren loopsound alarm\n"
+		"\t$siren loopsound alarm\n"     /* replaces, does not stack */
+		"\twait 1\n"
+		"\t$siren stoploopsound\n"
+		"\t$door playsound no_such_alias\n"
+		"\t$door playsound no_such_alias\n"
+		"end\n";
+	files[1][0] = "maps/s.snd";
+	files[1][1] =
+		"# alias sample volume mindist channel\n"
+		"door_open mohaa/door_01.wav 0.80 160 auto\n"
+		"door_open mohaa/door_02.wav 0.70 320 item\n"
+		"alarm mohaa/alarm.wav 1.00 600 voice\n"
+		"DOOR_SHUT mohaa/door_01.wav 0.5 64 body\n";
+	assert(Dod_MohaaLevelInit(&b, "s", 0, 0));
+	/* each sample precached once, even when two aliases share it */
+	assert(!strcmp(precached, "mohaa/door_01.wav;mohaa/door_02.wav;mohaa/alarm.wav;"));
+	assert(strstr(log_buf, "<sound door mohaa/door_0"));
+	assert(strstr(log_buf, "<sound siren mohaa/alarm.wav 1 1.00 0.25 1>\n"
+		"<sound siren mohaa/alarm.wav -1 0.00 0.00 0>\n<sound siren mohaa/alarm.wav 1 1.00 0.25 1>\n"));
+	run(0.05f, 1.2f);
+	assert(strstr(log_buf, "<sound siren mohaa/alarm.wav -1"));
+	assert(strstr(ents[1].sound, "stop:mohaa/alarm.wav"));
+	/* an unknown alias is reported once and plays nothing */
+	{
+		const char *msg = "sound 'no_such_alias' is not in this map's sound table";
+		const char *p = strstr(log_buf, msg);
+		assert(p && !strstr(p + strlen(msg), "no_such_alias"));
+	}
+	/* variants: both door sounds come up, with their own volume and attenuation (160 -> 0.80, 320 -> 0.40) */
+	for (i = 0; i < 40; i++) {
+		log_buf[0] = 0;
+		precached[0] = 0;
+		Dod_MohaaShutdown();
+		files[0][1] = "main:\n\t$door playsound door_open\n\t$door playsound DOOR_SHUT\nend\n";
+		assert(Dod_MohaaLevelInit(&b, "s", (float)i, 0));
+		a += strstr(log_buf, "mohaa/door_01.wav 0 0.80 0.80 0") != NULL;
+		bb += strstr(log_buf, "mohaa/door_02.wav 0 0.70 0.40 2") != NULL;
+		assert(strstr(log_buf, "mohaa/door_01.wav 0 0.50 2.00 3"));   /* case-insensitive alias */
+	}
+	assert(a > 0 && bb > 0 && a + bb == 40);
+	(void)door;
+}
+
 int main(void)
 {
 	test_no_script_no_vm();
@@ -328,6 +400,7 @@ int main(void)
 	test_waittill_trigger_and_freed();
 	test_budget_refuses_cleanly();
 	test_actors();
+	test_sounds();
 	Dod_MohaaShutdown();
 	printf("dod_mohaa_test: ok\n");
 	return 0;

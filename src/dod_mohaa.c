@@ -19,6 +19,15 @@ typedef struct DodMover {
 } DodMover;
 
 #define MAX_UNKNOWN 128
+#define MAX_LOOPS 16
+#define MAX_SOUND_MISSES 64
+
+typedef struct DodSound {
+	uint32_t hash;           /* of the alias, lowercase */
+	uint16_t alias, sample;  /* offsets into the text block */
+	float volume, attn;
+	uint8_t channel;
+} DodSound;
 
 static struct {
 	DodMohaaBackend be;
@@ -28,6 +37,14 @@ static struct {
 	DodMover movers[DOD_MOHAA_MAX_MOVERS];
 	const char *unknown[MAX_UNKNOWN];
 	int nunknown;
+	DodSound *sounds;        /* one block: rows, then their strings */
+	size_t sounds_size;
+	int nsounds;
+	const char *sound_text;
+	struct { uint32_t id; const char *sample; } loops[MAX_LOOPS];
+	uint32_t sound_misses[MAX_SOUND_MISSES];
+	int nmisses;
+	uint32_t rng;
 } S;
 
 /* ------------------------------------------------------------------ */
@@ -73,8 +90,12 @@ static DodMover *mover(uint32_t id, int create)
 static void forget(uint32_t id)
 {
 	DodMover *m = mover(id, 0);
+	int i;
 	if (m)
 		memset(m, 0, sizeof(*m));
+	for (i = 0; i < MAX_LOOPS; i++)
+		if (S.loops[i].id == id)
+			S.loops[i].id = 0;   /* the engine stops an entity's sounds when it goes */
 }
 
 /* destination argument: a vector in MOHAA units, or an entity to move onto */
@@ -421,9 +442,189 @@ static int c_turnto(ms_call *c)
 	return actor_order(c, DOD_MOHAA_TURNTO, pos);
 }
 
-static int c_playsound(ms_call *c) { S.be.sound(target_id(c), ms_arg_string(c, 0), 0); return 0; }
-static int c_loopsound(ms_call *c) { S.be.sound(target_id(c), ms_arg_string(c, 0), 1); return 0; }
-static int c_stoploopsound(ms_call *c) { S.be.sound(target_id(c), "", -1); return 0; }
+/* ---- sounds: MOHAA aliases through maps/<map>.snd ---- */
+
+static uint32_t alias_hash(const char *s)
+{
+	uint32_t h = 2166136261u;
+	for (; *s; s++) {
+		char c = (*s >= 'A' && *s <= 'Z') ? (char)(*s + 32) : *s;
+		h = (h ^ (uint8_t)c) * 16777619u;
+	}
+	return h;
+}
+
+/* MOHAA's minimum distance (full volume inside it) to GoldSrc attenuation: 160 units is ATTN_NORM's 0.8. */
+static float attn_for(float mindist)
+{
+	float a = mindist > 0.0f ? 128.0f / mindist : 0.8f;
+	return a < 0.25f ? 0.25f : (a > 2.0f ? 2.0f : a);
+}
+
+static int channel_for(const char *name)
+{
+	if (!strcmp(name, "voice") || !strcmp(name, "dialog"))
+		return DOD_MOHAA_CHAN_VOICE;
+	if (!strcmp(name, "item"))
+		return DOD_MOHAA_CHAN_ITEM;
+	if (!strcmp(name, "body"))
+		return DOD_MOHAA_CHAN_BODY;
+	if (!strcmp(name, "weapon"))
+		return DOD_MOHAA_CHAN_WEAPON;
+	return DOD_MOHAA_CHAN_AUTO;
+}
+
+static void sounds_free(void)
+{
+	if (S.sounds)
+		S.be.alloc(S.sounds, S.sounds_size, 0);
+	S.sounds = NULL;
+	S.sounds_size = 0;
+	S.nsounds = 0;
+	S.sound_text = NULL;
+}
+
+/* Parse maps/<map>.snd into one block and precache its samples. A map without one plays nothing. */
+static void sounds_load(const char *mapname)
+{
+	char path[128];
+	size_t len = 0, i, o = 0;
+	char *text;
+	int rows = 0;
+	snprintf(path, sizeof(path), "maps/%s.snd", mapname);
+	text = S.be.load_file(path, &len);
+	if (!text)
+		return;
+	for (i = 0; i < len; i++)
+		rows += text[i] == '\n';
+	rows++;
+	if (rows > DOD_MOHAA_MAX_SOUNDS)
+		rows = DOD_MOHAA_MAX_SOUNDS;
+	S.sounds_size = sizeof(DodSound) * (size_t)rows + len + 1;
+	if (len + 1 > 0xFFFF || !(S.sounds = (DodSound *)S.be.alloc(NULL, 0, S.sounds_size))) {
+		S.sounds_size = 0;
+		S.be.print(DOD_MOHAA_PRINT_ERROR, "mohaa: sound table too big, sounds are off\n");
+		if (S.be.free_file)
+			S.be.free_file(text);
+		return;
+	}
+	{
+		char *strs = (char *)(S.sounds + rows);
+		const char *p = text, *end = text + len;
+		S.sound_text = strs;
+		while (p < end && S.nsounds < rows) {
+			char alias[64], sample[128], chan[16];
+			float vol = 1.0f, mindist = 160.0f;
+			const char *eol = memchr(p, '\n', (size_t)(end - p));
+			char line[256];
+			size_t n = (size_t)((eol ? eol : end) - p);
+			if (n >= sizeof(line))
+				n = sizeof(line) - 1;
+			memcpy(line, p, n);
+			line[n] = 0;
+			p = eol ? eol + 1 : end;
+			chan[0] = 0;
+			if (line[0] == '#' || sscanf(line, "%63s %127s %f %f %15s", alias, sample, &vol, &mindist, chan) < 2)
+				continue;
+			{
+				DodSound *r = &S.sounds[S.nsounds++];
+				int k;
+				r->hash = alias_hash(alias);
+				r->volume = vol < 0.0f ? 0.0f : (vol > 1.0f ? 1.0f : vol);
+				r->attn = attn_for(mindist);
+				r->channel = (uint8_t)channel_for(chan);
+				r->alias = (uint16_t)o;
+				memcpy(strs + o, alias, strlen(alias) + 1);
+				o += strlen(alias) + 1;
+				/* the same sample under several aliases is stored and precached once */
+				for (k = 0; k < S.nsounds - 1; k++)
+					if (!strcmp(strs + S.sounds[k].sample, sample))
+						break;
+				if (k < S.nsounds - 1)
+					r->sample = S.sounds[k].sample;
+				else {
+					r->sample = (uint16_t)o;
+					memcpy(strs + o, sample, strlen(sample) + 1);
+					o += strlen(sample) + 1;
+					if (S.be.precache_sound)
+						S.be.precache_sound(sample);
+				}
+			}
+		}
+	}
+	if (S.be.free_file)
+		S.be.free_file(text);
+}
+
+/* A random variant of the alias, or NULL. */
+static const DodSound *sound_pick(const char *alias)
+{
+	uint32_t h = alias_hash(alias);
+	int i, n = 0, k;
+	for (i = 0; i < S.nsounds; i++)
+		n += S.sounds[i].hash == h;
+	if (!n) {
+		for (i = 0; i < S.nmisses; i++)
+			if (S.sound_misses[i] == h)
+				return NULL;
+		if (S.nmisses < MAX_SOUND_MISSES) {
+			char msg[128];
+			S.sound_misses[S.nmisses++] = h;
+			snprintf(msg, sizeof(msg), "mohaa: sound '%s' is not in this map's sound table\n", alias);
+			S.be.print(DOD_MOHAA_PRINT_CONSOLE, msg);
+		}
+		return NULL;
+	}
+	S.rng = S.rng * 1664525u + 1013904223u;
+	k = (int)((S.rng >> 16) % (uint32_t)n);
+	for (i = 0; i < S.nsounds; i++)
+		if (S.sounds[i].hash == h && k-- == 0)
+			return &S.sounds[i];
+	return NULL;
+}
+
+static void play(ms_call *c, int loop)
+{
+	uint32_t id = target_id(c);
+	const DodSound *r = sound_pick(ms_arg_string(c, 0));
+	const char *sample;
+	int i, free_slot = -1;
+	if (!r || !S.be.sound)
+		return;
+	sample = S.sound_text + r->sample;
+	if (loop) {
+		/* one loop per entity: a new loop replaces the old one */
+		for (i = 0; i < MAX_LOOPS; i++) {
+			if (S.loops[i].id == id) {
+				S.be.sound(id, S.loops[i].sample, -1, 0, 0, 0);
+				free_slot = i;
+				break;
+			}
+			if (!S.loops[i].id && free_slot < 0)
+				free_slot = i;
+		}
+		if (free_slot < 0)
+			return;
+		S.loops[free_slot].id = id;
+		S.loops[free_slot].sample = sample;
+	}
+	S.be.sound(id, sample, loop, r->volume, r->attn, r->channel);
+}
+
+static int c_playsound(ms_call *c) { play(c, 0); return 0; }
+static int c_loopsound(ms_call *c) { play(c, 1); return 0; }
+static int c_stoploopsound(ms_call *c)
+{
+	uint32_t id = target_id(c);
+	int i;
+	for (i = 0; i < MAX_LOOPS; i++)
+		if (S.loops[i].id == id) {
+			if (S.be.sound)
+				S.be.sound(id, S.loops[i].sample, -1, 0, 0, 0);
+			S.loops[i].id = 0;
+		}
+	return 0;
+}
 
 /* ------------------------------------------------------------------ */
 /* thread commands                                                      */
@@ -541,6 +742,9 @@ void Dod_MohaaShutdown(void)
 	memset(S.movers, 0, sizeof(S.movers));
 	S.nunknown = 0;
 	S.ticks = 0;
+	sounds_free();
+	memset(S.loops, 0, sizeof(S.loops));
+	S.nmisses = 0;
 }
 
 static void *default_alloc(void *ptr, size_t old_size, size_t new_size)
@@ -593,6 +797,8 @@ int Dod_MohaaLevelInit(const DodMohaaBackend *backend, const char *mapname, floa
 		return 0;
 	}
 	register_commands(S.vm);
+	S.rng = 0x2545F491u ^ (uint32_t)(now * 1000.0f);   /* variants differ from run to run */
+	sounds_load(mapname);
 	if (!ms_exec(S.vm, path, NULL, NULL, NULL, 0)) {
 		S.be.print(DOD_MOHAA_PRINT_ERROR, "mohaa: level script did not start\n");
 		Dod_MohaaShutdown();

@@ -264,13 +264,33 @@ static uint32_t M_Spawn( const char *classname, const char *const *keys, const c
 	return IdFor( e );
 }
 
-static void M_Sound( uint32_t id, const char *sample, int loop )
+static void M_Precache( const char *sample )
 {
-	/* MOHAA plays ubersound aliases ("door_open"), not wav paths, and GoldSrc can only play
-	 * precached samples. Until the alias table is converted, log what a mission asks for. */
-	(void)id;
-	if( loop >= 0 )
-		ALERT( at_aiconsole, "mohaa: sound %s%s not mapped yet\n", sample, loop ? " (loop)" : "" );
+	/* the table outlives this call only as long as the level: give the engine its own copy */
+	PRECACHE_SOUND( (char *)STRING( ALLOC_STRING( sample ) ) );
+}
+
+static void M_Sound( uint32_t id, const char *sample, int loop, float volume, float attn, int channel )
+{
+	edict_t *e = EdictFor( id );
+	if( !e )
+		return;
+	if( loop < 0 ) {
+		STOP_SOUND( e, CHAN_STATIC, sample );
+		return;
+	}
+	int chan = CHAN_AUTO;
+	if( loop )
+		chan = CHAN_STATIC;	/* repeats by the wav's own loop marker */
+	else if( channel == DOD_MOHAA_CHAN_VOICE )
+		chan = CHAN_VOICE;
+	else if( channel == DOD_MOHAA_CHAN_ITEM )
+		chan = CHAN_ITEM;
+	else if( channel == DOD_MOHAA_CHAN_BODY )
+		chan = CHAN_BODY;
+	else if( channel == DOD_MOHAA_CHAN_WEAPON )
+		chan = CHAN_WEAPON;
+	EMIT_SOUND_DYN( e, chan, sample, volume, attn, 0, PITCH_NORM );
 }
 
 void DodGC_MohaaLevelInit( void )
@@ -299,6 +319,7 @@ void DodGC_MohaaLevelInit( void )
 	b.use_targets = M_UseTargets;
 	b.spawn = M_Spawn;
 	b.sound = M_Sound;
+	b.precache_sound = M_Precache;
 	b.actor = M_Actor;
 	size_t budget = (size_t)CVAR_GET_FLOAT( "mohaa_script_kb" ) * 1024u;
 	if( Dod_MohaaLevelInit( &b, STRING( gpGlobals->mapname ), gpGlobals->time, budget ) ) {
