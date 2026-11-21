@@ -22,7 +22,7 @@ mkdir -p $R/dod/media; BK=$W/bake; python3 /home/tim/Desktop/dod-gc/tools/mapbri
 for pair in "wt_dod_live.gct:2097152" "wd_dod_live.gcd:1048576" "wd_dod_live_lf.gcd:1048576" "wd_dod_live_sb.gcd:65536"; do
   f=${pair%%:*}; sz=${pair##*:}; cp $BK/media/$f $R/dod/media/$f; truncate -s $sz $R/dod/media/$f
 done
-printf 'video prog\nlistenserver dod_live\ngcworldrender\ngcplayerinput\n' > $R/dod/gamecube.cfg
+printf 'video prog\nlistenserver dod_live\ngcworldrender\ngcplayerinput\nnohud\n' > $R/dod/gamecube.cfg
 printf 'gc_livemap 1\n' >> $R/dod/listenserver.cfg
 GC_SLOT_PAD="dod_live:wd=1048576:lf=1048576:sb=65536" TMPDIR="${XASH3D_GC_ISO_CACHE:-/tmp}" python3 "$BUILDER/scripts/build-gamecube-disc.py" --dol "$DOL" --data $R/dod --gamedir dod \
   --extra-data "valve=$R/valve" --no-auto-extra-gamedirs --skip-startup-vids --output "$OUT"

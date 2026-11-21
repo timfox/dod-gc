@@ -35,3 +35,15 @@ engine-livemap.patch: SV_GCLiveMapFrame polls livemap.txt ~1/s, serial change ->
 - Disc with the slots: needs a build with a zero-padded `dod_live.bsp` (<= 3 MiB) staged via stage-lean-dod.sh --map dod_live, plus `livemap.txt` padded to 2048 bytes. Not built.
 - Unverified: whether Dolphin returns patched sectors to a running game without staleness (stdio buffering in PlainFileReader).
 - Stock-map accuracy: the exporter writes plain brushes with box-projected textures; no UV round-trip, no brush-entity origin handling, no detail/water/trigger conventions yet.
+
+## Build recipe for the live-map DoD disc (retail HUD, full render path)
+1. Game code: clone the pinned SDK privately (`scripts/sources.lock` in dod-gc), then
+   `scripts/build-dodgc.sh --dol-only` with DODGC_ENGINE=<engine worktree>, DODGC_HLSDK=<private SDK clone>,
+   HLSDK_GAMECUBE_BRANCH=<sdk branch>, DODGC_ALLOW_STALE_MAINUI=1 (the engine's mainui pin is a symlink blob).
+2. Engine DOL: `XASH_GC_PM_MAX_PHYSENTS=256 XASH_GC_PM_MAX_MOVEENTS=32` MUST be exported for the engine build exactly as
+   build-dodgc.sh does; the game archives are built with those playermove_t caps and a mismatch corrupts the stack in
+   PM_SortTextures at spawn (that was the "retail HUD crash").
+3. Disc: `tools/mapbridge/build_slot_disc.sh <dol> <iso> <seed.bsp>` (cfg has `nohud`: the retail client HUD draws, the engine's
+   placeholder TEAM/HP/AMMO bars do not).
+4. Watcher: `live_session.sh <iso>` compiles, bakes wt/wd/lf/sb packs and patches every slot in place on each save.
+Notes: VIS output from the ZHLT fork made the world draw white in-engine; watch.py leaves VIS off unless --vis is given.
