@@ -144,12 +144,13 @@ fx_bytes=0
 # The second group is what the game DLL also precaches for tracers, beams,
 # sparks, smoke and the MG42 flash; without the files those effects draw
 # nothing. Names are the precache spelling (the retail file may differ in
-# case, e.g. xspark1.spr), so the lookup ignores case.
+# case, e.g. xspark1.spr), so the lookup ignores case. dot.spr is the engine's
+# tracer dot: without it CL_DrawTracers draws no tracer at all.
 fx_wanted=0
 for s in muzzleflash1.spr muzzleflash2.spr muzzleflash3.spr richo1.spr \
 	zerogxplode.spr WXplo1.spr steam1.spr bubble.spr bloodspray.spr blood.spr \
 	hotglow.spr smoke.spr laserdot.spr streak.spr xbeam1.spr XSpark1.spr \
-	muz1.spr laserbeam.spr explode1.spr mg42.spr lgtning.spr
+	muz1.spr laserbeam.spr explode1.spr mg42.spr lgtning.spr dot.spr
 do
 	fx_wanted=$((fx_wanted + 1))
 	for dir in "$SRC/sprites" "$VALVE/sprites"; do
