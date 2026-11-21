@@ -157,6 +157,16 @@ static int m_actor(uint32_t id, int order, const float pos[3])
 	return 1;
 }
 
+static void m_music(const char *intro, const char *loop)
+{
+	char buf[256];
+	if (!intro)
+		snprintf(buf, sizeof(buf), "<music off>\n");
+	else
+		snprintf(buf, sizeof(buf), "<music %s | %s>\n", intro, loop);
+	logf_(buf);
+}
+
 static DodMohaaBackend backend(void)
 {
 	DodMohaaBackend b;
@@ -182,6 +192,7 @@ static DodMohaaBackend backend(void)
 	b.node_find = m_node_find;
 	b.node_pos = m_node_pos;
 	b.precache_sound = m_precache;
+	b.music = m_music;
 	return b;
 }
 
@@ -414,6 +425,50 @@ static void test_sounds(void)
 	(void)door;
 }
 
+static void test_music(void)
+{
+	DodMohaaBackend b = backend();
+	reset();
+	add("player", "player", 0, 0, 0);
+	files[0][0] = "maps/m.scr";
+	files[0][1] =
+		"main:\n"
+		"\twait 0.1\n"
+		"\tforcemusic aux1 normal\n"
+		"\t$player stufftext \"tmstartloop sound/music/MUS_Tank.mp3\"\n"
+		"\t$player stufftext \"tmstop; tmstart sound/music/mus_win.mp3; say hi\"\n"
+		"\tsoundtrack music/other.mus\n"
+		"\tforcemusic aux9\n"
+		"\tsoundtrack music/none.mus\n"
+		"end\n";
+	files[1][0] = "music/m.mood";
+	files[1][1] =
+		"# mood sample volume loop fadetime\n"
+		"normal mohaa/music/calm.wav 0.70 1 0.0\n"
+		"aux1 mohaa/music/fight.wav 1.00 0 1.5\n";
+	files[2][0] = "music/other.mood";
+	files[2][1] = "normal mohaa/music/other.wav 1.00 1 0.0\n";
+	assert(Dod_MohaaLevelInit(&b, "m", 0, 0));
+	/* the map's own soundtrack starts on normal */
+	assert(!strncmp(log_buf, "<music sound/mohaa/music/calm.wav | sound/mohaa/music/calm.wav>\n", 62));
+	run(0.05f, 0.3f);
+	assert(strstr(log_buf,
+		"<music sound/mohaa/music/fight.wav | sound/mohaa/music/calm.wav>\n"	/* once, then back to normal */
+		"<music sound/mohaa/music/mus_tank.wav | sound/mohaa/music/mus_tank.wav>\n"
+		"<music sound/mohaa/music/fight.wav | sound/mohaa/music/calm.wav>\n"	/* tmstop */
+		"<music sound/mohaa/music/mus_win.wav | sound/mohaa/music/calm.wav>\n"
+		"<music sound/mohaa/music/other.wav | sound/mohaa/music/other.wav>\n"));
+	assert(strstr(log_buf, "no mood aux9"));
+	assert(strstr(log_buf, "no music/none.mood"));
+	/* no table: nothing plays and nothing is reported */
+	reset();
+	files[0][0] = "maps/q.scr";
+	files[0][1] = "main:\n\tforcemusic aux1\nend\n";
+	assert(Dod_MohaaLevelInit(&b, "q", 0, 0));
+	run(0.05f, 0.1f);
+	assert(!strstr(log_buf, "music") && !strstr(log_buf, "error"));
+}
+
 int main(void)
 {
 	test_no_script_no_vm();
@@ -422,6 +477,7 @@ int main(void)
 	test_budget_refuses_cleanly();
 	test_actors();
 	test_sounds();
+	test_music();
 	Dod_MohaaShutdown();
 	printf("dod_mohaa_test: ok\n");
 	return 0;

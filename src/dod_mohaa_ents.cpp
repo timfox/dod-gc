@@ -323,6 +323,42 @@ static void M_Sound( uint32_t id, const char *sample, int loop, float volume, fl
 	EMIT_SOUND_DYN( e, chan, sample, volume, attn, 0, PITCH_NORM );
 }
 
+/* Background music: what should play now, and which clients have been told. Xash's "music <intro> [loop]" streams
+ * the PCM wavs mohaa-gc tools/music.py writes; "music" alone stops. A player who joins later is told on the next
+ * think, so everyone hears the same mood. */
+static char g_music_intro[96], g_music_loop[96];
+static int g_music_serial = 1;
+static int g_music_sent[33];
+
+static void M_Music( const char *intro, const char *loop )
+{
+	snprintf( g_music_intro, sizeof( g_music_intro ), "%s", intro ? intro : "" );
+	snprintf( g_music_loop, sizeof( g_music_loop ), "%s", intro && loop ? loop : "" );
+	g_music_serial++;
+}
+
+static void MusicSend( void )
+{
+	for( int k = 1; k <= gpGlobals->maxClients && k < 33; k++ ) {
+		edict_t *e = INDEXENT( k );
+		if( !e || e->free || !e->pvPrivateData || !( e->v.flags & FL_CLIENT ) || ( e->v.flags & FL_FAKECLIENT ) ) {
+			g_music_sent[k] = 0;	/* an empty slot: whoever takes it next hears the music from the start */
+			continue;
+		}
+		if( g_music_sent[k] == g_music_serial )
+			continue;
+		if( g_music_sent[k] || g_music_intro[0] ) {
+			char cmd[224];
+			if( g_music_intro[0] )
+				snprintf( cmd, sizeof( cmd ), "music \"%s\" \"%s\"\n", g_music_intro, g_music_loop );
+			else
+				snprintf( cmd, sizeof( cmd ), "music\n" );
+			CLIENT_COMMAND( e, cmd );
+		}
+		g_music_sent[k] = g_music_serial;
+	}
+}
+
 void DodGC_MohaaLevelInit( void )
 {
 	if( !g_mohaa_cvar_registered )
@@ -351,6 +387,9 @@ void DodGC_MohaaLevelInit( void )
 	b.sound = M_Sound;
 	b.precache_sound = M_Precache;
 	b.actor = M_Actor;
+	b.music = M_Music;
+	if( g_music_intro[0] )
+		M_Music( NULL, NULL );	/* the last map's music stops unless this map starts its own */
 	b.node_find = M_NodeFind;
 	b.node_pos = DodGrunts_PathPos;
 	DodGrunts_LoadPaths( STRING( gpGlobals->mapname ) );	/* before the map's soldiers spawn and the script runs */
@@ -365,6 +404,7 @@ void DodGC_MohaaLevelInit( void )
 void DodGC_MohaaThink( void )
 {
 	Dod_MohaaThink( gpGlobals->time );
+	MusicSend();
 }
 
 void DodGC_MohaaEntityEvent( edict_t *e, const char *event )

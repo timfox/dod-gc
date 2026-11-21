@@ -350,7 +350,13 @@ engine glue. The game rules constructor calls `DodGC_MohaaLevelInit`, `Think` ca
   distance, channel; repeated aliases are variants picked at random). The samples are precached at level start, a
   minimum distance of 160 MOHAA units maps to ATTN_NORM, and a loop plays on the static channel (one per entity). An alias
   missing from the table is reported once and stays silent; a map without a table plays nothing.
-- **Not yet.** Music (`.mp3`) and dialogue subtitles. `.tik` models are skipped on `spawn`. No
+- **Music.** mohaa-gc `tools/music.py` turns each `.mus` into `music/<name>.mood` (mood, sample, volume, loop) and the
+  tracks into 22 kHz PCM wavs under `sound/mohaa/music/` (the Gekko cannot afford mp3 decoding). A level plays
+  `music/<map>.mood` from its `normal` mood; `soundtrack music/x.mus` switches tables, `forcemusic <mood> [fallback]`
+  switches mood (a mood without `loop` plays once, then the fallback's loop), and `$player stufftext "tmstart|tmstartloop
+  <file>"` / `"tmstop"` play MOHAA's triggered cues over it. Every player hears it through Xash's `music` command, late
+  joiners included; other `stufftext` commands are dropped. Volume and fade times are not applied.
+- **Not yet.** Dialogue subtitles. `.tik` models are skipped on `spawn`. No
   camera, HUD objectives or `exec global/*.scr` libraries beyond what the map ships. Without a `.nodes` file a move order
   heads straight for its point and turns off walls; soldiers have no animations beyond the grunt poses. An unknown command is reported once
   and skipped, so a mission keeps running.

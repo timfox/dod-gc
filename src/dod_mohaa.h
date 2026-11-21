@@ -74,6 +74,10 @@ typedef struct DodMohaaBackend {
 	   sees a node as an entity with id DOD_MOHAA_NODE_ID | index, which the backend never hands out. NULL: no nodes. */
 	int (*node_find)(const char *name);
 	void (*node_pos)(int index, float out[3]);
+	/* Background music for every player (late joiners too): intro plays once, then loop repeats; loop "" plays
+	   intro once and stops; intro NULL stops the music. Paths are game-relative ("sound/mohaa/music/x.wav"),
+	   PCM wavs written by mohaa-gc tools/music.py. NULL: no music. */
+	void (*music)(const char *intro, const char *loop);
 	void *(*alloc)(void *ptr, size_t old_size, size_t new_size); /* NULL: malloc */
 } DodMohaaBackend;
 

@@ -21,6 +21,8 @@ typedef struct DodMover {
 #define MAX_UNKNOWN 128
 #define MAX_LOOPS 16
 #define MAX_SOUND_MISSES 64
+#define MAX_MOODS 8
+#define MUSIC_PATH 80
 
 typedef struct DodSound {
 	uint32_t hash;           /* of the alias, lowercase */
@@ -45,6 +47,11 @@ static struct {
 	uint32_t sound_misses[MAX_SOUND_MISSES];
 	int nmisses;
 	uint32_t rng;
+	/* music: the soundtrack's moods (music/<name>.mood), the mood playing, a triggered cue over it */
+	struct { char name[8]; char sample[MUSIC_PATH]; uint8_t loop; } moods[MAX_MOODS];
+	int nmoods, mood, fallback;
+	char cue[MUSIC_PATH];
+	int cue_loop;
 } S;
 
 /* ------------------------------------------------------------------ */
@@ -669,6 +676,155 @@ static int c_stoploopsound(ms_call *c)
 }
 
 /* ------------------------------------------------------------------ */
+/* music: .mus moods (soundtrack, forcemusic) and stufftext cues        */
+/* ------------------------------------------------------------------ */
+
+static int mood_find(const char *name)
+{
+	int i;
+	for (i = 0; i < S.nmoods; i++)
+		if (!strcmp(S.moods[i].name, name))
+			return i;
+	return -1;
+}
+
+/* "sound/music/MUS_x.mp3" or "mohaa/music/x.wav" -> "sound/mohaa/music/x.wav" (tools/music.py's names) */
+static void music_path(const char *src, char *out, size_t size)
+{
+	const char *base = src, *s;
+	char name[64];
+	size_t n = 0;
+	for (s = src; *s; s++)
+		if (*s == '/' || *s == '\\')
+			base = s + 1;
+	while (base[n] && base[n] != '.' && n + 1 < sizeof(name)) {
+		char c = base[n];
+		name[n++] = (char)(c >= 'A' && c <= 'Z' ? c - 'A' + 'a' : c);
+	}
+	name[n] = 0;
+	snprintf(out, size, "sound/mohaa/music/%s.wav", name);
+}
+
+/* tell the game what should be playing now */
+static void music_apply(void)
+{
+	const char *loop = "";
+	if (!S.be.music)
+		return;
+	if (S.mood >= 0) {
+		const int after = S.moods[S.mood].loop ? S.mood : S.fallback;
+		if (after >= 0 && S.moods[after].loop)
+			loop = S.moods[after].sample;
+	}
+	if (S.cue[0])
+		S.be.music(S.cue, S.cue_loop ? S.cue : loop);
+	else if (S.mood >= 0)
+		S.be.music(S.moods[S.mood].sample, S.moods[S.mood].loop ? S.moods[S.mood].sample : loop);
+	else
+		S.be.music(NULL, NULL);
+}
+
+/* load music/<name>.mood; returns 1 when it had moods */
+static int moods_load(const char *name)
+{
+	char path[128];
+	size_t len = 0;
+	char *text;
+	const char *p, *end;
+	snprintf(path, sizeof(path), "music/%s.mood", name);
+	text = S.be.load_file(path, &len);
+	if (!text)
+		return 0;
+	S.nmoods = 0;
+	S.mood = S.fallback = -1;
+	for (p = text, end = text + len; p < end && S.nmoods < MAX_MOODS;) {
+		const char *eol = memchr(p, '\n', (size_t)(end - p));
+		char line[192], mood[8], sample[74];
+		float vol = 1.0f;
+		int loop = 0;
+		size_t n = (size_t)((eol ? eol : end) - p);
+		if (n >= sizeof(line))
+			n = sizeof(line) - 1;
+		memcpy(line, p, n);
+		line[n] = 0;
+		p = eol ? eol + 1 : end;
+		if (line[0] == '#' || sscanf(line, "%7s %73s %f %d", mood, sample, &vol, &loop) < 2)
+			continue;
+		memcpy(S.moods[S.nmoods].name, mood, sizeof(mood));
+		memcpy(S.moods[S.nmoods].sample, "sound/", 6);
+		memcpy(S.moods[S.nmoods].sample + 6, sample, sizeof(sample));
+		S.moods[S.nmoods].loop = (uint8_t)(loop != 0);
+		S.nmoods++;
+	}
+	if (S.be.free_file)
+		S.be.free_file(text);
+	return S.nmoods > 0;
+}
+
+/* "soundtrack music/m1l1.mus": that soundtrack's moods, starting on normal */
+static int c_soundtrack(ms_call *c)
+{
+	char name[64];
+	const char *src = ms_arg_string(c, 0), *base = src, *s;
+	size_t n = 0;
+	for (s = src; *s; s++)
+		if (*s == '/' || *s == '\\')
+			base = s + 1;
+	while (base[n] && base[n] != '.' && n + 1 < sizeof(name)) {
+		name[n] = base[n];
+		n++;
+	}
+	name[n] = 0;
+	if (!moods_load(name))
+		return ms_call_error(c, "no music/%s.mood", name);
+	S.mood = mood_find("normal");
+	S.cue[0] = 0;	/* a cue never says when it ended; a new soundtrack ends it */
+	music_apply();
+	return 0;
+}
+
+/* "forcemusic <mood> [fallback]" */
+static int c_forcemusic(ms_call *c)
+{
+	const int m = mood_find(ms_arg_string(c, 0));
+	if (m < 0)
+		return S.nmoods ? ms_call_error(c, "no mood %s in the soundtrack", ms_arg_string(c, 0)) : 0;
+	S.mood = m;
+	S.fallback = ms_argc(c) > 1 ? mood_find(ms_arg_string(c, 1)) : -1;
+	S.cue[0] = 0;
+	music_apply();
+	return 0;
+}
+
+/* "$player stufftext "tmstart sound/music/x.mp3"": MOHAA's triggered music. Other console commands are dropped:
+   a script does not run commands on a GameCube player's console. */
+static int c_stufftext(ms_call *c)
+{
+	char buf[256], *cmd, *next;
+	snprintf(buf, sizeof(buf), "%s", ms_arg_string(c, 0));
+	for (cmd = buf; cmd; cmd = next) {
+		char word[16], arg[128];
+		int n;
+		next = strchr(cmd, ';');
+		if (next)
+			*next++ = 0;
+		arg[0] = 0;
+		n = sscanf(cmd, "%15s %127s", word, arg);
+		if (n < 1)
+			continue;
+		if (!strcmp(word, "tmstop")) {
+			S.cue[0] = 0;
+			music_apply();
+		} else if ((!strcmp(word, "tmstart") || !strcmp(word, "tmstartloop")) && n == 2) {
+			music_path(arg, S.cue, sizeof(S.cue));
+			S.cue_loop = word[7] == 'l';
+			music_apply();
+		}
+	}
+	return 0;
+}
+
+/* ------------------------------------------------------------------ */
 /* thread commands                                                      */
 /* ------------------------------------------------------------------ */
 
@@ -762,6 +918,9 @@ static void register_commands(ms_vm *vm)
 		{"walkto", MS_ON_ENTITY, c_goto},
 		{"turnto", MS_ON_ENTITY, c_turnto},
 		{"lookat", MS_ON_ENTITY, c_turnto},
+		{"stufftext", MS_ON_ENTITY, c_stufftext},
+		{"soundtrack", MS_ON_THREAD | MS_ON_ENTITY, c_soundtrack},
+		{"forcemusic", MS_ON_THREAD | MS_ON_ENTITY, c_forcemusic},
 		{"trigger", MS_ON_THREAD, c_trigger},
 		{"spawn", MS_ON_THREAD, c_spawn},
 		{"centerprint", MS_ON_THREAD, c_centerprint},
@@ -787,6 +946,9 @@ void Dod_MohaaShutdown(void)
 	sounds_free();
 	memset(S.loops, 0, sizeof(S.loops));
 	S.nmisses = 0;
+	S.nmoods = 0;
+	S.mood = S.fallback = -1;
+	S.cue[0] = 0;
 }
 
 static void *default_alloc(void *ptr, size_t old_size, size_t new_size)
@@ -841,6 +1003,11 @@ int Dod_MohaaLevelInit(const DodMohaaBackend *backend, const char *mapname, floa
 	register_commands(S.vm);
 	S.rng = 0x2545F491u ^ (uint32_t)(now * 1000.0f);   /* variants differ from run to run */
 	sounds_load(mapname);
+	/* a level that never names its soundtrack plays music/<map>.mood (MOHAA's .mus files are named after the map) */
+	if (moods_load(mapname)) {
+		S.mood = mood_find("normal");
+		music_apply();
+	}
 	if (!ms_exec(S.vm, path, NULL, NULL, NULL, 0)) {
 		S.be.print(DOD_MOHAA_PRINT_ERROR, "mohaa: level script did not start\n");
 		Dod_MohaaShutdown();
