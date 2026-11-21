@@ -453,8 +453,24 @@ static void DodFilm_Streaks( const Vector &o, float up, int color, int count, in
 	MESSAGE_END();
 }
 
+/* A smoke puff. TE_SMOKE draws its sprite in a near-black grey at full alpha (the
+ * engine's R_Sprite_Smoke), so a big one is an opaque black blob: daylight beach
+ * shots, with puffs at scale 5 to 11 every second or so, hid up to a third of the
+ * frame. The dark core stays small, and a lit, see-through puff (TE_SPRITE draws
+ * additive) gives the column its size. */
+#define DOD_FILM_SMOKE_CORE 0.35f
 static void DodFilm_Smoke( const Vector &o, float scale, int framerate )
 {
+	MESSAGE_BEGIN( MSG_BROADCAST, SVC_TEMPENTITY );
+		WRITE_BYTE( TE_SPRITE );
+		WRITE_COORD( o.x );
+		WRITE_COORD( o.y );
+		WRITE_COORD( o.z + 0.8f * scale );
+		WRITE_SHORT( g_sModelIndexSmoke );
+		WRITE_BYTE( DodFilm_Byte( 0.9f * scale ) );
+		WRITE_BYTE( 70 );
+	MESSAGE_END();
+	scale *= DOD_FILM_SMOKE_CORE;
 	MESSAGE_BEGIN( MSG_BROADCAST, SVC_TEMPENTITY );
 		WRITE_BYTE( TE_SMOKE );
 		WRITE_COORD( o.x );
@@ -522,13 +538,13 @@ static void DodFilm_FireFx( const DodFilmFx *f )
 			WRITE_BYTE( 15 );
 			WRITE_BYTE( TE_EXPLFLAG_NOSOUND );
 		MESSAGE_END();
-		DodFilm_Streaks( o, 1.0f, 5, (int)( 24 * s ), (int)( 220 * s ) );
+		DodFilm_Streaks( o, 1.0f, 5, (int)( 12 * s ), (int)( 220 * s ) );
 		DodFilm_Smoke( o + Vector( 0, 0, 40.0f * s ), 40.0f * s, 8 );
 		break;
 	case DOD_FX_KIND_WATER:
 		/* a tall white column: two showers of white streaks and a spray puff */
-		DodFilm_Streaks( o, 1.0f, 0, (int)( 40 * s ), (int)( 420 * s ) );
-		DodFilm_Streaks( o, 1.0f, 0, (int)( 24 * s ), (int)( 220 * s ) );
+		DodFilm_Streaks( o, 1.0f, 0, (int)( 20 * s ), (int)( 420 * s ) );
+		DodFilm_Streaks( o, 1.0f, 0, (int)( 12 * s ), (int)( 220 * s ) );
 		MESSAGE_BEGIN( MSG_BROADCAST, SVC_TEMPENTITY );
 			WRITE_BYTE( TE_SPRITE );
 			WRITE_COORD( o.x );
@@ -540,24 +556,13 @@ static void DodFilm_FireFx( const DodFilmFx *f )
 		MESSAGE_END();
 		break;
 	case DOD_FX_KIND_DIRT:
-		DodFilm_Streaks( o, 1.0f, 4, (int)( 20 * s ), (int)( 260 * s ) );
+		DodFilm_Streaks( o, 1.0f, 4, (int)( 10 * s ), (int)( 260 * s ) );
 		DodFilm_Smoke( o + Vector( 0, 0, 16.0f * s ), 18.0f * s, 12 );
 		break;
 	case DOD_FX_KIND_SMOKE:
-		/* TE_SMOKE draws the puff in a near-black grey (20..35 of 255), which vanishes
-		 * against a night street or a shadowed wall: in the ep02 captures not one of 50
-		 * smoke cues read. A lit puff of the same sprite (TE_SPRITE draws additive, at
-		 * this brightness) round the dark one gives the column a body the camera sees. */
+		/* the dark puff alone vanished against a night street (ep02: not one of 50 smoke
+		 * cues read), and a big one is a black blob by day; DodFilm_Smoke draws both */
 		DodFilm_Smoke( o, 30.0f * s, 6 );
-		MESSAGE_BEGIN( MSG_BROADCAST, SVC_TEMPENTITY );
-			WRITE_BYTE( TE_SPRITE );
-			WRITE_COORD( o.x );
-			WRITE_COORD( o.y );
-			WRITE_COORD( o.z + 56.0f * s );
-			WRITE_SHORT( g_sModelIndexSmoke );
-			WRITE_BYTE( DodFilm_Byte( 36.0f * s ) );
-			WRITE_BYTE( 90 );
-		MESSAGE_END();
 		break;
 	case DOD_FX_KIND_BLOOD:
 		DodFilm_Blood( o, Vector( 0, 0, 1.0f ), s );
