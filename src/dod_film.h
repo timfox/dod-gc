@@ -99,6 +99,7 @@ typedef enum {
 	DOD_FX_KIND_SMOKE,		/* a rising puff of smoke */
 	DOD_FX_KIND_TRACER,		/* a tracer round from origin to end */
 	DOD_FX_KIND_BLOOD,		/* a hit: a spurt and a spray of blood particles */
+	DOD_FX_KIND_GIBS,		/* a man blown apart: the side's gib model thrown out, and blood */
 	DOD_FX_KIND_COUNT
 } DodFilmFxKind;
 
@@ -108,6 +109,7 @@ typedef struct {
 	float origin[3];
 	float end[3];		/* tracer only */
 	float scale;		/* 1 is a grenade-sized blast */
+	int team;		/* gibs only: whose gib model (1 allies, 2 axis; 0 allies) */
 } DodFilmFx;
 
 typedef struct {

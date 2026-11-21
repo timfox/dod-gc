@@ -140,7 +140,7 @@ DodFilmPose DodFilm_GaitPose(DodFilmPose pose, int moving, float speed)
 }
 
 static const char *const fx_names[DOD_FX_KIND_COUNT] = {
-	"explosion", "water", "dirt", "smoke", "tracer", "blood",
+	"explosion", "water", "dirt", "smoke", "tracer", "blood", "gibs",
 };
 
 const char *DodFilm_FxName(DodFilmFxKind kind)
@@ -349,6 +349,12 @@ int DodFilm_ParseCast(DodFilmCast *cast, const char *text, char *err, int err_si
 					f->scale = (float)atof(tok[6]);
 				if (!(f->scale > 0.0f))
 					f->scale = 1.0f;
+			}
+			f->team = 0;
+			if (kind == DOD_FX_KIND_GIBS && ntok >= 8) {
+				f->team = team_from_name(tok[7]);
+				if (!f->team)
+					return set_err(err, err_size, lineno, "gibs team must be allies or axis");
 			}
 			continue;
 		}

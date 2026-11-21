@@ -225,6 +225,9 @@ rm -rf "$LEAN/cine"
 # stages player bodies of its own (the disc builder reads the retail ones), so this folder only ever
 # holds a plan's, and a disc built without --film goes back to retail.
 rm -rf "$LEAN/models/player"
+# The two team gib models (allied_gibs/axis_gibs, about 54 KB each): film deaths by a shell burst come
+# apart with them (dod_film_actor.cpp DodFilm_Gibs). Only a film disc carries them.
+rm -f "$LEAN/models/allied_gibs.mdl" "$LEAN/models/axis_gibs.mdl"
 if [[ -f "$LEAN/listenserver.cfg" ]]; then
 	awk -v b="$FILM_BEGIN" -v e="$FILM_END" '$0==b{skip=1;next} $0==e{skip=0;next} !skip' \
 		"$LEAN/listenserver.cfg" > "$LEAN/listenserver.cfg.tmp"
@@ -244,6 +247,14 @@ if [[ -n "$FILM" ]]; then
 		cp -rf "$FILM/models/player/." "$LEAN/models/player/"
 		echo "==> film: $(find "$LEAN/models/player" -name '*.mdl' | wc -l) team body model(s) from the plan"
 	fi
+	for g in allied_gibs.mdl axis_gibs.mdl; do
+		if [[ -f "$DODGC_CONTENT_DOD/models/$g" ]]; then
+			mkdir -p "$LEAN/models"
+			cp -f "$DODGC_CONTENT_DOD/models/$g" "$LEAN/models/"
+		else
+			echo "warning: film: $DODGC_CONTENT_DOD/models/$g missing; deaths by a burst bleed but do not gib" >&2
+		fi
+	done
 	{ echo "$FILM_BEGIN"; cat "$film_cfg"; echo "$FILM_END"; } >> "$LEAN/listenserver.cfg"
 	echo "==> film: $(ls "$LEAN/cine"/*.cam | wc -l) camera path(s), $(ls "$LEAN/cine"/*.act 2>/dev/null | wc -l) cast(s), session $(basename "$film_cfg")"
 fi
