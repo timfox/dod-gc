@@ -7,6 +7,7 @@
  *
  *   act 1
  *   actor <name> <allies|axis> [class]
+ *   actor <name> <allies|axis> vehicle <k>     (a vehicle: prop model k of the map's cine/cast.txt)
  *   key <t> <x> <y> <z> <yaw|-> <pose> [<sequence> [loop|once|upper|upperloop]]
  *   ...
  *   fx <t> <kind> <x> <y> <z> [scale]
@@ -41,6 +42,7 @@ extern "C" {
 #define DOD_FILM_NAME 32
 #define DOD_FILM_MAX_FX 512	/* a dense battle shot: MG bursts are many rounds each; 36 bytes an effect */
 #define DOD_FILM_MAX_SEQS 64	/* distinct named sequences in one cast file */
+#define DOD_FILM_MAX_PROPS 8	/* vehicle models a map's casts can use ("prop <k> <model>" in cine/cast.txt) */
 #define DOD_FILM_YAW_TRAVEL 1000.0f	/* yaw "-": face the direction of travel */
 /* Set in an actor's pev->iuser4. The GameCube engine draws studio props on its lean listen
  * route through a model allowlist that leaves out player bodies; this tag admits the actors
@@ -84,6 +86,8 @@ typedef struct {
 	int team;		/* 1 allies, 2 axis (DodTeam) */
 	int player_class;	/* DodClass, 0 when the cast file names none; picks the uniform and the gun
 				 * the retail model carries in its gear bodygroup */
+	int prop;		/* 0 a soldier; 1..DOD_FILM_MAX_PROPS a vehicle wearing that prop model, the
+				 * team saying whose it is */
 	int key_count;
 	DodFilmKey keys[DOD_FILM_MAX_KEYS];
 	/* A vehicle ("vehicle <name> <model>"): its model, a name under models/mapmodels/ (sherman) or a
