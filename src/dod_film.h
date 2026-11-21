@@ -90,6 +90,10 @@ typedef struct {
 	 * path ending .mdl; empty for a soldier. A vehicle has no team, class, gun or poses: it sits on
 	 * the floor under its keys, faces their yaw and loops its first sequence. */
 	char model[DOD_FILM_NAME];
+	/* "vehicle <name> <model> aim <x> <y> <z>": the turret (bone controller 0) keeps its gun on that
+	 * point while the hull moves; has_aim 0 keeps it straight ahead. */
+	int has_aim;
+	float aim[3];
 } DodFilmActor;
 
 typedef enum {

@@ -244,6 +244,15 @@ static void test_vehicles(void)
 	assert(!strcmp(cast.actors[0].model, "sherman") && cast.actors[0].team == 0);
 	assert(cast.actors[0].key_count == 2 && cast.actors[1].model[0] == '\0');
 	assert(DodFilm_ParseCast(&cast, "act 1\nvehicle v0\n", err, sizeof(err)) < 0);
+	/* a turret aim point */
+	assert(DodFilm_ParseCast(&cast, "act 1\nvehicle v0 models/film/panzer4.mdl aim 10 -20 30.5\nkey 0 0 0 0 90 stand\n",
+		err, sizeof(err)) == 1);
+	assert(cast.actors[0].has_aim && cast.actors[0].aim[0] == 10.0f && cast.actors[0].aim[1] == -20.0f
+		&& cast.actors[0].aim[2] == 30.5f);
+	assert(DodFilm_ParseCast(&cast, "act 1\nvehicle v0 sherman aim 1 2\n", err, sizeof(err)) < 0);
+	assert(DodFilm_ParseCast(&cast, "act 1\nvehicle v0 sherman fire 1 2 3\n", err, sizeof(err)) < 0);
+	assert(DodFilm_ParseCast(&cast, "act 1\nvehicle v0 sherman\nkey 0 0 0 0 - stand\n", err, sizeof(err)) == 1
+		&& !cast.actors[0].has_aim);
 	DodFilm_VehiclePath("sherman", path, sizeof(path));
 	assert(!strcmp(path, "models/mapmodels/sherman.mdl"));
 	DodFilm_VehiclePath("models/film/panzer4.mdl", path, sizeof(path));

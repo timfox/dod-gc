@@ -282,6 +282,17 @@ int DodFilm_ParseCast(DodFilmCast *cast, const char *text, char *err, int err_si
 			snprintf(cur->model, sizeof(cur->model), "%s", tok[2]);
 			cur->team = 0;
 			cur->player_class = 0;
+			cur->has_aim = 0;
+			if (ntok >= 4 && strcmp(tok[3], "aim"))
+				return set_err(err, err_size, lineno, "vehicle takes only aim <x> <y> <z> after its model");
+			if (ntok >= 4) {
+				if (ntok < 7)
+					return set_err(err, err_size, lineno, "vehicle aim needs x y z");
+				cur->has_aim = 1;
+				cur->aim[0] = (float)atof(tok[4]);
+				cur->aim[1] = (float)atof(tok[5]);
+				cur->aim[2] = (float)atof(tok[6]);
+			}
 			continue;
 		}
 		if (!strcmp(tok[0], "key")) {
