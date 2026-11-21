@@ -44,7 +44,7 @@ until the static func_wall records land.
 
 | Map | Bots | Result |
 |---|--:|---|
-| dod_charlie | 8 | round won by capture in 3 of 3 runs (about 340, 510, 570 s); 4 bots: rounds end on the 720 s timer |
+| dod_charlie | 8 | before satchels: round won by capture in 3 of 3 runs (about 340, 510, 570 s); with satchels (PR 161 head): points 3 and 4 planted at 398 s and 499 s, round lost on the 720 s timer; with the duck-jump: all four points planted (3 at 181 s, 2 at 273 s, 4 at 511 s, 1 at 577 s), round 1 won by Allies; 4 bots: rounds end on the 720 s timer |
 | dod_avalanche | 8 | round won by capture in about 1 run of 3-4 (about 340 s); the others reach 2-3 points in 400 s (no round timer on this map) |
 | dod_switch | 4 | all-attackers at 4 bots: 1460 s of game time, points 1, 2, 4, 5 change hands 11 times, the two-player point 3 is never taken, no round end; 2 bots a side cannot hold four points and take a two-player one, so it needs 6+ bots (edict wall) |
 | dod_flash | 4 | no captures in 900 s before the flag-box fix (bots stopped 139 units from a flag whose capture sphere is 128, FillView box 128 -> 64); 6 bots wedge on the edict wall at about 180 s |
@@ -75,3 +75,11 @@ one stays a static prop. Per map (counted from the entity lumps):
 
 The cap exists because edicts are scarce (charlie plus 8 bots sits near the 460 wall); the first six objects of the lump stay. On charlie
 those are the beach (3) and the bunker (3) satchels. Not done: areas without a control point (charlie's `*8` wall area) still do nothing.
+
+## Ledges the baker links as jumps (charlie, 544-596 x 992-1056, z 364)
+
+The baker's JUMP limit is 45 units, but a standing jump of 44 does not clear a 44-unit ledge reliably. On charlie the walkable top of a solid
+block (origin z 364, x 480-584) sits 44 units above the floor east of it (z 320, x >= 592); bots stood below it for 100+ s on every trip between
+the north and the satchels (top stuck edges 1728->95, 159->95, 1728->1244). Fix on the bot side: a duck-jump (the legs are tucked once the bot is
+airborne) for jump links that rise more than 30 units and for the one stall hop a stalled route gets (dod_bot.cpp, `jump_duck`). The baked graph
+stays as it is: raising or lowering the baker limit would only drop the link and strand the top of the block.

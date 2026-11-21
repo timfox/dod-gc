@@ -104,6 +104,7 @@ static cvar_t dod_bots_online = { "dod_bots_online", "0", FCVAR_SERVER };
 /* Test scenarios (dev only): 1 = an enemy behind a wall inside the view cone, then in the open; 2 = a contested capture;
  * 3 = put the human on the Allies as a rifleman (weapon animation checks). */
 static cvar_t dod_bot_stage = { "dod_bot_stage", "0", FCVAR_SERVER };
+static cvar_t dod_bot_jumplog = { "dod_bot_jumplog", "0", FCVAR_SERVER };
 
 /* The most bots ever; the free slots are the real limit. */
 #define DOD_BOT_HARD_CAP 12	/* measured 2026-11-19 on charlie: a bot costs about 8 KB heap, 3 edicts, 0.07 ms think */
@@ -155,7 +156,16 @@ typedef struct DodBotState {
 	int ladder_dir;			/* +1 climbing up, -1 down, 0 not on a ladder */
 	float ladder_until;
 	int want_jump;			/* the edge being walked is a jump */
+	int jump_duck;			/* tuck the legs in the air: a ledge of 30-64 units is only cleared that way (the baker's jump links go to 45) */
 	int stall_jumped;		/* a stalled route got its one jump before it is replanned */
+	short jl_from, jl_to;	/* the jump link being tried, how many launches, since when (a miss is retried from a run-up, then the edge is penalised) */
+	int jl_count;
+	int jl_has_spot;	/* after a miss: a higher launch spot within 64 units of the foot of the link is walked to first, and jumped from */
+	float jl_spot_until, jl_spot_try;
+	Vector jl_spot;
+	float jl_time;
+	short hop_from, hop_to;	/* the edge of the last stall hop and when: the same edge is not hopped again for 60 s (it is replanned) */
+	float hop_time;
 	float jump_until;
 	/* GOAP (see Think) */
 	unsigned ws;			/* world-state facts at the last think */
@@ -576,6 +586,7 @@ void DodBots_Init( void )
 		Dod_CvarRegisterKeep( &dod_bots );
 		Dod_CvarRegisterKeep( &dod_bot_skill );
 		Dod_CvarRegisterKeep( &dod_bot_stage );
+		Dod_CvarRegisterKeep( &dod_bot_jumplog );
 		Dod_CvarRegisterKeep( &dod_bots_online );
 		g_registered = TRUE;
 	}
@@ -1500,6 +1511,21 @@ plan_failed:
 
 /* The position to walk towards while following the path; FALSE when there is no path to follow (no graph,
  * no goal, arrived, or no route), in which case the caller heads for the goal itself. */
+/* True when the bot is walking up a walkable slope with speed (floor normal z between 0.7 and 0.98, rising, 60+ units/s): not stalled, and
+ * no reason to hop. */
+static BOOL SlopeClimbing( CBasePlayer *pBot )
+{
+	TraceResult tr;
+	const Vector o = pBot->pev->origin;
+	if( pBot->pev->velocity.Length2D() < 60.0f || !( pBot->pev->flags & FL_ONGROUND ) )
+		return FALSE;
+	UTIL_TraceLine( o, o - Vector( 0, 0, 64.0f ), ignore_monsters, pBot->edict(), &tr );
+	if( tr.flFraction >= 1.0f || tr.vecPlaneNormal.z < 0.7f || tr.vecPlaneNormal.z > 0.98f )
+		return FALSE;
+	/* uphill: the horizontal velocity has a component against the slope's downhill direction */
+	return pBot->pev->velocity.x * tr.vecPlaneNormal.x + pBot->pev->velocity.y * tr.vecPlaneNormal.y < 0.0f;
+}
+
 static BOOL NavTarget( CBasePlayer *pBot, DodBotState *state, Vector *target )
 {
 	const float now = gpGlobals->time;
@@ -1562,7 +1588,11 @@ static BOOL NavTarget( CBasePlayer *pBot, DodBotState *state, Vector *target )
 			*target = Vector( lx, ly, lz );
 			return TRUE;
 		}
-		if( dist < DOD_BOT_NODE_REACH && fabsf( nz - origin.z ) < 40.0f )	/* was 72: a bot under a ledge counted as on it and stalled on the climb */
+		/* the foot of a jump link is a take-off point: the bot has to stand on it (20 units, 12 in height), not within 40 of it on the lower
+		 * floor, or it jumps from 22 units below and 37 away and the lip is 60 high instead of 38 (charlie's roof lip); after 4 s of trying it counts as reached */
+		const BOOL jump_next = !last && Dod_NavEdgeKind( &g_nav, state->path[state->path_idx], state->path[state->path_idx + 1] ) == DOD_NAV_JUMP;
+		const BOOL strict = jump_next && now - state->path_progress_time < 4.0f;
+		if( dist < ( strict ? 20.0f : DOD_BOT_NODE_REACH ) && fabsf( nz - origin.z ) < ( strict ? 12.0f : 40.0f ) )	/* was 72: a bot under a ledge counted as on it and stalled on the climb */
 		{
 			if( last )
 			{
@@ -1592,12 +1622,21 @@ static BOOL NavTarget( CBasePlayer *pBot, DodBotState *state, Vector *target )
 			state->goal_progress_time = now;
 			state->stall_jumped = 0;
 		}
-		else if( now - state->path_progress_time > DOD_BOT_NODE_STALL && !state->stall_jumped )
+		else if( now - state->path_progress_time > DOD_BOT_NODE_STALL && SlopeClimbing( pBot ) )
 		{
-			/* no progress for a moment: hop once (a low lip, a door frame), then give it another go */
+			state->path_progress_time = now;	/* walking up a walkable slope with speed is not a stall */
+		}
+		else if( now - state->path_progress_time > DOD_BOT_NODE_STALL && !state->stall_jumped &&
+			!( state->hop_from == ( state->path_idx > 0 ? state->path[state->path_idx - 1] : -1 ) && state->hop_to == state->path[state->path_idx] && now - state->hop_time < 60.0f ) )
+		{
+			/* no progress for a moment: hop once (a low lip, a door frame), then give it another go; the same edge gets one hop a minute */
+			state->hop_from = state->path_idx > 0 ? state->path[state->path_idx - 1] : -1;
+			state->hop_to = state->path[state->path_idx];
+			state->hop_time = now;
 			state->stall_jumped = 1;
 			state->jump_until = now + 0.7f;
 			state->want_jump = 1;
+			state->jump_duck = 0;	/* the stall hop does not duck: on charlie it fired 130 times on one slope (jumplog) and a hop that clears more only hides the stall */
 			state->path_progress_time = now;
 		}
 		else if( now - state->path_progress_time > DOD_BOT_NODE_STALL )
@@ -1735,7 +1774,98 @@ static BOOL NavTarget( CBasePlayer *pBot, DodBotState *state, Vector *target )
 		}
 		if( state->path_idx > 0 && dist < 96.0f &&
 			Dod_NavEdgeKind( &g_nav, state->path[state->path_idx - 1], state->path[state->path_idx] ) == DOD_NAV_JUMP )
-			state->want_jump = 1;
+		{
+			/* A jump link: run at it, jump at its edge, duck in the air for a ledge over 30 units. Too close and too slow (or sideways):
+			 * step back about 64 units for a run-up. Three launches at one link in 12 s and it is penalised for 30 s and the route replanned. */
+			const short lf = state->path[state->path_idx - 1], lt = state->path[state->path_idx];
+			const float spd = pBot->pev->velocity.Length2D();
+			const Vector to2( nx - origin.x, ny - origin.y, 0.0f );
+			const float to_len = to2.Length();
+			const BOOL aligned = to_len > 1.0f && spd > 140.0f &&
+				( pBot->pev->velocity.x * to2.x + pBot->pev->velocity.y * to2.y ) / ( spd * to_len ) > 0.8f;
+			if( lf != state->jl_from || lt != state->jl_to || now - state->jl_time > 12.0f )
+			{
+				state->jl_from = lf; state->jl_to = lt; state->jl_count = 0; state->jl_time = now;
+			}
+			if( state->jl_count >= 3 )
+			{
+				ALERT( at_console, "DoD bot %s: jump link %d -> %d failed 3 times, penalised for 30 s, replanning\n", STRING( pBot->pev->netname ), (int)lf, (int)lt );
+				Dod_NavPenalize( &g_nav, lf, lt, now + 30.0f );
+				state->jl_count = 0;
+				state->path_len = 0;
+				state->path_replan = now;
+				return FALSE;
+			}
+			if( state->jl_has_spot )
+			{
+				if( now > state->jl_spot_until )
+					state->jl_has_spot = 0;
+				else if( ( origin - state->jl_spot ).Length2D() < 24.0f )
+				{
+					/* on the better spot: jump from here, facing the link */
+					state->jl_has_spot = 0;
+					state->heading = YawTo( origin, Vector( nx, ny, nz ) );
+					state->want_jump = 1;
+					state->jump_duck = ( nz - origin.z ) > 30.0f;
+					state->jl_count++;
+					*target = Vector( nx, ny, nz );
+					return TRUE;
+				}
+				else
+				{
+					*target = state->jl_spot;
+					return TRUE;
+				}
+			}
+			else if( state->jl_count >= 1 && !state->want_jump && now - state->jl_spot_try > 2.0f && spd < 120.0f )
+			{
+				/* a miss: the floor within 64 units that is highest (a lip is lower from a crest): walk there and jump from it */
+				float best_z = origin.z + 6.0f, a;
+				Vector best( 0, 0, 0 );
+				BOOL found = FALSE;
+				state->jl_spot_try = now;
+				for( a = 0.0f; a < 360.0f; a += 30.0f )
+				{
+					TraceResult fl, wk;
+					const Vector p( origin.x + cosf( a * (float)M_PI / 180.0f ) * 64.0f, origin.y + sinf( a * (float)M_PI / 180.0f ) * 64.0f, origin.z );
+					float fz;
+					UTIL_TraceLine( p + Vector( 0, 0, 64.0f ), p - Vector( 0, 0, 96.0f ), ignore_monsters, pBot->edict(), &fl );
+					if( fl.flFraction >= 1.0f || fl.fStartSolid )
+						continue;
+					fz = fl.vecEndPos.z + 36.0f;
+					if( fz < best_z || fz > origin.z + 24.0f )
+						continue;
+					UTIL_TraceHull( origin, Vector( p.x, p.y, fz ), ignore_monsters, human_hull, pBot->edict(), &wk );
+					if( wk.flFraction < 1.0f )
+						continue;
+					best_z = fz;
+					best = Vector( p.x, p.y, fz );
+					found = TRUE;
+				}
+				if( found )
+				{
+					state->jl_spot = best;
+					state->jl_has_spot = 1;
+					state->jl_spot_until = now + 3.0f;
+					ALERT( at_console, "DoD bot %s: jump link %d -> %d missed, tries again from a launch spot %.0f,%.0f,%.0f (%.0f units higher)\n", STRING( pBot->pev->netname ),
+						(int)lf, (int)lt, best.x, best.y, best.z, best.z - origin.z );
+					*target = best;
+					return TRUE;
+				}
+			}
+			if( aligned || dist < 40.0f )
+			{
+				if( !( state->want_jump ) )
+					state->jl_count++;
+				state->want_jump = 1;
+				state->jump_duck = ( nz - origin.z ) > 30.0f;
+			}
+			else if( dist < 64.0f && spd < 100.0f && gpGlobals->time >= state->hold_heading_until )
+			{
+				state->heading = Dod_BotAngleDelta( 0.0f, YawTo( origin, Vector( nx, ny, nz ) ) + 180.0f );
+				state->hold_heading_until = gpGlobals->time + 0.45f;	/* back off for a run-up */
+			}
+		}
 		*target = Vector( nx, ny, nz );
 		return TRUE;
 	}
@@ -2212,6 +2342,71 @@ static void StageStep( void )
 	static float armed_at;
 	static int g_track_victim;
 	static float g_track_until, g_track_next;
+	if( stage == 8 )
+	{
+		/* test scenario 8 (grenades): the Allies bot stands still, perceives and fights; the Axis bot stands still and blind 220 units
+		 * away on level floor, in the open. Reads from the log: the throw steps, the grenade entity, the victim's health, the edicts. */
+		static int placed8;
+		static float t8, next8;
+		static int pair_a = -1, pair_b = -1;
+		CBasePlayer *pa = NULL, *pb = NULL;
+		for( int k = 1; k <= gpGlobals->maxClients; k++ )
+		{
+			CBasePlayer *p = PlayerAt( k );
+			if( !p || !p->IsAlive() || !DodBots_IsBot( p ) )
+				continue;
+			if( TeamOf( p ) == DOD_TEAM_ALLIES && !pa ) pa = p;
+			else if( TeamOf( p ) == DOD_TEAM_AXIS && !pb ) pb = p;
+		}
+		if( !pa || !pb || !g_nav.node_count )
+			return;
+		if( !placed8 )
+		{
+			/* two graph nodes 200-260 apart at about the same height with a clear line between them */
+			for( int a = 0; a < g_nav.node_count && pair_a < 0; a += 3 )
+				for( int b = a + 1; b < g_nav.node_count; b++ )
+				{
+					float ax, ay, az, bx, by, bz;
+					TraceResult tr;
+					Dod_NavNodePos( &g_nav, a, &ax, &ay, &az );
+					Dod_NavNodePos( &g_nav, b, &bx, &by, &bz );
+					const float d = sqrtf( ( bx - ax ) * ( bx - ax ) + ( by - ay ) * ( by - ay ) );
+					if( d < 200.0f || d > 260.0f || fabsf( bz - az ) > 12.0f )
+						continue;
+					UTIL_TraceLine( Vector( ax, ay, az + 40.0f ), Vector( bx, by, bz + 40.0f ), ignore_monsters, NULL, &tr );
+					if( tr.flFraction < 1.0f )
+						continue;
+					pair_a = a; pair_b = b;
+					break;
+				}
+			if( pair_a < 0 )
+				return;
+			float ax, ay, az, bx, by, bz;
+			Dod_NavNodePos( &g_nav, pair_a, &ax, &ay, &az );
+			Dod_NavNodePos( &g_nav, pair_b, &bx, &by, &bz );
+			const float yaw_ab = atan2f( by - ay, bx - ax ) * 180.0f / (float)M_PI;
+			StagePlace( pa, Vector( ax, ay, az ), yaw_ab );
+			StagePlace( pb, Vector( bx, by, bz ), yaw_ab + 180.0f );
+			DodBotState *sa8 = BotState( pa->entindex() ), *sb8 = BotState( pb->entindex() );
+			if( sa8 ) { sa8->stage_role = 1; sa8->stage_yaw = yaw_ab; }
+			if( sb8 ) { sb8->stage_role = 2; }
+			placed8 = 1;
+			t8 = now;
+			ALERT( at_console, "DoD STAGE grenade: Allies bot at %.0f,%.0f,%.0f, Axis bot at %.0f,%.0f,%.0f (%.0f units)\n", ax, ay, az, bx, by, bz,
+				sqrtf( ( bx - ax ) * ( bx - ax ) + ( by - ay ) * ( by - ay ) ) );
+		}
+		if( now >= next8 )
+		{
+			int live = 0;
+			CBaseEntity *g = NULL;
+			next8 = now + 1.0f;
+			while( ( g = UTIL_FindEntityByClassname( g, "grenade" ) ) != NULL )
+				++live;
+			ALERT( at_console, "DoD STAGE grenade t+%.0f: victim health %.0f, grenades in flight %d, thrower holds %s\n", now - t8, pb->pev->health, live,
+				pa->m_pActiveItem ? STRING( pa->m_pActiveItem->pev->classname ) : "-" );
+		}
+		return;
+	}
 	if( stage == 7 && g_stage_phase >= 9 )
 	{
 		/* test scenario 7: the Allies win the round 20 s after the human joined, the Axis win the next one 40 s after that (round-end fanfares) */
@@ -2582,6 +2777,114 @@ static void StageStep( void )
 	}
 }
 
+/* dod_bot_jumplog 1: every tick a bot presses jump (with why), and every launch it did not ask for (z velocity above 150, or the origin up
+ * more than 24 units in 0.2 s, with no jump press in the last 0.3 s), with what it stood on before. */
+static void JumpDiag( CBasePlayer *pBot, unsigned short buttons, int why )
+{
+	static float last_jump[DOD_MAX_PLAYERS + 1], hist_t[DOD_MAX_PLAYERS + 1][3], hist_z[DOD_MAX_PLAYERS + 1][3], next_launch[DOD_MAX_PLAYERS + 1];
+	static int prev_ground[DOD_MAX_PLAYERS + 1];
+	const int bi = pBot->entindex();
+	const float now = gpGlobals->time;
+	const Vector o = pBot->pev->origin;
+	int i;
+	char gname[64];
+	if( bi < 1 || bi > DOD_MAX_PLAYERS )
+		return;
+	static BOOL was_pressed[DOD_MAX_PLAYERS + 1];
+	if( buttons & IN_JUMP )
+	{
+		edict_t *ge = pBot->pev->groundentity;
+		last_jump[bi] = now;
+		if( !was_pressed[bi] )
+		ALERT( at_console, "DoD jump: %s pressed jump (%s) at %.0f,%.0f,%.0f ground %s\n", STRING( pBot->pev->netname ),
+			why == 1 ? "jump link" : ( why == 2 ? "stall hop" : ( why == 3 ? "escape" : "planner" ) ), o.x, o.y, o.z,
+			ge && !FNullEnt( ge ) ? STRING( ge->v.classname ) : "world" );
+	}
+	was_pressed[bi] = ( buttons & IN_JUMP ) != 0;
+	/* a 0.2 s window of heights */
+	for( i = 0; i < 2; i++ )
+	{
+		hist_t[bi][i] = hist_t[bi][i + 1];
+		hist_z[bi][i] = hist_z[bi][i + 1];
+	}
+	hist_t[bi][2] = now;
+	hist_z[bi][2] = o.z;
+	if( ( pBot->pev->velocity.z > 150.0f || ( hist_t[bi][0] > 0.0f && now - hist_t[bi][0] <= 0.35f && o.z - hist_z[bi][0] > 24.0f ) )
+		&& now - last_jump[bi] > 0.6f && now >= next_launch[bi] )
+	{
+		edict_t *ge = prev_ground[bi] ? INDEXENT( prev_ground[bi] ) : NULL;
+		next_launch[bi] = now + 0.5f;
+		if( ge && !FNullEnt( ge ) )
+			snprintf( gname, sizeof( gname ), "%s model %s ent %d", STRING( ge->v.classname ), STRING( ge->v.model ), prev_ground[bi] );
+		else
+			strcpy( gname, "world" );
+		ALERT( at_console, "DoD launch: %s rose without a jump press at %.0f,%.0f,%.0f vel %.0f,%.0f,%.0f ground before: %s\n", STRING( pBot->pev->netname ),
+			o.x, o.y, o.z, pBot->pev->velocity.x, pBot->pev->velocity.y, pBot->pev->velocity.z, gname );
+	}
+	{
+		edict_t *ge = pBot->pev->groundentity;
+		prev_ground[bi] = ge && !FNullEnt( ge ) ? ENTINDEX( ge ) : 0;
+	}
+}
+
+/* One gate for every bot jump that is not a planned jump link (stall hop, escape, planner): only a low lip is jumped (Dod_JumpGate: blocked at
+ * knee height, clear from jump height), at most one such jump per 2 s and two per 64-unit spot per 30 s (Dod_JumpRateOk). A wall, a hedgehog or a
+ * clip brush (blocked high too) is not jumped: the bot turns to the clearer side, and a second refusal within 4 s penalises the current edge
+ * and replans. dod_bot_jumplog 1 logs each refusal. */
+static void GateJump( CBasePlayer *pBot, DodBotState *state, unsigned short *buttons, int why )
+{
+	static float last[DOD_MAX_PLAYERS + 1], until[DOD_MAX_PLAYERS + 1], refused[DOD_MAX_PLAYERS + 1];
+	static float spot_x[DOD_MAX_PLAYERS + 1][2], spot_y[DOD_MAX_PLAYERS + 1][2], spot_t[DOD_MAX_PLAYERS + 1][2];
+	const int bi = pBot->entindex();
+	const float now = gpGlobals->time;
+	const Vector o = pBot->pev->origin;
+	TraceResult low, high, left, right;
+	int low_blocked, high_blocked;
+	float rad, yaw;
+	Vector dir;
+	if( !( *buttons & IN_JUMP ) || why == 1 || bi < 1 || bi > DOD_MAX_PLAYERS )
+		return;
+	if( now < until[bi] )
+		return;	/* the jump that passed the gate a moment ago, still held */
+	yaw = state->heading;
+	rad = yaw * (float)M_PI / 180.0f;
+	dir = Vector( cosf( rad ), sinf( rad ), 0.0f );
+	UTIL_TraceHull( o, o + dir * 32.0f, ignore_monsters, human_hull, pBot->edict(), &low );
+	UTIL_TraceHull( o + Vector( 0, 0, 45.0f ), o + Vector( 0, 0, 45.0f ) + dir * 32.0f, ignore_monsters, human_hull, pBot->edict(), &high );
+	low_blocked = low.flFraction < 1.0f || low.fStartSolid;
+	high_blocked = high.flFraction < 1.0f || high.fStartSolid;
+	if( Dod_JumpGate( low_blocked, high_blocked ) && Dod_JumpRateOk( now, last[bi], spot_x[bi], spot_y[bi], spot_t[bi], o.x, o.y ) )
+	{
+		until[bi] = now + 0.7f;
+		last[bi] = now;
+		spot_x[bi][1] = spot_x[bi][0]; spot_y[bi][1] = spot_y[bi][0]; spot_t[bi][1] = spot_t[bi][0];
+		spot_x[bi][0] = o.x; spot_y[bi][0] = o.y; spot_t[bi][0] = now;
+		return;
+	}
+	*buttons &= ~IN_JUMP;
+	state->want_jump = 0;
+	state->jump_until = 0.0f;
+	if( CVAR_GET_FLOAT( "dod_bot_jumplog" ) != 0.0f )
+		ALERT( at_console, "DoD jump refused: %s (%s) at %.0f,%.0f,%.0f low %d high %d\n", STRING( pBot->pev->netname ),
+			why == 2 ? "stall hop" : ( why == 3 ? "escape" : "planner" ), o.x, o.y, o.z, low_blocked, high_blocked );
+	if( low_blocked && high_blocked )
+	{
+		/* a wall, hedgehog or clip brush: go round, to the side with the clearer trace */
+		const float ra = ( yaw + 90.0f ) * (float)M_PI / 180.0f, la = ( yaw - 90.0f ) * (float)M_PI / 180.0f;
+		UTIL_TraceHull( o, o + Vector( cosf( ra ), sinf( ra ), 0.0f ) * 48.0f, ignore_monsters, human_hull, pBot->edict(), &right );
+		UTIL_TraceHull( o, o + Vector( cosf( la ), sinf( la ), 0.0f ) * 48.0f, ignore_monsters, human_hull, pBot->edict(), &left );
+		state->heading = Dod_BotAngleDelta( 0.0f, yaw + ( right.flFraction >= left.flFraction ? 70.0f : -70.0f ) );
+		state->hold_heading_until = now + 0.6f;
+		if( now - refused[bi] < 4.0f && state->path_len > 0 && state->path_idx > 0 )
+		{
+			Dod_NavPenalize( &g_nav, state->path[state->path_idx - 1], state->path[state->path_idx], now + 25.0f );
+			state->path_len = 0;
+			state->path_replan = now;
+		}
+		refused[bi] = now;
+	}
+}
+
 static void RunBot( int index, CBasePlayer *pBot )
 {
 	SegTimer seg;
@@ -2600,6 +2903,7 @@ static void RunBot( int index, CBasePlayer *pBot )
 	const float speed = pBot->pev->maxspeed;
 	float viewangles[3], aim_error = 0.0f, enemy_distance = 0.0f;
 	unsigned short buttons = 0;
+	int jump_why = 0;	/* debug (dod_bot_jumplog): 1 jump link, 2 stall hop, 3 escape jump, 4 planner jump */
 	CBasePlayer *enemy;
 	DodBotInput in;
 	DodBotMove move;
@@ -2763,8 +3067,11 @@ static void RunBot( int index, CBasePlayer *pBot )
 		{
 			state->heading = Dod_BotAngleDelta( 0.0f, state->yaw + esc.turn );	/* the view eases round to it; the legs go at once */
 			state->hold_heading_until = gpGlobals->time + esc.hold;
-			if( esc.jump )
+			if( esc.jump && !SlopeClimbing( pBot ) )
+			{
 				buttons |= IN_JUMP;
+				jump_why = 3;
+			}
 		}
 	}
 	{
@@ -2948,7 +3255,12 @@ static void RunBot( int index, CBasePlayer *pBot )
 		move.turn_away = 0;
 	}
 	if( state->want_jump && !fight && !zone_stop )
+	{
 		buttons |= IN_JUMP;
+		if( state->jump_duck && !( pBot->pev->flags & FL_ONGROUND ) )
+			buttons |= IN_DUCK;	/* a duck-jump: legs tucked once off the ground */
+		jump_why = gpGlobals->time < state->jump_until ? 2 : 1;
+	}
 	if( ( state->nav_arrived && !fight ) || ( state->behavior == DOD_ACT_RELOAD && !state->ladder_dir ) )
 	{
 		move.forward = 0.0f;
@@ -3067,8 +3379,12 @@ static void RunBot( int index, CBasePlayer *pBot )
 		buttons |= IN_ATTACK;
 	if( move.reload )
 		buttons |= IN_RELOAD;
-	if( move.jump )
+	if( move.jump && !SlopeClimbing( pBot ) )
+	{
 		buttons |= IN_JUMP;
+		if( !jump_why )
+			jump_why = 4;
+	}
 
 	{
 		/* The one place the view turns: an eased step towards where the bot wants to look. Human-like limits
@@ -3119,6 +3435,9 @@ static void RunBot( int index, CBasePlayer *pBot )
 	state->have_prev_angles = 1;
 	{
 		PhaseTimer timer( DOD_PH_MOVE );
+		GateJump( pBot, state, &buttons, jump_why );
+		if( CVAR_GET_FLOAT( "dod_bot_jumplog" ) != 0.0f )
+			JumpDiag( pBot, buttons, jump_why );
 		( *g_engfuncs.pfnRunPlayerMove )( pBot->edict(), viewangles, move.forward * speed, move.side * speed, 0, buttons, 0, msec );
 		pBot->pev->angles.x = Dod_BotBodyPitch( viewangles[0] );	/* after the move: the player move rewrites the angles */
 	}

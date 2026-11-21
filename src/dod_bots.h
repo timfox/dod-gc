@@ -362,6 +362,13 @@ int Dod_NavPath(DodNav *nav, int from, int to, int *path, int max_path);
  * very search; 0 when another owner's search is in flight and was stepped within the last second, which is left
  * alone). Step expands at most `budget` nodes: returns 0 while it goes on, the path length when done, -1 when
  * there is no path (or it is longer than max_path). Only one search is in flight, so a plan call stays small. */
+/* The gate of a jump that is not a planned jump link (stall hop, escape, planner): jump only when something is in the way at knee height
+ * (low trace blocked) and clear from jump height (high trace clear): a low lip. Nothing in the way, or blocked high too (a wall, a hedgehog,
+ * a clip brush), is no reason to jump. Returns 1 to jump. */
+int Dod_JumpGate(int low_blocked, int high_blocked);
+/* The rate limit of those jumps: one per 2 s, and at most two within 64 units of one spot in 30 s (spot_t = time of the jump, 0 none). Returns 1 when
+ * a jump is allowed now. */
+int Dod_JumpRateOk(float now, float last_jump, const float spot_x[2], const float spot_y[2], const float spot_t[2], float x, float y);
 int Dod_NavSearchBegin(DodNav *nav, int from, int to, int owner, float now);
 int Dod_NavSearchStep(DodNav *nav, int budget, float now, int *path, int max_path);
 

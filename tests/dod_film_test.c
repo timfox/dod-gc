@@ -149,23 +149,6 @@ static void test_turn_short_way(void)
 	assert(near(fmodf(s.yaw + 360.0f, 360.0f), 190.0f, 1e-3f));
 }
 
-static void test_vehicle(void)
-{
-	DodFilmCast cast;
-	DodFilmSample s;
-	char err[96];
-	assert(DodFilm_ParseCast(&cast, "act 1\nvehicle v1 axis panzer\nkey 0 0 0 0 - stand\nkey 10 600 0 0 - stand\n"
-		"actor a1 allies\nkey 0 0 0 0 - aim\n", err, sizeof(err)) == 2);
-	assert(!strcmp(cast.actors[0].vehicle, "panzer") && cast.actors[0].team == 2);
-	assert(cast.actors[1].vehicle[0] == '\0');
-	DodFilm_Sample(&cast.actors[0], 5.0f, &s);
-	assert(near(s.origin[0], 300, 1e-3f) && s.moving && near(s.speed, 60, 1e-3f));
-	/* only a mapmodel's base name: no paths, no other folders */
-	assert(DodFilm_ParseCast(&cast, "act 1\nvehicle v1 axis ../player/x\nkey 0 0 0 0 - stand\n", err, sizeof(err)) < 0);
-	assert(DodFilm_ParseCast(&cast, "act 1\nvehicle v1 axis\n", err, sizeof(err)) < 0);
-	assert(DodFilm_VehicleNameOk("sherman") && !DodFilm_VehicleNameOk("") && !DodFilm_VehicleNameOk("Sherman"));
-}
-
 static void test_poses(void)
 {
 	int p;
@@ -241,14 +224,34 @@ static void test_named_sequences(void)
 	assert(DodFilm_PlayFromName(DodFilm_PlayName(DOD_FILM_PLAY_UPPER_LOOP)) == DOD_FILM_PLAY_UPPER_LOOP);
 }
 
+static void test_vehicles(void)
+{
+	DodFilmCast cast;
+	char err[96], path[64];
+	assert(DodFilm_ParseCast(&cast,
+		"act 1\n"
+		"vehicle v0 sherman\n"
+		"key 0 100 200 -500 166 stand\n"
+		"key 8 400 200 -500 - stand\n"
+		"actor a1 allies rifleman\n"
+		"key 0 0 0 0 - run\n", err, sizeof(err)) == 2);
+	assert(!strcmp(cast.actors[0].model, "sherman") && cast.actors[0].team == 0);
+	assert(cast.actors[0].key_count == 2 && cast.actors[1].model[0] == '\0');
+	assert(DodFilm_ParseCast(&cast, "act 1\nvehicle v0\n", err, sizeof(err)) < 0);
+	DodFilm_VehiclePath("sherman", path, sizeof(path));
+	assert(!strcmp(path, "models/mapmodels/sherman.mdl"));
+	DodFilm_VehiclePath("models/film/panzer4.mdl", path, sizeof(path));
+	assert(!strcmp(path, "models/film/panzer4.mdl"));
+}
+
 int main(void)
 {
+	test_vehicles();
 	test_named_sequences();
 	test_parse();
 	test_errors();
 	test_sample();
 	test_turn_short_way();
-	test_vehicle();
 	test_fx();
 	test_poses();
 	return 0;

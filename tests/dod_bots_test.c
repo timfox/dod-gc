@@ -529,9 +529,11 @@ static float real_edge_cost(const DodNav *nav, int a, int b)
 	Dod_NavNodePos(nav, a, &ax, &ay, &az);
 	Dod_NavNodePos(nav, b, &bx, &by, &bz);
 	c = sqrtf((bx - ax) * (bx - ax) + (by - ay) * (by - ay) + (bz - az) * (bz - az)) + 1.0f;
-	if (kind == DOD_NAV_JUMP)
+	if (kind == DOD_NAV_JUMP) {
 		c += 64.0f;
-	else if (kind == DOD_NAV_DROP)
+		if (bz - az > 30.0f && bz - az <= 64.0f)
+			c += 120.0f;	/* a ledge only a duck-jump clears */
+	} else if (kind == DOD_NAV_DROP)
 		c += 16.0f;
 	else if (kind == DOD_NAV_LADDER)
 		c = c * 1.5f + 64.0f;
@@ -613,6 +615,26 @@ static void test_nav_real(void)
 	Dod_NavFree(&nav);
 	free(buf);
 	printf("test_nav_real: %d optimal paths checked on %d waypoints\n", sampled, n);
+}
+
+static void test_jump_gate(void)
+{
+	const float sx[2] = { 100.0f, 400.0f }, sy[2] = { 100.0f, 400.0f }, none[2] = { 0.0f, 0.0f };
+	float st[2] = { 10.0f, 20.0f };
+	/* a low lip (low blocked, high clear) is jumped; open floor and walls, hedgehogs and clip brushes (blocked high too) are not */
+	assert(Dod_JumpGate(1, 0) == 1 && Dod_JumpGate(0, 0) == 0 && Dod_JumpGate(1, 1) == 0 && Dod_JumpGate(0, 1) == 0);
+	/* one jump per 2 s */
+	assert(Dod_JumpRateOk(50.0f, 0.0f, sx, sy, none, 0.0f, 0.0f) == 1);
+	assert(Dod_JumpRateOk(50.0f, 49.0f, sx, sy, none, 0.0f, 0.0f) == 0 && Dod_JumpRateOk(50.0f, 47.5f, sx, sy, none, 0.0f, 0.0f) == 1);
+	/* two within 64 units in 30 s, then no more; a third elsewhere or later is fine */
+	st[0] = 40.0f; st[1] = 45.0f;
+	assert(Dod_JumpRateOk(50.0f, 0.0f, sx, sy, st, 110.0f, 110.0f) == 1);	/* only the first spot is near */
+	{
+		const float sx2[2] = { 100.0f, 120.0f }, sy2[2] = { 100.0f, 90.0f };
+		assert(Dod_JumpRateOk(50.0f, 0.0f, sx2, sy2, st, 110.0f, 100.0f) == 0);	/* both near and recent */
+		assert(Dod_JumpRateOk(80.0f, 0.0f, sx2, sy2, st, 110.0f, 100.0f) == 1);	/* 30+ s later */
+		assert(Dod_JumpRateOk(50.0f, 0.0f, sx2, sy2, st, 400.0f, 400.0f) == 1);	/* somewhere else */
+	}
 }
 
 static void test_goap(void)
@@ -968,6 +990,7 @@ int main(void)
 	test_objectives();
 	test_nav();
 	test_nav_real();
+	test_jump_gate();
 	test_goap();
 	test_intel();
 	test_aggression();

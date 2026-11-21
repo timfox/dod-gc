@@ -208,6 +208,15 @@ static int class_from_name(const char *s)
 	return -1;
 }
 
+void DodFilm_VehiclePath(const char *name, char *out, int size)
+{
+	const size_t n = strlen(name);
+	if (n > 4 && !strcmp(name + n - 4, ".mdl"))
+		snprintf(out, (size_t)size, "%s", name);
+	else
+		snprintf(out, (size_t)size, "models/mapmodels/%s.mdl", name);
+}
+
 int DodFilm_ParseCast(DodFilmCast *cast, const char *text, char *err, int err_size)
 {
 	char line[256];
@@ -264,22 +273,15 @@ int DodFilm_ParseCast(DodFilmCast *cast, const char *text, char *err, int err_si
 			continue;
 		}
 		if (!strcmp(tok[0], "vehicle")) {
-			/* vehicle <name> <team> <model>: a tank, a jeep, a truck from models/mapmodels */
-			int team;
-			if (ntok < 4)
-				return set_err(err, err_size, lineno, "vehicle needs a name, a team and a model");
+			if (ntok < 3)
+				return set_err(err, err_size, lineno, "vehicle needs a name and a model");
 			if (cast->actor_count >= DOD_FILM_MAX_ACTORS)
 				return set_err(err, err_size, lineno, "too many actors");
-			team = team_from_name(tok[2]);
-			if (!team)
-				return set_err(err, err_size, lineno, "team must be allies or axis");
-			if (!DodFilm_VehicleNameOk(tok[3]))
-				return set_err(err, err_size, lineno, "vehicle model: a mapmodel's base name, [a-z0-9_]");
 			cur = &cast->actors[cast->actor_count++];
 			snprintf(cur->name, sizeof(cur->name), "%s", tok[1]);
-			cur->team = team;
+			snprintf(cur->model, sizeof(cur->model), "%s", tok[2]);
+			cur->team = 0;
 			cur->player_class = 0;
-			memcpy(cur->vehicle, tok[3], strlen(tok[3]) + 1);	/* VehicleNameOk: it fits */
 			continue;
 		}
 		if (!strcmp(tok[0], "key")) {
@@ -366,19 +368,6 @@ int DodFilm_ParseCast(DodFilmCast *cast, const char *text, char *err, int err_si
 	if (cast->fx_count > 1)
 		qsort(cast->fx, (size_t)cast->fx_count, sizeof(cast->fx[0]), fx_cmp);
 	return cast->actor_count;
-}
-
-int DodFilm_VehicleNameOk(const char *name)
-{
-	size_t i, n = name ? strlen(name) : 0;
-	if (n == 0 || n >= DOD_FILM_VEHICLE_NAME)
-		return 0;
-	for (i = 0; i < n; ++i) {
-		char c = name[i];
-		if (!((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_'))
-			return 0;
-	}
-	return 1;
 }
 
 static float travel_yaw(const DodFilmKey *a, const DodFilmKey *b, float fallback)

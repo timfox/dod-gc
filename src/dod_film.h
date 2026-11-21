@@ -40,7 +40,6 @@ extern "C" {
 #define DOD_FILM_MAX_KEYS 16
 #define DOD_FILM_NAME 32
 #define DOD_FILM_MAX_FX 512	/* a dense battle shot: MG bursts are many rounds each; 36 bytes an effect */
-#define DOD_FILM_VEHICLE_NAME 24	/* a mapmodel's base name: sherman, panzer, jeep ... */
 #define DOD_FILM_MAX_SEQS 64	/* distinct named sequences in one cast file */
 #define DOD_FILM_YAW_TRAVEL 1000.0f	/* yaw "-": face the direction of travel */
 /* Set in an actor's pev->iuser4. The GameCube engine draws studio props on its lean listen
@@ -85,10 +84,12 @@ typedef struct {
 	int team;		/* 1 allies, 2 axis (DodTeam) */
 	int player_class;	/* DodClass, 0 when the cast file names none; picks the uniform and the gun
 				 * the retail model carries in its gear bodygroup */
-	char vehicle[DOD_FILM_VEHICLE_NAME];	/* "" for a soldier; else a vehicle prop's model,
-				 * models/mapmodels/<vehicle>.mdl, driven along the keys (pose ignored) */
 	int key_count;
 	DodFilmKey keys[DOD_FILM_MAX_KEYS];
+	/* A vehicle ("vehicle <name> <model>"): its model, a name under models/mapmodels/ (sherman) or a
+	 * path ending .mdl; empty for a soldier. A vehicle has no team, class, gun or poses: it sits on
+	 * the floor under its keys, faces their yaw and loops its first sequence. */
+	char model[DOD_FILM_NAME];
 } DodFilmActor;
 
 typedef enum {
@@ -136,6 +137,10 @@ typedef struct {
  * actors or keys are errors: a cast that is wrong should fail loudly, not play wrong. */
 int DodFilm_ParseCast(DodFilmCast *cast, const char *text, char *err, int err_size);
 
+/* The model path for a vehicle's model name: models/mapmodels/<name>.mdl, or the name itself when it
+ * already ends in .mdl. */
+void DodFilm_VehiclePath(const char *name, char *out, int size);
+
 /* The fx due when the shot's clock moves from t0 to t1: indices [*first, return) of
  * cast->fx with t0 < t <= t1 (an fx at exactly 0 fires on the first step past it). */
 int DodFilm_FxDue(const DodFilmCast *cast, float t0, float t1, int *first);
@@ -143,9 +148,6 @@ int DodFilm_FxDue(const DodFilmCast *cast, float t0, float t1, int *first);
 /* The kind's name in cast files ("explosion", "water", ...) and back; -1 when unknown. */
 const char *DodFilm_FxName(DodFilmFxKind kind);
 int DodFilm_FxFromName(const char *name);
-
-/* 1 when name can be a vehicle model's base name: [a-z0-9_], 1 to DOD_FILM_VEHICLE_NAME - 1 chars. */
-int DodFilm_VehicleNameOk(const char *name);
 
 /* Sample an actor at time t (seconds from the shot's first frame). */
 void DodFilm_Sample(const DodFilmActor *actor, float t, DodFilmSample *out);
