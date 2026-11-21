@@ -208,6 +208,15 @@ static int class_from_name(const char *s)
 	return -1;
 }
 
+void DodFilm_VehiclePath(const char *name, char *out, int size)
+{
+	const size_t n = strlen(name);
+	if (n > 4 && !strcmp(name + n - 4, ".mdl"))
+		snprintf(out, (size_t)size, "%s", name);
+	else
+		snprintf(out, (size_t)size, "models/mapmodels/%s.mdl", name);
+}
+
 int DodFilm_ParseCast(DodFilmCast *cast, const char *text, char *err, int err_size)
 {
 	char line[256];
@@ -266,6 +275,18 @@ int DodFilm_ParseCast(DodFilmCast *cast, const char *text, char *err, int err_si
 			cur->team = team;
 			cur->player_class = cls;
 			cur->prop = prop;
+			continue;
+		}
+		if (!strcmp(tok[0], "vehicle")) {
+			if (ntok < 3)
+				return set_err(err, err_size, lineno, "vehicle needs a name and a model");
+			if (cast->actor_count >= DOD_FILM_MAX_ACTORS)
+				return set_err(err, err_size, lineno, "too many actors");
+			cur = &cast->actors[cast->actor_count++];
+			snprintf(cur->name, sizeof(cur->name), "%s", tok[1]);
+			snprintf(cur->model, sizeof(cur->model), "%s", tok[2]);
+			cur->team = 0;
+			cur->player_class = 0;
 			continue;
 		}
 		if (!strcmp(tok[0], "key")) {
@@ -382,7 +403,60 @@ static float key_yaw(const DodFilmActor *a, int i)
 	return 0.0f;
 }
 
-void DodFilm_Sample(const DodFilmActor *actor, float t, DodFilmSample *out)
+/* The facing an actor holds over segment i: -1 before the first key, i for the leg from key i to
+ * key i + 1, key_count - 1 after the last key. */
+static float segment_yaw(const DodFilmActor *a, int i)
+{
+	if (i < 0)
+		return key_yaw(a, 0);
+	if (i + 1 >= a->key_count)
+		return key_yaw(a, a->key_count - 1);
+	if (a->keys[i].yaw != DOD_FILM_YAW_TRAVEL)
+		return a->keys[i].yaw;
+	return travel_yaw(&a->keys[i], &a->keys[i + 1], key_yaw(a, i));
+}
+
+static float segment_span(const DodFilmActor *a, int i)
+{
+	if (i < 0 || i + 1 >= a->key_count)
+		return 1e9f;
+	return a->keys[i + 1].t - a->keys[i].t;
+}
+
+/* A man turns, he does not snap: across each key the facing eases from the leg that arrives to
+ * the leg that leaves over DOD_FILM_TURN seconds (less when a leg is shorter), the short way
+ * round, with a smoothstep. A function of t alone, so a skipped frame lands where it should. */
+#define DOD_FILM_TURN 0.5f
+static float turned_yaw(const DodFilmActor *a, float t)
+{
+	int seg = -1, k;
+	float yaw;
+	for (k = 0; k < a->key_count && t >= a->keys[k].t; ++k)
+		seg = k;
+	yaw = segment_yaw(a, seg);
+	for (k = seg; k <= seg + 1; ++k) {
+		float h, u, from, to, d;
+		if (k < 0 || k >= a->key_count)
+			continue;
+		h = DOD_FILM_TURN * 0.5f;
+		if (segment_span(a, k - 1) * 0.5f < h)
+			h = segment_span(a, k - 1) * 0.5f;
+		if (segment_span(a, k) * 0.5f < h)
+			h = segment_span(a, k) * 0.5f;
+		if (h <= 1e-4f || t <= a->keys[k].t - h || t >= a->keys[k].t + h)
+			continue;
+		from = segment_yaw(a, k - 1);
+		to = segment_yaw(a, k);
+		d = fmodf(to - from + 540.0f, 360.0f) - 180.0f;
+		u = (t - (a->keys[k].t - h)) / (2.0f * h);
+		u = u * u * (3.0f - 2.0f * u);
+		yaw = from + d * u;
+		break;
+	}
+	return yaw;
+}
+
+static void sample_keys(const DodFilmActor *actor, float t, DodFilmSample *out)
 {
 	int i;
 	memset(out, 0, sizeof(*out));
@@ -427,4 +501,11 @@ void DodFilm_Sample(const DodFilmActor *actor, float t, DodFilmSample *out)
 		out->seq = k->seq;
 		out->play = (DodFilmPlay)k->play;
 	}
+}
+
+void DodFilm_Sample(const DodFilmActor *actor, float t, DodFilmSample *out)
+{
+	sample_keys(actor, t, out);
+	if (actor && actor->key_count > 1)
+		out->yaw = turned_yaw(actor, t);
 }

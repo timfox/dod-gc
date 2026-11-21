@@ -90,6 +90,10 @@ typedef struct {
 				 * team saying whose it is */
 	int key_count;
 	DodFilmKey keys[DOD_FILM_MAX_KEYS];
+	/* A vehicle ("vehicle <name> <model>"): its model, a name under models/mapmodels/ (sherman) or a
+	 * path ending .mdl; empty for a soldier. A vehicle has no team, class, gun or poses: it sits on
+	 * the floor under its keys, faces their yaw and loops its first sequence. */
+	char model[DOD_FILM_NAME];
 } DodFilmActor;
 
 typedef enum {
@@ -136,6 +140,10 @@ typedef struct {
  * with a reason in err. Keys out of time order, unknown poses or teams, and too many
  * actors or keys are errors: a cast that is wrong should fail loudly, not play wrong. */
 int DodFilm_ParseCast(DodFilmCast *cast, const char *text, char *err, int err_size);
+
+/* The model path for a vehicle's model name: models/mapmodels/<name>.mdl, or the name itself when it
+ * already ends in .mdl. */
+void DodFilm_VehiclePath(const char *name, char *out, int size);
 
 /* The fx due when the shot's clock moves from t0 to t1: indices [*first, return) of
  * cast->fx with t0 < t <= t1 (an fx at exactly 0 fires on the first step past it). */
