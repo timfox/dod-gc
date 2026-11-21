@@ -1,5 +1,6 @@
 """Render-parity testbed, built with the SAME Maya exporter path (run under mayapy, standalone):
-    /usr/autodesk/maya/bin/mayapy build_testbed.py <workdir>
+    mayapy build_testbed.py <workdir> [features]      (needs a batch mayapy: Maya 2026 on the host is gone and 2027 only runs
+    sandboxed, so for now run it through the live Maya session: exec the file with sys.argv set, or use selftest_map.py)
 A hall with one station per feature, all visible from the spawn at the near end:
   1 masked '{' fence (alpha test)   2 func_wall rendermode 2 (translucent)   3 func_wall rendermode 5 (additive)
   4 func_water ('!' texture)        5 func_illusionary rendermode 4          6 env_model props (+ lights of 3 colours)

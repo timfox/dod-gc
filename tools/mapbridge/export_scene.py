@@ -1,4 +1,4 @@
-"""mayapy: open a Maya scene and export its .map.   mayapy export_scene.py <scene.mb> <out.map>"""
+"""mayapy (needs a batch Maya; none on the host after 2026 was removed): open a Maya scene and export its .map. The release build no longer calls this.   mayapy export_scene.py <scene.mb> <out.map>"""
 import maya.standalone; maya.standalone.initialize()
 import os, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

@@ -32,9 +32,7 @@ while read -r NAME SCENE; do
   if [ -f "$G/maps/$NAME.map" ]; then MAPF="$G/maps/$NAME.map"
   elif [ "$NAME" = "dod_live" ] && [ -f "${GS_WORK:-$HOME/.cache/gsbridge}/live.map" ]; then MAPF="${GS_WORK:-$HOME/.cache/gsbridge}/live.map"
   else
-    cp "$SCENE" "$W/map/$NAME.scene" 2>/dev/null
-    timeout 180 "${MAYAPY:-/usr/autodesk/maya/bin/mayapy}" "$HERE/export_scene.py" "$SCENE" "$W/map/$NAME.map" > "$W/map/$NAME.export.log" 2>&1 && MAPF="$W/map/$NAME.map" \
-      || { echo "no exported .map for $NAME: open $SCENE in Maya and save once (it keeps ~/gsbridge/maps/$NAME.map)"; exit 1; }
+    echo "no exported .map for $NAME: open $SCENE in Maya 2027 and save once (every save keeps ~/gsbridge/maps/$NAME.map). The host has no batch Maya to export it for you."; exit 1
   fi
   if ! grep -q "^( " "$MAPF"; then echo "    $NAME: map has no brushes, skipped ($MAPF)"; continue; fi
   if [ -n "$SCENE" ] && [ -f "$SCENE" ] && [ "$SCENE" -nt "$MAPF" ]; then echo "    WARNING: $SCENE is newer than its exported $MAPF: open it in Maya and save so the disc gets the latest edits"; fi
