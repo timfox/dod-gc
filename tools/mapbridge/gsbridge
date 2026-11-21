@@ -5,6 +5,7 @@
 #   gsbridge status     what is running, the disc, the last push and any error
 #   gsbridge disc       (re)build the live dev disc from the current map (slot disc, only needed when the engine/DOL changes)
 #   gsbridge hw [map]   build a real playable disc (ISO for Swiss/hardware or Dolphin) from the Maya map: no dev slots, no live poll
+#   gsbridge release    the packaged final disc: all stock maps + your Maya maps, project map cycle, retail HUD, build stamp (~/gsbridge/out/dodgc-release.iso)
 #   gsbridge compiler   build the ZHLT compilers into bin/ (one time)
 # Config (optional) ~/gsbridge/config.env: GS_ISO, GS_DOL, GS_WORK
 set -u
@@ -45,6 +46,7 @@ if s.get("error"): print("  ERROR:", s["error"])
 PY
     ;;
   hw) shift; exec "$HERE/build_hw_disc.sh" "$@" ;;
+  release) shift; exec "$HERE/build_release_disc.sh" "$@" ;;
   new) shift; say "create a new map from Maya: GoldSrc menu > New Map (or: maya_newmap.create('dod_myvalley'))" ;;
   *) sed -n 2,12p "$0"; exit 2 ;;
 esac

@@ -166,6 +166,13 @@ def export_now(path=None):
         elif same: cmds.warning("[gsbridge] coplanar overlapping faces (will z-fight): %s and %s" % (la, lb))
     st = settings()
     gsmap.write_map(path, world, ents, st["wad"], extra_world=st["extra"])
+    # keep a per-map copy (named after the map) so release builds do not depend on which scene is open or which Maya version saved it
+    try:
+        nm = st["extra"].get("message") or os.path.splitext(os.path.basename(cmds.file(q=True, sceneName=True) or ""))[0]
+        if nm:
+            mdir = os.path.expanduser("~/gsbridge/maps"); os.makedirs(mdir, exist_ok=True)
+            import shutil; shutil.copyfile(path, os.path.join(mdir, nm + ".map"))
+    except Exception: pass
     print("[gsbridge] wrote %s (%d world brushes, %d entities) %s" % (path, len(world), len(ents), time.strftime("%H:%M:%S")))
     return path
 

@@ -15,3 +15,18 @@
 **Levels and missions:** Map Manager lists every stock DoD map plus yours: sub-levels, next map, objectives; *Export rotation* writes `mapcycle.txt`, `maps.lst`, `progression.json` to `~/gsbridge/export`.
 
 **When something is off:** `gsbridge status`; `~/.cache/gsbridge/watch.log`; the compile logs are summarised in the panel (leaks, missing textures, bad brushes).
+
+## Make your first map (10 minutes)
+1. `gsbridge up` (first run builds the compilers and the live disc; later runs just start things).
+2. Maya: GoldSrc > **New Map…**: name `dod_myvalley`, pick a WAD (`dod_caen.wad` has the Normandy set) and a sky. You get a sealed room with spawns, control points and lights, already saved and linked to the game.
+3. Edit: move or resize the brushes under `gs_world` (convex boxes; the shader name is the texture), drop props and entities from the **Object Manager**, assign textures from the **GoldSrc Bridge** texture list. Everything exports on **Save**.
+4. Watch the Dolphin window: the map reloads about 6 s after you save and puts you back where you stood. Errors show in the panel in plain words and nothing broken reaches the game.
+5. Open **Map Manager**: set the title, objectives, where the map sits in the cycle (the "next map" chain), then *Export rotation*.
+
+## The packaged final disc
+`gsbridge release` builds `~/gsbridge/out/dodgc-release.iso`:
+- all 22 stock maps and every Maya map in the Map Manager that has a saved scene (it uses the last exported `.map` of each, kept in `~/gsbridge/maps/`);
+- `maps.lst` (the Create Game list, in project order) and `mapcycle.txt` (the rotation; only maps on the disc);
+- retail HUD, the engine's baked render packs for every map, and a build stamp: `build-info.txt` on the disc and `dodgc-release.iso.build-info.txt` beside it (dod-gc, engine, game SDK and submodule commit hashes).
+It boots like the normal DoD disc (intro, menu); the map list in Create Game follows your project. Put the ISO on SD/USB for Swiss, or run it in Dolphin.
+Limits: Maya maps with `env_model` props need a baked prop pack to show them on hardware (the build continues without one); one run takes a few minutes the first time because every map's render packs are baked, then it is cached.
