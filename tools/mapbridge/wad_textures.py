@@ -27,6 +27,19 @@ def read_wad(path):
         pal = d[pal_off:pal_off+768]
         yield name, w, h, px, pal
 
+def _bleed(im):
+    """Fill transparent texels with nearby opaque colour so filtering never shows the blue key colour."""
+    import numpy as np
+    a = np.array(im); rgb = a[..., :3].astype(np.float32); op = a[..., 3] > 0
+    if op.all() or not op.any(): return im
+    for _ in range(6):
+        acc = np.zeros_like(rgb); cnt = np.zeros(op.shape, np.float32)
+        for dy, dx in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            o = np.roll(op, (dy, dx), (0, 1)); acc += np.roll(rgb, (dy, dx), (0, 1)) * o[..., None]; cnt += o
+        f = (~op) & (cnt > 0); rgb[f] = acc[f] / cnt[f, None]; op = op | f
+    if not op.all(): rgb[~op] = rgb[op].mean(0)
+    a[..., :3] = rgb.astype(np.uint8); return Image.fromarray(a, "RGBA")
+
 def main(wads):
     os.makedirs(OUT, exist_ok=True); idx = {}
     for wad in wads:
@@ -36,6 +49,7 @@ def main(wads):
             rgba = im.convert("RGBA")
             if name.startswith("{"):
                 a = Image.frombytes("L", (w, h), bytes(0 if b == 255 else 255 for b in px)); rgba.putalpha(a)
+                rgba = _bleed(rgba)
             safe = name.replace("{", "_brace_").replace("-", "_m_").replace("+", "_p_")
             rgba.save(os.path.join(OUT, safe + ".png")); idx[name] = {"w": w, "h": h, "png": safe + ".png", "wad": os.path.basename(p)}
     old = {}
