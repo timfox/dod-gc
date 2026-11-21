@@ -56,6 +56,9 @@ static int g_film_precached[4];	/* by DodTeam */
  * models (its rifle counts as one); a class whose gun was not precached carries the rifle. */
 #define DOD_FILM_GUNS_PER_SIDE 4
 static int g_film_gun[4][DOD_CLASS_COUNT];
+/* "prop <k> <model> [skin] [body]" in cine/cast.txt: the vehicle models the map's casts use */
+static char g_film_prop[DOD_FILM_MAX_PROPS + 1][64];
+static int g_film_prop_skin[DOD_FILM_MAX_PROPS + 1], g_film_prop_body[DOD_FILM_MAX_PROPS + 1];
 /* The shot's fireball. zerogxplode.spr (g_sModelIndexFireball) is 193 KB on disc, more than
  * the GameCube heap has free once a map is up, so it never loaded and no burst drew;
  * explode1.spr is a fraction of that. 0 falls back to g_sModelIndexFireball. */
@@ -309,6 +312,30 @@ static int DodFilm_Layered( CDodFilmActor *ent, int pose, int *gait )
 	return u;
 }
 
+/* A vehicle (a tank, a truck): its prop model on the floor under its keys, facing their way, its
+ * first sequence cycling. The base sits on the floor: the floor the trace finds (looking through the
+ * unseen fences, as for a soldier) plus how far the model's origin is above the bottom of its box. */
+static void DodFilm_PlaceVehicle( CDodFilmActor *ent, const DodFilmSample *s, float t, float dt )
+{
+	const float floor = DodFilm_OriginZ( s->origin, DOD_POSE_STAND ) - DodFilm_PoseHeight( DOD_POSE_STAND );
+	float mins[3] = { 0, 0, 0 }, maxs[3] = { 0, 0, 0 }, lift = 0.0f;
+	if( ent->ExtractBbox( 0, mins, maxs ) && -mins[2] > 0.0f && -mins[2] < 256.0f )
+		lift = -mins[2];
+	UTIL_SetOrigin( ent->pev, Vector( s->origin[0], s->origin[1], floor + lift ) );
+	ent->pev->angles = Vector( 0.0f, s->yaw, 0.0f );
+	if( ent->m_pose < 0 ) {
+		ent->pev->sequence = 0;
+		ent->ResetSequenceInfo();
+		ent->m_pose = DOD_POSE_STAND;
+		ent->m_phase = 0.0f;
+	}
+	if( t >= 0.0f )
+		ent->m_phase = fmodf( ent->m_phase + dt * ent->m_flFrameRate, 256.0f );
+	ent->pev->frame = ent->m_phase;
+	ent->pev->framerate = 0.0f;
+	ent->pev->animtime = gpGlobals->time;
+}
+
 static void DodFilm_Place( int i, float t, float dt )
 {
 	CDodFilmActor *ent = g_film_ents[i];
@@ -316,6 +343,10 @@ static void DodFilm_Place( int i, float t, float dt )
 	if( !ent )
 		return;
 	DodFilm_Sample( &g_film_cast.actors[i], t, &s );
+	if( g_film_cast.actors[i].prop ) {
+		DodFilm_PlaceVehicle( ent, &s, t, dt );
+		return;
+	}
 	s.pose = DodFilm_GaitPose( s.pose, s.moving, s.speed );
 	const int named = s.seq ? DodFilm_Named( ent, s.seq ) : -1;
 	if( named < 0 )
@@ -595,7 +626,14 @@ static void DodFilm_CastCommand( void )
 		const DodFilmActor *a = &g_film_cast.actors[i];
 		char model[96];
 		DodFilm_BodyPath( a->team, model, sizeof( model ) );
-		if( !model[0] || !g_film_precached[a->team] ) {
+		if( a->prop ) {
+			snprintf( model, sizeof( model ), "%s", g_film_prop[a->prop] );
+			if( !model[0] ) {
+				ALERT( at_console, "FILM ACTOR %s: vehicle %d was not precached (prop line in cine/cast.txt)\n",
+					a->name, a->prop );
+				continue;
+			}
+		} else if( !model[0] || !g_film_precached[a->team] ) {
 			ALERT( at_console, "FILM ACTOR %s: the %s body was not precached (cine/cast.txt)\n", a->name,
 				a->team == DOD_TEAM_AXIS ? "axis" : "allies" );
 			continue;
@@ -621,13 +659,20 @@ static void DodFilm_CastCommand( void )
 		ent->pev->solid = SOLID_NOT;
 		ent->pev->takedamage = DAMAGE_NO;
 		ent->pev->iuser4 = DODGC_FILM_ACTOR_TAG;
-		SET_MODEL( ent->edict(), model );
-		const char *body = DodGC_BodyModelForTeam( (DodTeam)a->team );
-		DodClass cls = a->player_class > DOD_CLASS_NONE ? (DodClass)a->player_class : DOD_CLASS_RIFLEMAN;
-		ent->pev->body = Dod_PlayerBodyValue( body, cls, i + 1 );
-		/* The engine draws weaponmodel on the actor's hand bones, as it does for a player. */
-		const char *gun = DodFilm_WeaponModel( a->team, cls );
-		ent->pev->weaponmodel = gun ? MAKE_STRING( gun ) : 0;	/* a reused actor may have carried another */
+		SET_MODEL( ent->edict(), STRING( ALLOC_STRING( model ) ) );
+		if( a->prop ) {
+			ent->pev->body = g_film_prop_body[a->prop];
+			ent->pev->skin = g_film_prop_skin[a->prop];
+			ent->pev->weaponmodel = 0;
+		} else {
+			const char *body = DodGC_BodyModelForTeam( (DodTeam)a->team );
+			DodClass cls = a->player_class > DOD_CLASS_NONE ? (DodClass)a->player_class : DOD_CLASS_RIFLEMAN;
+			ent->pev->body = Dod_PlayerBodyValue( body, cls, i + 1 );
+			ent->pev->skin = 0;
+			/* The engine draws weaponmodel on the actor's hand bones, as it does for a player. */
+			const char *gun = DodFilm_WeaponModel( a->team, cls );
+			ent->pev->weaponmodel = gun ? MAKE_STRING( gun ) : 0;	/* a reused actor may have carried another */
+		}
 		ent->m_actor = i;
 		ent->m_pose = -1;
 		ent->m_seq = 0;
@@ -661,6 +706,7 @@ void DodFilm_Init( void )
 	memset( &g_film_cast, 0, sizeof( g_film_cast ) );
 	memset( g_film_precached, 0, sizeof( g_film_precached ) );
 	memset( g_film_gun, 0, sizeof( g_film_gun ) );
+	memset( g_film_prop, 0, sizeof( g_film_prop ) );
 	g_film_fireball = 0;
 	byte *text = LOAD_FILE_FOR_ME( "cine/cast.txt", &length );
 	if( !text )
@@ -688,7 +734,7 @@ void DodFilm_Init( void )
 		const char *p = (const char *)text, *end = (const char *)text + length;
 		int per_side[4] = { 0, 1, 1, 0 };	/* the rifle is one */
 		while( p < end ) {
-			char line[64], tname[16], cname[16];
+			char line[128], tname[16], cname[16];
 			int n = 0;
 			while( p < end && *p != '\n' && n < (int)sizeof( line ) - 1 )
 				line[n++] = *p++;
@@ -697,6 +743,21 @@ void DodFilm_Init( void )
 				p++;
 			if( p < end )
 				p++;
+			{
+				int k = 0, skin = 0, body = 0;
+				char path[64];
+				const int got = sscanf( line, "prop %d %63s %d %d", &k, path, &skin, &body );
+				if( got >= 2 ) {
+					if( k >= 1 && k <= DOD_FILM_MAX_PROPS && strstr( path, ".mdl" ) ) {
+						snprintf( g_film_prop[k], sizeof( g_film_prop[k] ), "%s", path );
+						g_film_prop_skin[k] = got >= 3 ? skin : 0;
+						g_film_prop_body[k] = got >= 4 ? body : 0;
+						PRECACHE_MODEL( (char *)STRING( ALLOC_STRING( g_film_prop[k] ) ) );
+						ALERT( at_console, "FILM: precached %s for vehicle %d\n", g_film_prop[k], k );
+					}
+					continue;
+				}
+			}
 			if( sscanf( line, "gun %15s %15s", tname, cname ) != 2 )
 				continue;
 			const int team = !strcmp( tname, "axis" ) ? DOD_TEAM_AXIS : !strcmp( tname, "allies" ) ? DOD_TEAM_ALLIES : 0;

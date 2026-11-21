@@ -20,6 +20,21 @@ static const char *const sample_cast =
 	"actor a2 axis\n"
 	"key 0 10 20 30 180 aim\n";
 
+static void test_vehicle(void)
+{
+	static DodFilmCast cast;
+	char err[128];
+	int n = DodFilm_ParseCast(&cast,
+		"act 1\nactor t1 axis vehicle 2\nkey 0 10 20 30 90 stand\nkey 4 200 20 30 - stand\n"
+		"actor a1 allies mg\nkey 0 0 0 0 - aim\n", err, sizeof(err));
+	assert(n == 2);
+	assert(cast.actors[0].prop == 2 && cast.actors[0].team == 2 && cast.actors[0].player_class == 0);
+	assert(cast.actors[1].prop == 0 && cast.actors[1].player_class == 5);
+	assert(DodFilm_ParseCast(&cast, "act 1\nactor t axis vehicle\nkey 0 0 0 0 0 stand\n", err, sizeof(err)) < 0);
+	assert(strstr(err, "prop number"));
+	assert(DodFilm_ParseCast(&cast, "act 1\nactor t axis vehicle 9\nkey 0 0 0 0 0 stand\n", err, sizeof(err)) < 0);
+}
+
 static void test_parse(void)
 {
 	DodFilmCast cast;
@@ -204,6 +219,7 @@ int main(void)
 {
 	test_named_sequences();
 	test_parse();
+	test_vehicle();
 	test_errors();
 	test_sample();
 	test_fx();
