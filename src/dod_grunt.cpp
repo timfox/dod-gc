@@ -49,6 +49,9 @@ static cvar_t dod_grunt_team = { "dod_grunt_team", "0", FCVAR_SERVER };
 static cvar_t dod_grunt_rush = { "dod_grunt_rush", "1", FCVAR_SERVER };
 static cvar_t dod_grunt_skill = { "dod_grunt_skill", "1", FCVAR_SERVER };
 static cvar_t dod_grunt_log = { "dod_grunt_log", "1", FCVAR_SERVER };
+/* dod_grunt_near D (test aid, default 0 off): a grunt spawns D units in front of the first human it is an enemy of, on clear
+ * ground in his sight, instead of at its side's spawn point, so a short run can show the fight. */
+static cvar_t dod_grunt_near = { "dod_grunt_near", "0", FCVAR_SERVER };
 
 class CDodGrunt : public CBaseAnimating
 {
@@ -94,6 +97,7 @@ void DodGrunts_Init( void )
 		Dod_CvarRegisterKeep( &dod_grunt_rush );
 		Dod_CvarRegisterKeep( &dod_grunt_skill );
 		Dod_CvarRegisterKeep( &dod_grunt_log );
+		Dod_CvarRegisterKeep( &dod_grunt_near );
 		g_registered = 1;
 	}
 	/* a new map: the old map's entities are gone with it */
@@ -246,6 +250,30 @@ static bool GruntSpawn( int i, int team )
 	/* a spread around the spawn so a wave does not stand in one spot */
 	origin.x += RANDOM_FLOAT( -64.0f, 64.0f );
 	origin.y += RANDOM_FLOAT( -64.0f, 64.0f );
+	const float near_d = CVAR_GET_FLOAT( "dod_grunt_near" );
+	if( near_d > 0.0f ) {
+		for( int k = 1; k <= gpGlobals->maxClients; k++ ) {
+			CBasePlayer *pl = GruntPlayer( k );
+			if( !pl || ( pl->pev->flags & FL_FAKECLIENT ) || DodGC_PlayerTeam( pl ) == team )
+				continue;
+			UTIL_MakeVectors( pl->pev->v_angle );
+			Vector fwd = gpGlobals->v_forward;
+			fwd.z = 0.0f;
+			fwd = fwd.Normalize();
+			const Vector spot = pl->pev->origin + fwd * near_d + gpGlobals->v_right * RANDOM_FLOAT( -250.0f, 250.0f );
+			TraceResult tr;
+			UTIL_TraceLine( spot + Vector( 0, 0, 64 ), spot - Vector( 0, 0, 300 ), ignore_monsters, NULL, &tr );
+			if( tr.fStartSolid || tr.flFraction >= 1.0f )
+				break;
+			const Vector at = tr.vecEndPos;
+			UTIL_TraceLine( pl->pev->origin + pl->pev->view_ofs, at + Vector( 0, 0, 40 ), ignore_monsters, pl->edict(), &tr );
+			if( tr.flFraction < 1.0f )
+				break;	/* not in his sight: keep the spawn point */
+			origin = at;
+			yaw = UTIL_VecToYaw( pl->pev->origin - at );
+			break;
+		}
+	}
 	e->pev->classname = MAKE_STRING( "dod_grunt" );
 	e->pev->effects &= ~EF_NODRAW;
 	e->pev->movetype = MOVETYPE_NONE;
