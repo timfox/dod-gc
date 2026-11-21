@@ -42,6 +42,15 @@ typedef struct ms_table {
     uint32_t  n, cap;       /* cap is a power of two or 0 */
 } ms_table;
 
+/* String constants of a script live in one block, with a pinned reference count, so a
+   constant costs its text plus a pointer instead of a value slot and a heap allocation.
+   ms_pool heads such a block. */
+#define MS_RC_PINNED 0x40000000
+
+typedef struct ms_pool {
+    struct ms_pool *next;   /* retired pools of reloaded scripts, freed with the VM */
+} ms_pool;
+
 /* ---- names ---- */
 
 typedef struct ms_names {
@@ -71,22 +80,20 @@ typedef struct ms_switch {
     uint32_t def;           /* pc of "default:" or end of switch */
 } ms_switch;
 
-typedef struct ms_line {
-    uint32_t pc, line;
-} ms_line;
 
 typedef struct ms_script {
     char      *path;
     uint8_t   *code;
     uint32_t   code_len;
-    ms_value  *consts;      /* string constants */
+    ms_str   **consts;      /* string constants, inside pool */
     uint32_t   nconsts;
+    ms_pool   *pool;
     ms_label  *labels;
     uint32_t   nlabels;
     ms_switch *switches;
     uint32_t   nswitches;
-    ms_line   *lines;
-    uint32_t   nlines;
+    uint8_t   *lines;       /* (pc delta, line delta) varint pairs, for error messages */
+    uint32_t   lines_len;
     struct ms_script *next;
 } ms_script;
 
@@ -189,6 +196,7 @@ struct ms_vm {
     uint32_t    next_thread_id;
     ms_table    level_vars, game_vars, parm_vars;
     ms_entvars *entvars;
+    ms_pool    *retired;       /* constant pools of replaced scripts, still referenced maybe */
     float       time;
     uint32_t    frame;
     int32_t     depth;
@@ -236,6 +244,7 @@ ms_table *ms_entity_vars(ms_vm *vm, uint32_t id, int create);
 /* compile */
 ms_script *ms_compile(ms_vm *vm, const char *path, const char *text, size_t len, char *err, size_t errlen);
 void       ms_script_free(ms_vm *vm, ms_script *s);
+void       ms_script_retire(ms_vm *vm, ms_script *s);  /* free, but keep its constants alive */
 const ms_label *ms_find_label(const ms_script *s, uint32_t name);
 uint32_t   ms_line_for_pc(const ms_script *s, uint32_t pc);
 
@@ -256,7 +265,8 @@ float      ms_random01(ms_vm *vm);
 /* builtins */
 void ms_register_builtins(ms_vm *vm);
 
-/* bytecode */
+/* bytecode. Operands are little/host-endian, unaligned: name ids and constant indexes are
+   16 bits (the compiler refuses more), jump targets and int/float literals 32 bits. */
 enum {
     OP_NOP = 0,
     OP_PUSH_NIL, OP_PUSH_NULL, OP_PUSH_INT, OP_PUSH_FLOAT, OP_PUSH_STR,
@@ -273,6 +283,7 @@ enum {
     OP_ARG,
     OP_SWITCH,
     OP_TRY, OP_ENDTRY,
+    OP_PUSH_I8,       /* small int literal, one signed byte */
     OP_END
 };
 

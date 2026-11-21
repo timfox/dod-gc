@@ -336,8 +336,8 @@ engine glue. The game rules constructor calls `DodGC_MohaaLevelInit`, `Think` ca
   AI, camera, HUD objectives or `exec global/*.scr` libraries beyond what the map ships. An unknown command is reported once
   and skipped, so a mission keeps running.
 - **Memory.** `mohaa_script_kb` (default 384) caps the VM; a level whose scripts do not fit is refused at load, not run half
-  way. m1l1 with its globals peaked at about 660 KB on the host, over this budget, so the larger missions need precompiled
-  bytecode or ARAM before they fit.
+  way. Retail missions fit: on a 32-bit host build, m1l1 with its globals uses 108 KB and peaks at 190 KB while compiling,
+  and m3l1a (the biggest) uses 131 KB and peaks at 213 KB. `msrun -stats` in mohaa-gc shows where it goes.
 - **Updating the VM.** Change it in mohaa-gc, then `scripts/sync-mohaa-vm.sh /path/to/mohaa-gc`.
 
 ## Build integration
