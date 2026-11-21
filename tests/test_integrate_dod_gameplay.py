@@ -557,6 +557,9 @@ class SourceSyncTest(unittest.TestCase):
 			for name in INTEGRATOR.DOD_DLL_SOURCES:
 				(src / name).write_text("new " + name)
 				(dlls / name).write_text("old " + name)
+			(src / "mohaa").mkdir()
+			for name in INTEGRATOR.MOHAA_VM_SOURCES:
+				(src / "mohaa" / name).write_text("vm " + name)
 			(dlls / "dod_old_feature.cpp").write_text("from another branch")
 			(dlls / "dod_old_feature.h").write_text("from another branch")
 			(dlls / "weapons.cpp").write_text("upstream")
@@ -575,7 +578,15 @@ class SourceSyncTest(unittest.TestCase):
 			self.assertTrue((dlls / "dod_notes.txt").exists(), "only C/C++ sources are removed")
 			for name in INTEGRATOR.DOD_DLL_SOURCES:
 				self.assertEqual((dlls / name).read_text(), "new " + name)
+			for name in INTEGRATOR.MOHAA_VM_SOURCES:
+				self.assertEqual((dlls / name).read_text(), "vm " + name, "the MOHAA VM is copied flat into dlls/")
 			self.assertEqual(INTEGRATOR.sync_dod_sources(src, dlls), [], "a second run removes nothing")
+
+	def test_list_covers_every_mohaa_vm_source(self):
+		vm = Path(__file__).resolve().parents[1] / "src" / "mohaa"
+		on_disk = {p.name for p in vm.glob("*") if p.suffix in (".c", ".h")}
+		self.assertEqual(on_disk, set(INTEGRATOR.MOHAA_VM_SOURCES),
+			"a new src/mohaa file must be added to MOHAA_VM_SOURCES")
 
 
 if __name__ == "__main__":

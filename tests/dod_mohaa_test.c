@@ -1,0 +1,281 @@
+/* MOHAA script binding (dod_mohaa.c) against a mock GoldSrc world. */
+#define _POSIX_C_SOURCE 200809L
+#include "dod_mohaa.h"
+
+#include <assert.h>
+#include <math.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+typedef struct Ent {
+	int alive;
+	char targetname[32], classname[32];
+	float origin[3], angles[3], vel[3], avel[3];
+	float health;
+	int hidden, notsolid, used, serial;
+	char sound[64];
+} Ent;
+
+#define NENTS 16
+static Ent ents[NENTS];
+static const char *files[8][2];
+static char log_buf[4096];
+
+static void logf_(const char *s)
+{
+	strncat(log_buf, s, sizeof(log_buf) - strlen(log_buf) - 1);
+}
+
+/* ids carry a serial so a reused slot does not answer for an old reference */
+static uint32_t make_id(int i) { return (uint32_t)(i + 1) | ((uint32_t)ents[i].serial << 8); }
+static Ent *ent(uint32_t id)
+{
+	int i = (int)(id & 0xff) - 1;
+	if (i < 0 || i >= NENTS || !ents[i].alive || ents[i].serial != (int)(id >> 8))
+		return NULL;
+	return &ents[i];
+}
+
+static char *m_load(const char *path, size_t *len)
+{
+	int i;
+	for (i = 0; i < 8 && files[i][0]; i++) {
+		if (!strcmp(files[i][0], path)) {
+			char *s = strdup(files[i][1]);
+			*len = strlen(s);
+			return s;
+		}
+	}
+	return NULL;
+}
+static void m_free(char *t) { free(t); }
+static void m_print(int ch, const char *t)
+{
+	static const char *p[] = {"", "[hud] ", "[center] ", "[error] "};
+	logf_(p[ch]);
+	logf_(t);
+	if (ch == DOD_MOHAA_PRINT_CENTER)
+		logf_("\n");
+}
+static int m_find(const char *name, uint32_t *ids, int max)
+{
+	int i, n = 0;
+	for (i = 0; i < NENTS; i++)
+		if (ents[i].alive && !strcmp(ents[i].targetname, name)) {
+			if (n < max)
+				ids[n] = make_id(i);
+			n++;
+		}
+	return n;
+}
+static int m_valid(uint32_t id) { return ent(id) != NULL; }
+static void m_get_vec(uint32_t id, int what, float out[3]) { memcpy(out, what ? ent(id)->angles : ent(id)->origin, 12); }
+static void m_set_vec(uint32_t id, int what, const float v[3]) { memcpy(what ? ent(id)->angles : ent(id)->origin, v, 12); }
+static float m_get_health(uint32_t id) { return ent(id)->health; }
+static void m_set_health(uint32_t id, float h) { ent(id)->health = h; }
+static const char *m_get_str(uint32_t id, int what) { return what == DOD_MOHAA_TARGETNAME ? ent(id)->targetname : ent(id)->classname; }
+static void m_set_tn(uint32_t id, const char *n) { snprintf(ent(id)->targetname, 32, "%s", n); }
+static void m_set_flag(uint32_t id, int f, int on) { if (f == DOD_MOHAA_HIDDEN) ent(id)->hidden = on; else ent(id)->notsolid = on; }
+static void m_remove(uint32_t id) { ent(id)->alive = 0; }
+static void m_set_vel(uint32_t id, const float v[3], const float a[3]) { memcpy(ent(id)->vel, v, 12); memcpy(ent(id)->avel, a, 12); }
+static void m_use(const char *tn)
+{
+	int i;
+	for (i = 0; i < NENTS; i++)
+		if (ents[i].alive && !strcmp(ents[i].targetname, tn))
+			ents[i].used++;
+}
+static int add(const char *tn, const char *cls, float x, float y, float z)
+{
+	int i;
+	for (i = 0; i < NENTS; i++)
+		if (!ents[i].alive) {
+			int serial = ents[i].serial + 1;
+			memset(&ents[i], 0, sizeof(Ent));
+			ents[i].serial = serial;
+			ents[i].alive = 1;
+			snprintf(ents[i].targetname, 32, "%s", tn);
+			snprintf(ents[i].classname, 32, "%s", cls);
+			ents[i].origin[0] = x;
+			ents[i].origin[1] = y;
+			ents[i].origin[2] = z;
+			ents[i].health = 100;
+			return i;
+		}
+	return -1;
+}
+static uint32_t m_spawn(const char *cls, const char *const *k, const char *const *v, int n)
+{
+	int i = add("", cls, 0, 0, 0), j;
+	for (j = 0; j < n; j++) {
+		if (!strcmp(k[j], "targetname"))
+			snprintf(ents[i].targetname, 32, "%s", v[j]);
+		else if (!strcmp(k[j], "origin"))
+			sscanf(v[j], "%f %f %f", &ents[i].origin[0], &ents[i].origin[1], &ents[i].origin[2]);
+	}
+	return make_id(i);
+}
+static void m_sound(uint32_t id, const char *s, int loop) { snprintf(ent(id)->sound, 64, "%s%s", loop > 0 ? "loop:" : "", s); }
+
+static DodMohaaBackend backend(void)
+{
+	DodMohaaBackend b;
+	memset(&b, 0, sizeof(b));
+	b.load_file = m_load;
+	b.free_file = m_free;
+	b.print = m_print;
+	b.find = m_find;
+	b.valid = m_valid;
+	b.get_vec = m_get_vec;
+	b.set_vec = m_set_vec;
+	b.get_health = m_get_health;
+	b.set_health = m_set_health;
+	b.get_str = m_get_str;
+	b.set_targetname = m_set_tn;
+	b.set_flag = m_set_flag;
+	b.remove = m_remove;
+	b.set_velocity = m_set_vel;
+	b.use_targets = m_use;
+	b.spawn = m_spawn;
+	b.sound = m_sound;
+	return b;
+}
+
+static void reset(void)
+{
+	Dod_MohaaShutdown();
+	memset(ents, 0, sizeof(ents));
+	memset(files, 0, sizeof(files));
+	log_buf[0] = 0;
+}
+
+static int near(float a, float b) { return fabsf(a - b) < 0.01f; }
+
+static void run(float from, float to)
+{
+	float t;
+	for (t = from; t <= to + 0.0001f; t += 0.05f)
+		Dod_MohaaThink(t);
+}
+
+static void test_no_script_no_vm(void)
+{
+	DodMohaaBackend b = backend();
+	DodMohaaStats st;
+	reset();
+	assert(!Dod_MohaaLevelInit(&b, "dod_avalanche", 0, 0));
+	Dod_MohaaThink(1.0f);
+	Dod_MohaaGetStats(&st);
+	assert(!st.active && st.memory == 0);
+}
+
+static void test_level_flow_and_movers(void)
+{
+	DodMohaaBackend b = backend();
+	DodMohaaStats st;
+	int door, wall, trig;
+	reset();
+	door = add("door1", "func_wall", 0, 0, 0);
+	wall = add("wall", "func_wall", 10, 0, 0);
+	trig = add("relay", "trigger_relay", 0, 0, 0);
+	files[0][0] = "maps/m1l1.scr";
+	files[0][1] =
+		"main:\n"
+		"\tlevel waittill prespawn\n"
+		"\t$wall hide\n"
+		"\t$wall notsolid\n"
+		"\tlevel waittill spawn\n"
+		"\tprintln \"spawned\"\n"
+		"\t$door1 time 2\n"
+		"\t$door1 moveto (0 0 94)\n"   /* 94 MOHAA units = 72 GoldSrc */
+		"\t$door1 playsound door_open\n"
+		"\t$door1 waitmove\n"
+		"\tprintln \"door at \" $door1.origin\n"
+		"\ttrigger $relay\n"
+		"\tlocal.e = spawn script_model targetname crate origin (94 0 0)\n"
+		"\tprintln \"crate \" local.e.targetname\n"
+		"\t$door1 moveUp 94\n"
+		"\t$door1 time 0\n"
+		"\t$door1 move\n"
+		"\tiprintln \"objective\"\n"
+		"\tcenterprint \"go\"\n"
+		"\t$door1 unboundcommand 1\n"
+		"\t$door1 unboundcommand 2\n"
+		"\t$wall remove\n"
+		"\tprintln \"wall gone \" ($wall == NULL)\n"
+		"end\n";
+	assert(Dod_MohaaLevelInit(&b, "m1l1", 0, 256 * 1024));
+	Dod_MohaaThink(0.05f);                      /* prespawn */
+	assert(ents[wall].hidden && ents[wall].notsolid);
+	Dod_MohaaThink(0.10f);                      /* spawn: the move starts */
+	assert(strstr(log_buf, "spawned"));
+	assert(near(ents[door].vel[2], 36.0f));     /* 72 GoldSrc units over 2 s */
+	assert(!strcmp(ents[door].sound, "door_open"));
+	run(0.15f, 2.0f);
+	assert(!strstr(log_buf, "door at"));
+	run(2.05f, 2.3f);
+	assert(strstr(log_buf, "door at (0.000 0.000 94.000)"));
+	assert(near(ents[door].vel[2], 0.0f));
+	assert(ents[trig].used == 1);
+	assert(strstr(log_buf, "crate crate"));
+	assert(near(ents[door].origin[2], 144.0f)); /* moveUp 94 with time 0 snaps */
+	assert(strstr(log_buf, "[hud] objective"));
+	assert(strstr(log_buf, "[center] go"));
+	assert(strstr(log_buf, "wall gone 1"));
+	assert(!ents[wall].alive);
+	Dod_MohaaGetStats(&st);
+	assert(st.active && st.errors == 0 && st.unknown_commands == 1);
+	assert(st.memory_peak < 64 * 1024);
+	/* the unbound command was reported once, not twice */
+	assert(strstr(log_buf, "'unboundcommand'") == strrchr(log_buf, '\'') - strlen("'unboundcommand"));
+}
+
+static void test_waittill_trigger_and_freed(void)
+{
+	DodMohaaBackend b = backend();
+	int t;
+	reset();
+	t = add("trig", "trigger_multiple", 0, 0, 0);
+	add("guard", "monster", 0, 0, 0);
+	files[0][0] = "maps/t.scr";
+	files[0][1] =
+		"main:\n"
+		"\t$guard thread watch\n"
+		"\t$trig waittill trigger\n"
+		"\tprintln \"hit\"\n"
+		"end\n"
+		"watch:\n"
+		"\tself waittill removed\n"
+		"\tprintln \"guard removed\"\n"
+		"end\n";
+	assert(Dod_MohaaLevelInit(&b, "t", 0, 0));
+	run(0.05f, 0.5f);
+	assert(!strstr(log_buf, "hit"));
+	Dod_MohaaNotify(make_id(t), "trigger");
+	assert(strstr(log_buf, "hit"));
+	ents[1].alive = 0;
+	Dod_MohaaEntityFreed(make_id(1));
+	assert(strstr(log_buf, "guard removed"));
+}
+
+static void test_budget_refuses_cleanly(void)
+{
+	DodMohaaBackend b = backend();
+	reset();
+	files[0][0] = "maps/big.scr";
+	files[0][1] = "main:\n\tprintln \"hi\"\nend\n";
+	assert(!Dod_MohaaLevelInit(&b, "big", 0, 512));   /* far too small to compile */
+	assert(strstr(log_buf, "[error]"));
+}
+
+int main(void)
+{
+	test_no_script_no_vm();
+	test_level_flow_and_movers();
+	test_waittill_trigger_and_freed();
+	test_budget_refuses_cleanly();
+	Dod_MohaaShutdown();
+	printf("dod_mohaa_test: ok\n");
+	return 0;
+}
