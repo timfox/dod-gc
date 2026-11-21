@@ -20,7 +20,7 @@ def find(iso, path):
     lba, _blocks, size = int(m.group(1)), int(m.group(2)), int(m.group(3))
     return lba, size
 
-def write(iso, path, src, lba_size=None):
+def write(iso, path, src, lba_size=None, max_size=None):
     lba, size = lba_size or find(iso, path)
     data = open(src, "rb").read()
     if len(data) > size: raise SystemExit("%s is %d bytes, slot is %d" % (src, len(data), size))

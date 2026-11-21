@@ -13,11 +13,12 @@ slow passes for lit builds. Never launches or kills Dolphin.
 """
 import argparse, os, shutil, subprocess, sys, time, tempfile
 HERE = os.path.dirname(os.path.abspath(__file__)); sys.path.insert(0, HERE)
-import isoslot, json
+import isoslot, json, struct
 BIN = os.path.join(HERE, "bin")
 WADDIR = "/home/tim/Desktop/dod-gc/content/dod"
 SLOT_BSP = "/xash3d/dod/maps/dod_live.bsp"
 SLOT_TXT = "/xash3d/dod/livemap.txt"
+PACKS = {"wt_dod_live.gct": 2 << 20, "wd_dod_live.gcd": 1 << 20, "wd_dod_live_lf.gcd": 1 << 20, "wd_dod_live_sb.gcd": 64 << 10}   # fixed slot sizes (media/)
 
 def run(tool, args, cwd, log):
     t = time.time()
@@ -53,13 +54,23 @@ def status(work, **kw):
     cur.update(kw, updated=time.time())
     json.dump(cur, open(f + ".tmp", "w")); os.replace(f + ".tmp", f)
 
+def bake_packs(bsp, work):
+    """Engine render packs for the live BSP (textures, display lists, light faces) -> {name: path}; {} if the baker is unavailable."""
+    out = os.path.join(work, "packs"); shutil.rmtree(out, ignore_errors=True)
+    r = subprocess.run(["python3", os.path.join(HERE, "bake_live.py"), bsp, out], capture_output=True, text=True)
+    if r.returncode: print("[watch] pack bake FAILED:", r.stderr[-300:]); return {}
+    sb = os.path.join(out, "media", "wd_dod_live_sb.gcd")
+    if os.path.exists(sb):      # the sb header records the wd size = the padded slot size
+        with open(sb, "r+b") as fh: fh.seek(8); fh.write(struct.pack(">I", PACKS["wd_dod_live.gcd"]))
+    return {n: os.path.join(out, "media", n) for n in PACKS if os.path.exists(os.path.join(out, "media", n))}
+
 def main():
     global SLOT_BSP, SLOT_TXT
     ap = argparse.ArgumentParser()
     ap.add_argument("--iso", required=True); ap.add_argument("--work", default=os.path.expanduser("~/.cache/gsbridge"))
     ap.add_argument("--vis", action="store_true"); ap.add_argument("--rad", action="store_true")
     ap.add_argument("--slot-bsp", default=SLOT_BSP); ap.add_argument("--slot-txt", default=SLOT_TXT)
-    ap.add_argument("--once", action="store_true"); a = ap.parse_args()
+    ap.add_argument("--no-packs", action="store_true"); ap.add_argument("--once", action="store_true"); a = ap.parse_args()
     SLOT_BSP, SLOT_TXT = a.slot_bsp, a.slot_txt
     os.makedirs(a.work, exist_ok=True); mapfile = os.path.join(a.work, "live.map")
     slot_bsp = isoslot.find(a.iso, SLOT_BSP); slot_txt = isoslot.find(a.iso, SLOT_TXT)
@@ -75,6 +86,10 @@ def main():
             if not bsp: status(a.work, state="error", error=open(os.path.join(a.work, "last_error.txt")).read() if os.path.exists(os.path.join(a.work, "last_error.txt")) else "compile failed")
             if bsp:
                 try:
+                    packs = bake_packs(bsp, a.work) if not a.no_packs else {}
+                    for n, pth in packs.items():     # packs first, BSP second, trigger last
+                        try: isoslot.write(a.iso, "/xash3d/dod/media/" + n, pth, None, PACKS[n])
+                        except SystemExit as e: print("[watch] pack slot", n, e)
                     isoslot.write(a.iso, SLOT_BSP, bsp, slot_bsp); serial += 1
                     tf = os.path.join(a.work, "livemap.txt"); open(tf, "w").write("L %d dod_live\n" % serial)
                     isoslot.write(a.iso, SLOT_TXT, tf, slot_txt)   # trigger LAST, after the BSP is on disc

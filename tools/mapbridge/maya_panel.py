@@ -14,7 +14,7 @@ import maya.cmds as cmds
 import maya_export as me, maya_materials as mm
 
 WORK = os.path.expanduser(os.environ.get("GSBRIDGE_WORK", "~/.cache/gsbridge"))
-ISO = os.environ.get("GSBRIDGE_ISO", "/home/tim/gsbridge/live.iso")
+ISO = os.environ.get("GSBRIDGE_ISO", "/home/tim/gsbridge/live_full.iso")
 CLASSES = ["info_player_allies", "info_player_axis", "info_doddetect", "light", "light_environment",
            "dod_control_point", "dod_control_point_master", "dod_capture_area", "ambient_generic", "info_target"]
 WIN = "gsBridgeWin"; _ui = {}; _proc = None; _timer = None
