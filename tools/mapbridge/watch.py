@@ -26,6 +26,19 @@ def run(tool, args, cwd, log):
     open(os.path.join(cwd, log), "w").write(r.stdout + r.stderr)
     return r.returncode, time.time() - t
 
+def friendly(step, log):
+    """Turn the compiler's log into one sentence a mapper can act on."""
+    import re
+    m = re.search(r"texture (\S+) not found", log, re.I)
+    if m: return "Texture %s is not in the map's WADs. Pick another texture, or add its WAD to the map settings (gs_settings.gs_wad)." % m.group(1)
+    m = re.search(r"leak.*?\(([-\d. ]+)\)", log, re.I | re.S) if "leak" in log.lower() else None
+    if m: return "The map leaks near (%s): a hole to the void. Seal the room (the lit game still runs, but VIS/lighting will be wrong)." % m.group(1).strip()
+    if re.search(r"(no volume|degenerate|mixed face contents|plane.*not convex|bad surface extents)", log, re.I):
+        line = next((l for l in log.splitlines() if re.search(r"no volume|degenerate|mixed|convex|extents", l, re.I)), "")
+        return "Bad brush: %s. Make each brush convex and at least 1 unit thick." % line.strip()[:140]
+    errs = [l.strip() for l in log.splitlines() if l.strip().lower().startswith(("error", "fatal"))]
+    return ("%s failed: %s" % (step.upper(), errs[-1] if errs else log.strip().splitlines()[-1] if log.strip() else "see the log"))[:240]
+
 def build(mapfile, work, vis, rad):
     b = tempfile.mkdtemp(prefix="b_", dir=work)
     try:
@@ -40,7 +53,7 @@ def build(mapfile, work, vis, rad):
             rc, dt = run(tool, args, b, name + ".log"); times[name] = dt
             if rc != 0:
                 tail = open(os.path.join(b, name + ".log")).read()[-1200:]
-                open(os.path.join(work, "last_error.txt"), "w").write("%s failed: %s" % (name, tail[-400:]))
+                open(os.path.join(work, "last_error.txt"), "w").write(friendly(name, open(os.path.join(b, name + ".log")).read()))
                 print("[watch] %s FAILED (rc=%d) - game keeps the previous map\n%s" % (name, rc, tail)); return None, times
         out = os.path.join(work, "live.bsp"); shutil.copy(os.path.join(b, "dod_live.bsp"), out)
         return out, times
@@ -124,8 +137,12 @@ def main():
         if m and m != last:
             try:
                 last = m; t0 = time.time(); stages = {"wait": round(t0 - m, 2) if started_loop and t0 - m < 30 else 0.0}   # save -> watcher noticed (0 for the first pass after start)
-                status(a.work, state="compiling", stages=stages, error="")
-                bsp, times = build(mapfile, a.work, a.vis, a.rad); stages["compile"] = round(sum(times.values()), 2)
+                opts = {}
+                try: opts = json.load(open(os.path.join(a.work, "options.json")))
+                except Exception: pass
+                use_rad = opts.get("rad", True if not a.vis else a.rad); use_vis = opts.get("vis", a.vis)     # panel options win; lit by default
+                status(a.work, state="compiling", stages=stages, error="", rad=use_rad, vis=use_vis)
+                bsp, times = build(mapfile, a.work, use_vis, use_rad); stages["compile"] = round(sum(times.values()), 2)
                 if not bsp:
                     status(a.work, state="error", error=open(os.path.join(a.work, "last_error.txt")).read() if os.path.exists(os.path.join(a.work, "last_error.txt")) else "compile failed")
                 else:

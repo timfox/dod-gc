@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# One entry point for the Maya -> Xash3D GameCube pipeline.
+#   gsbridge up         start everything: build the live disc if missing, the watcher, then Dolphin on that disc
+#   gsbridge down       stop the watcher (Dolphin is yours: close its window)
+#   gsbridge status     what is running, the disc, the last push and any error
+#   gsbridge disc       (re)build the live dev disc from the current map (slot disc, only needed when the engine/DOL changes)
+#   gsbridge hw [map]   build a real playable disc (ISO for Swiss/hardware or Dolphin) from the Maya map: no dev slots, no live poll
+#   gsbridge compiler   build the ZHLT compilers into bin/ (one time)
+# Config (optional) ~/gsbridge/config.env: GS_ISO, GS_DOL, GS_WORK
+set -u
+HERE="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
+G="$HOME/gsbridge"; mkdir -p "$G"; [ -f "$G/config.env" ] && . "$G/config.env"
+ISO="${GS_ISO:-$G/live_sync.iso}"; DOL="${GS_DOL:-$G/dodgc_live.dol}"; WORK="${GS_WORK:-$HOME/.cache/gsbridge}"
+say() { printf '\033[1m[gsbridge]\033[0m %s\n' "$*"; }
+need() { [ -e "$1" ] || { say "missing: $1  ($2)"; exit 1; }; }
+watcher_pid() { pgrep -f "^python3 .*/watch.py --iso $ISO" | head -1; }
+
+case "${1:-status}" in
+  compiler)
+    "$HERE/build_compiler.sh" && say "compilers built in $HERE/bin" ;;
+  disc)
+    need "$DOL" "the engine DOL: cp <engine>/OUT/bin/dodgc.dol $DOL (see DESIGN.md for the build recipe)"
+    [ -f "$WORK/live.bsp" ] || { say "no map yet: save once in Maya (or run: gsbridge new)"; SEED="$HERE/seed/room.bsp"; }
+    "$HERE/build_slot_disc.sh" "$DOL" "$ISO" "${SEED:-$WORK/live.bsp}" > "$WORK/disc.log" 2>&1 && say "disc built: $ISO" || { say "disc build FAILED, see $WORK/disc.log"; tail -5 "$WORK/disc.log"; exit 1; } ;;
+  up)
+    [ -d "$HERE/bin" ] && [ -x "$HERE/bin/sdHLCSG" ] || { say "building compilers (first run)"; "$HERE/build_compiler.sh" >/dev/null 2>&1 || { say "compiler build FAILED (needs git, cmake, a C++ compiler, network)"; exit 1; }; }
+    mkdir -p "$WORK"
+    [ -f "$ISO" ] || "$0" disc || exit 1
+    if [ -n "$(watcher_pid)" ]; then say "watcher already running (pid $(watcher_pid))"; else "$HERE/live_session.sh" "$ISO" >/dev/null; say "watcher started on $ISO"; fi
+    if pgrep -f "xash-gc-dolphin.* -e $ISO" >/dev/null; then say "Dolphin already running on this disc"; else
+      say "starting Dolphin (its log feeds the Maya panel)"; nohup "$HERE/live_dolphin.sh" "$ISO" >/dev/null 2>&1 &
+    fi
+    say "ready: in Maya press Export + Compile + Push, or just save." ;;
+  down)
+    for p in $(pgrep -f "^python3 .*/watch.py --iso"); do kill "$p"; done; say "watcher stopped" ;;
+  status)
+    p="$(watcher_pid)"; say "watcher: ${p:-not running}   disc: $([ -f "$ISO" ] && echo "$ISO" || echo "MISSING ($ISO)")   dol: $([ -f "$DOL" ] && echo ok || echo "MISSING ($DOL)")"
+    pgrep -f "xash-gc-dolphin" >/dev/null && say "Dolphin: running" || say "Dolphin: not running"
+    python3 - <<PY
+import json,os,time
+try: s=json.load(open(os.path.expanduser("$WORK/status.json")))
+except Exception: print("  no status yet"); raise SystemExit
+print("  state:", s.get("state"), "| stages:", s.get("stages"), "| game reload:", s.get("reload_seconds"), "s")
+if s.get("error"): print("  ERROR:", s["error"])
+PY
+    ;;
+  hw) shift; exec "$HERE/build_hw_disc.sh" "$@" ;;
+  new) shift; say "create a new map from Maya: GoldSrc menu > New Map (or: maya_newmap.create('dod_myvalley'))" ;;
+  *) sed -n 2,12p "$0"; exit 2 ;;
+esac

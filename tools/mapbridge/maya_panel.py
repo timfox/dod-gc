@@ -91,6 +91,30 @@ def _entity(*_):
     cmds.addAttr(l, ln="gs_classname", dt="string"); cmds.setAttr(l + ".gs_classname", cls, type="string")
     cmds.addAttr(l, ln="gs_yaw", at="long"); cmds.select(l)
 
+def _write_opts(*_):
+    try:
+        os.makedirs(WORK, exist_ok=True)
+        json.dump({"rad": cmds.checkBox(_ui["rad"], q=True, value=True), "vis": cmds.checkBox(_ui["vis"], q=True, value=True)}, open(os.path.join(WORK, "options.json"), "w"))
+    except Exception as e: cmds.warning("[gsbridge] options not saved: %s" % e)
+
+def _start_session(*_):
+    """gsbridge up: watcher + Dolphin on the live disc (starts only what is not already running)."""
+    g = os.path.join(HERE, "gsbridge")
+    if not os.path.exists(g): cmds.warning("gsbridge launcher not found at %s" % g); return
+    env = {k: v for k, v in os.environ.items() if not k.startswith(("PYTHON", "MAYA", "LD_LIBRARY"))}
+    subprocess.Popen([g, "up"], stdout=open(os.path.join(os.path.expanduser("~/.cache/gsbridge"), "up.log"), "w"), stderr=subprocess.STDOUT, env=env, start_new_session=True)
+    cmds.inViewMessage(amg="Starting the watcher and Dolphin (see ~/.cache/gsbridge/up.log)", pos="topCenter", fade=True)
+
+def _hw_disc(*_):
+    g = os.path.join(HERE, "gsbridge")
+    log = os.path.join(os.path.expanduser("~/.cache/gsbridge"), "hw.log")
+    env = {k: v for k, v in os.environ.items() if not k.startswith(("PYTHON", "MAYA", "LD_LIBRARY"))}
+    me.export_now()
+    name = "dod_live"
+    if cmds.objExists("gs_settings") and cmds.attributeQuery("gs_message", node="gs_settings", exists=True): name = cmds.getAttr("gs_settings.gs_message") or name
+    subprocess.Popen([g, "hw", name], stdout=open(log, "w"), stderr=subprocess.STDOUT, env=env, start_new_session=True)
+    cmds.inViewMessage(amg="Building ~/gsbridge/out/%s.iso (log: %s)" % (name, log), pos="topCenter", fade=True)
+
 def _push(*_):
     try: mm.preview_render_modes()
     except Exception as ex: cmds.warning("render-mode preview: %s" % ex)
@@ -123,6 +147,11 @@ def _build():
     _ui["iso"] = cmds.textField(text=ISO, annotation="slot disc the watcher patches")
     _ui["watcher_cb"] = cmds.checkBox(label="Watcher", changeCommand=lambda v: _watcher(v), annotation="start/stop ceres-side compile+patch")
     cmds.button(label="Refresh", command=refresh); cmds.setParent("..")
+    cmds.rowLayout(numberOfColumns=4, adjustableColumn=1)
+    cmds.button(label="Start session (watcher + Dolphin)", command=_start_session, backgroundColor=(0.25, 0.4, 0.55))
+    _ui["rad"] = cmds.checkBox(label="Lit", value=True, changeCommand=_write_opts, annotation="compile with lighting (RAD, ~0.4 s)")
+    _ui["vis"] = cmds.checkBox(label="VIS", value=False, changeCommand=_write_opts, annotation="visibility data; off by default (it made the engine draw white)")
+    cmds.button(label="Hardware disc", command=_hw_disc, annotation="build a real playable ISO from this map"); cmds.setParent("..")
     cmds.button(label="Export + Compile + Push", height=36, backgroundColor=(0.25, 0.45, 0.3), command=_push)
     cmds.checkBox(label="Auto-push on Save", changeCommand=_auto)
     cmds.setParent(_ui["root"])

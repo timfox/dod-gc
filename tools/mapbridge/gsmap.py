@@ -44,7 +44,7 @@ def _fmt(v):
     r = round(v)
     return str(int(r)) if abs(v-r) < 1e-6 else ("%.4f" % v).rstrip("0").rstrip(".")
 
-def brush_text(polys, texture, snap=True):
+def brush_text(polys, texture, snap=True, grow=0.0):
     """Return the text of one brush. Planes are rebuilt from three points on the
     polygon plane, far enough apart that integer rounding barely tilts them."""
     out = ["{"]
@@ -52,6 +52,7 @@ def brush_text(polys, texture, snap=True):
         pl = poly_plane(poly)
         if not pl: continue
         n, d = pl
+        d += grow                       # push every face plane outward: an overlay brush sits in front of the surface it covers
         if snap:  # snap the plane to the integer grid the way editors do
             n = tuple(round(x, 6) for x in n)
         t, b = _basis(n)
@@ -85,7 +86,7 @@ def write_map(path, world_brushes, entities, wad, extra_world=None):
     world.update(extra_world or {})
     parts = [entity_text(world, [brush_text(p, t) for p, t in world_brushes])]
     for e in entities:
-        parts.append(entity_text(e["keys"], [brush_text(p, t) for p, t in e.get("brushes", ())]))
+        parts.append(entity_text(e["keys"], [brush_text(b[0], b[1], grow=(b[2] if len(b) > 2 else 0.0)) for b in e.get("brushes", ())]))
     text = "\n".join(parts) + "\n"
     tmp = path + ".tmp"
     with open(tmp, "w", newline="\n") as f: f.write(text)
@@ -103,3 +104,40 @@ def box(mins, maxs):
         [(x1,y1,z0),(x0,y1,z0),(x0,y1,z1),(x1,y1,z1)],  # +y
         [(x0,y0,z0),(x1,y0,z0),(x1,y0,z1),(x0,y0,z1)],  # -y
     ]
+
+
+def coplanar_overlaps(groups, tol=0.05):
+    """groups: [(label, [polys])]. Returns [(labelA, labelB, same_facing)] for faces of DIFFERENT groups that lie in the same plane and overlap
+    (the z-fighting pairs).  Overlap test: a vertex or the centroid of one face inside the other, in the plane's 2D basis."""
+    items = []
+    for gi, (label, polys) in enumerate(groups):
+        for poly in polys:
+            pl = poly_plane(poly)
+            if pl: items.append((gi, label, poly, pl[0], pl[1]))
+    def project(poly, n):
+        ax = min(range(3), key=lambda i: abs(n[i])); up = [0.0, 0.0, 0.0]; up[ax] = 1.0
+        t = _cross(n, tuple(up)); tl = _len(t); t = (t[0]/tl, t[1]/tl, t[2]/tl); b = _cross(n, t)
+        return [(_dot(p, t), _dot(p, b)) for p in poly]
+    def inside(pt, poly2d):
+        x, y = pt; c = False; n = len(poly2d)
+        for i in range(n):
+            x1, y1 = poly2d[i]; x2, y2 = poly2d[(i+1) % n]
+            if (y1 > y) != (y2 > y) and x < (x2-x1) * (y-y1) / (y2-y1 + 1e-12) + x1: c = not c
+        return c
+    out = set()
+    for i in range(len(items)):
+        gi, la, pa, na, da = items[i]
+        for j in range(i+1, len(items)):
+            gj, lb, pb, nb, db = items[j]
+            if gi == gj: continue
+            dot = _dot(na, nb)
+            if abs(abs(dot) - 1.0) > 1e-3: continue
+            if abs(da - db * (1 if dot > 0 else -1)) > tol: continue
+            A = project(pa, na); B = project(pb, na)
+            ca = (sum(p[0] for p in A)/len(A), sum(p[1] for p in A)/len(A)); cb = (sum(p[0] for p in B)/len(B), sum(p[1] for p in B)/len(B))
+            shrink = lambda P, c: [(c[0] + (p[0]-c[0]) * 0.97, c[1] + (p[1]-c[1]) * 0.97) for p in P]   # faces that only touch along an edge do not count
+            A, B = shrink(A, ca), shrink(B, cb)
+            cenA = (sum(p[0] for p in A)/len(A), sum(p[1] for p in A)/len(A)); cenB = (sum(p[0] for p in B)/len(B), sum(p[1] for p in B)/len(B))
+            if inside(cenA, B) or inside(cenB, A) or any(inside(p, B) for p in A) or any(inside(p, A) for p in B):
+                out.add((la, lb, dot > 0))
+    return sorted(out)
