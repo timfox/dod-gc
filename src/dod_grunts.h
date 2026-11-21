@@ -38,8 +38,19 @@ typedef enum {
 	DOD_GRUNT_DEAD,
 	DOD_GRUNT_WANDER,	/* walks a heading, turns now and then */
 	DOD_GRUNT_ADVANCE,	/* runs: at the seen target, else along the heading */
-	DOD_GRUNT_SHOOT		/* stands and fires at the seen target */
+	DOD_GRUNT_SHOOT,	/* stands and fires at the seen target */
+	DOD_GRUNT_HOLD		/* stands where a script put it; turns to its heading */
 } DodGruntState;
+
+/* Script ownership (MOHAA mission actors, see dod_mohaa.c). A scripted grunt never respawns and is never culled by the
+ * dod_grunts count; the script moves it, turns it, switches its own AI off and on, and waits for its "movedone". */
+enum {
+	DOD_GRUNT_SCRIPTED = 1 << 0,	/* owned by a script */
+	DOD_GRUNT_AI_OFF = 1 << 1,	/* ignores what it sees: no targets, no shooting, no wandering */
+	DOD_GRUNT_ATTACK = 1 << 2	/* runs at what it sees (MOHAA attackplayer) instead of holding */
+};
+enum { DOD_GRUNT_ORDER_NONE = 0, DOD_GRUNT_ORDER_WALK, DOD_GRUNT_ORDER_RUN };
+#define DOD_GRUNT_ARRIVE 32.0f		/* a move order is done this near its point */
 
 typedef struct DodGruntStats {
 	unsigned looks;		/* line-of-sight traces */
@@ -70,6 +81,10 @@ typedef struct DodGruntPool {
 	unsigned char state[DOD_GRUNT_MAX];
 	unsigned char team[DOD_GRUNT_MAX];
 	unsigned char blocked[DOD_GRUNT_MAX];	/* the last collision check stopped it */
+	unsigned char script[DOD_GRUNT_MAX];	/* DOD_GRUNT_SCRIPTED | AI_OFF | ATTACK */
+	unsigned char order[DOD_GRUNT_MAX];	/* DOD_GRUNT_ORDER_* */
+	unsigned char order_done[DOD_GRUNT_MAX];	/* set on arrival, cleared by DodGrunt_TakeOrderDone */
+	float order_x[DOD_GRUNT_MAX], order_y[DOD_GRUNT_MAX];
 	unsigned rng;
 	int look_cursor;	/* where the look scheduler resumes, so no slot is starved */
 	DodGruntStats stats;
@@ -120,6 +135,25 @@ int DodGrunt_ShotHits(float dist, int skill, float roll);
 /* Damage taken. Returns 1 when this killed it. Dead grunts lie there DOD_GRUNT_RESPAWN seconds. */
 int DodGrunt_Hurt(DodGruntPool *p, int i, int damage, float now);
 int DodGrunt_RespawnDue(const DodGruntPool *p, int i, float now);
+
+/* ---- script control (MOHAA actors) ---- */
+/* A free slot for a script actor, searched from the top so the dod_grunts count (which fills from slot 0) rarely meets
+ * it. -1 when the pool is full. */
+int DodGrunt_FreeScriptSlot(const DodGruntPool *p);
+/* Put a script-owned grunt in the world. It holds still, AI on, until told otherwise. */
+void DodGrunt_SpawnScripted(DodGruntPool *p, int i, int team, float x, float y, float z, float yaw, float now);
+/* ai_on / ai_off. Switching off drops the target and any firing; the grunt holds or finishes its move order. */
+void DodGrunt_SetAI(DodGruntPool *p, int i, int on);
+/* attackplayer: AI on, and run at what it sees instead of holding. */
+void DodGrunt_SetAttack(DodGruntPool *p, int i, int on);
+/* walkto / runto: head for (x, y) ignoring what it sees; on arrival it holds and order_done is set. */
+void DodGrunt_OrderMove(DodGruntPool *p, int i, float x, float y, int run);
+/* Drop a move order without the done event; the grunt holds where it is. */
+void DodGrunt_OrderStop(DodGruntPool *p, int i);
+/* turnto / lookat: face (tx, ty). A holding grunt turns there; one with a move order keeps walking. */
+void DodGrunt_Face(DodGruntPool *p, int i, float tx, float ty);
+/* 1 once after a move order arrived (the host turns it into the script's "movedone"). */
+int DodGrunt_TakeOrderDone(DodGruntPool *p, int i);
 
 /* Facing: the yaw a grunt should look toward a point from its place. */
 float DodGrunt_YawTo(float x, float y, float tx, float ty);

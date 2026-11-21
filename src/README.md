@@ -332,8 +332,16 @@ engine glue. The game rules constructor calls `DodGC_MohaaLevelInit`, `Think` ca
   entities `hide`/`show`, `solid`/`notsolid`, `remove`, `origin`/`angles`/`health`, `moveto`, `moveup`..`movewest`,
   `rotateto`, `rotatex/y/z`, `move`/`waitmove`, `time`; on threads `trigger`, `spawn`, `centerprint`, `iprintln`. Positions are
   scaled by 72/94, the factor the map converter uses. `level waittill prespawn`/`spawn` fire on the first two ticks.
+- **Soldiers.** MOHAA AI soldiers are grunts owned by the script (`dod_grunt.cpp`, rules in `dod_grunts.c`): `spawn actor`
+  or `spawn models/human/<who>.tik` puts one in (German models play the Axis, the rest the Allies), and `ai_on`/`ai_off`,
+  `runto`/`walkto` (a vector, an entity or a node name), `turnto`/`lookat` and `attackplayer` drive it. A move order ends in
+  `movedone`, a kill in `death`, so `waittill movedone`/`death` work. A script soldier holds where it stands until it sees
+  someone (it turns to them, and shoots inside 660 units), never respawns, and is not counted by `dod_grunts`. It costs a
+  73-byte pool row and one edict; the pool has 48 slots, shared with co-op grunts.
 - **Not yet.** Sounds are logged, not played (ubersound aliases are not converted). `.tik` models are skipped on `spawn`. No
-  AI, camera, HUD objectives or `exec global/*.scr` libraries beyond what the map ships. An unknown command is reported once
+  camera, HUD objectives or `exec global/*.scr` libraries beyond what the map ships. Soldiers have no path graph (a move
+  order heads straight for its point and turns off walls), no animations beyond the grunt poses, and soldiers placed in the
+  map itself are not converted yet (only script-spawned ones exist). An unknown command is reported once
   and skipped, so a mission keeps running.
 - **Memory.** `mohaa_script_kb` (default 384) caps the VM; a level whose scripts do not fit is refused at load, not run half
   way. Retail missions fit: on a 32-bit host build, m1l1 with its globals uses 108 KB and peaks at 190 KB while compiling,

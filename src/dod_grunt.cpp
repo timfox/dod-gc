@@ -21,6 +21,8 @@
 #include "dod_runtime.h"
 #include "dod_bot.h"
 #include "dod_game.h"
+#include "dod_mohaa.h"
+#include "dod_mohaa_ents.h"
 #include "dod_film.h"
 #include "dod_weapons.h"
 #include "dod_grunts.h"
@@ -84,6 +86,8 @@ static void GruntHide( int i )
 		g_ents[i]->pev->takedamage = DAMAGE_NO;
 	}
 	g_pool.state[i] = DOD_GRUNT_FREE;
+	g_pool.script[i] = 0;
+	g_pool.order[i] = DOD_GRUNT_ORDER_NONE;
 }
 
 void DodGrunts_Init( void )
@@ -103,7 +107,13 @@ void DodGrunts_Init( void )
 	g_next_log = 0.0f;
 	g_us_total = g_us_max = g_us_frames = 0;
 	g_last_log_time = 0.0f;
-	if( CVAR_GET_FLOAT( "dod_grunts" ) > 0.0f ) {
+	if( CVAR_GET_FLOAT( "dod_grunts" ) > 0.0f )
+		DodGrunts_PrecacheBodies();
+}
+
+void DodGrunts_PrecacheBodies( void )
+{
+	{
 		/* A match precaches its players' bodies; do it here too, so a grunts-only side (no player on it) has one. */
 		for( int team = DOD_TEAM_ALLIES; team <= DOD_TEAM_AXIS; team++ ) {
 			const char *body = DodGC_BodyModelForTeam( (DodTeam)team );
@@ -132,12 +142,16 @@ int CDodGrunt::TakeDamage( entvars_t *pevInflictor, entvars_t *pevAttacker, floa
 	CBaseEntity *who = pevAttacker ? CBaseEntity::Instance( pevAttacker ) : NULL;
 	if( who && who->IsPlayer() && DodGC_PlayerTeam( (CBasePlayer *)who ) == (int)g_pool.team[m_slot] )
 		return 0;
-	if( DodGrunt_Hurt( &g_pool, m_slot, (int)ceilf( flDamage ), gpGlobals->time ) ) {
+	const int killed = DodGrunt_Hurt( &g_pool, m_slot, (int)ceilf( flDamage ), gpGlobals->time );
+	pev->health = g_pool.hp[m_slot];
+	if( killed ) {
 		pev->takedamage = DAMAGE_NO;
 		pev->solid = SOLID_NOT;
 		m_pose = -1;	/* Think sets the death sequence */
 		if( who && who->IsPlayer() )
 			( (CBasePlayer *)who )->AddPoints( 1, TRUE );
+		if( g_pool.script[m_slot] )
+			DodGC_MohaaEntityEvent( edict(), "death" );	/* "$guy waittill death" */
 	}
 	return 1;
 }
@@ -223,29 +237,24 @@ static int GruntHumans( void )
 	return n;
 }
 
-/* Put grunt i into the world: make or reuse its edict, place it at a spawn point of its side. */
-static bool GruntSpawn( int i, int team )
+/* Make or reuse grunt i's edict and dress it for its side. NULL when the edicts are short. */
+static CDodGrunt *GruntDress( int i, int team )
 {
-	Vector origin;
-	float yaw;
 	const char *body = DodGC_BodyModelForTeam( (DodTeam)team );
 	char model[96];
-	if( !body || !body[0] || !DodGC_TeamSpawnPoint( (DodTeam)team, &origin, &yaw ) )
-		return false;
+	if( !body || !body[0] )
+		return NULL;
 	snprintf( model, sizeof( model ), "models/player/%s/%s.mdl", body, body );
 	CDodGrunt *e = GruntLive( i ) ? g_ents[i] : NULL;
 	if( !e ) {
 		/* A full edict table hands the game NULL, and GetClassPtr does not survive it. */
 		if( NUMBER_OF_ENTITIES() + DOD_GRUNT_EDICT_RESERVE >= gpGlobals->maxEntities )
-			return false;
+			return NULL;
 		e = GetClassPtr( (CDodGrunt *)NULL );
 		if( !e )
-			return false;
+			return NULL;
 		g_ents[i] = e;
 	}
-	/* a spread around the spawn so a wave does not stand in one spot */
-	origin.x += RANDOM_FLOAT( -64.0f, 64.0f );
-	origin.y += RANDOM_FLOAT( -64.0f, 64.0f );
 	e->pev->classname = MAKE_STRING( "dod_grunt" );
 	e->pev->effects &= ~EF_NODRAW;
 	e->pev->movetype = MOVETYPE_NONE;
@@ -262,6 +271,77 @@ static bool GruntSpawn( int i, int team )
 	e->m_pose = -1;
 	e->m_gait = 0;
 	e->m_phase = 0.0f;
+	return e;
+}
+
+edict_t *DodGrunts_ScriptSpawn( int team, const Vector &origin, float yaw )
+{
+	const int i = DodGrunt_FreeScriptSlot( &g_pool );
+	if( i < 0 )
+		return NULL;
+	CDodGrunt *e = GruntDress( i, team );
+	if( !e )
+		return NULL;
+	/* a script origin is on the floor (MOHAA actors stand on their origin); the pool keeps the body's centre */
+	DodGrunt_SpawnScripted( &g_pool, i, team, origin.x, origin.y, origin.z + 36.0f, yaw, gpGlobals->time );
+	UTIL_SetOrigin( e->pev, Vector( origin.x, origin.y, origin.z + 36.0f ) );
+	e->pev->angles = Vector( 0, yaw, 0 );
+	return e->edict();
+}
+
+static int ScriptSlot( edict_t *ed )
+{
+	CBaseEntity *b = ed && !ed->free ? CBaseEntity::Instance( ed ) : NULL;
+	if( !b || !FClassnameIs( ed, "dod_grunt" ) )
+		return -1;
+	const int i = ( (CDodGrunt *)b )->m_slot;
+	if( i < 0 || i >= DOD_GRUNT_MAX || g_ents[i] != b || !g_pool.script[i] )
+		return -1;
+	return i;
+}
+
+int DodGrunts_ScriptRemove( edict_t *ed )
+{
+	const int i = ScriptSlot( ed );
+	if( i < 0 )
+		return 0;
+	GruntHide( i );
+	CDodGrunt *e = g_ents[i];
+	g_ents[i] = NULL;	/* the edict goes; a later actor in this slot gets a fresh one (and a fresh serial) */
+	UTIL_Remove( e );
+	return 1;
+}
+
+int DodGrunts_ScriptOrder( edict_t *ed, int order, const float pos[3] )
+{
+	const int i = ScriptSlot( ed );
+	if( i < 0 )
+		return 0;
+	switch( order ) {
+	case DOD_MOHAA_AI_ON: DodGrunt_SetAI( &g_pool, i, 1 ); break;
+	case DOD_MOHAA_AI_OFF: DodGrunt_SetAI( &g_pool, i, 0 ); break;
+	case DOD_MOHAA_ATTACK: DodGrunt_SetAttack( &g_pool, i, 1 ); break;
+	case DOD_MOHAA_WALKTO: DodGrunt_OrderMove( &g_pool, i, pos[0], pos[1], 0 ); break;
+	case DOD_MOHAA_RUNTO: DodGrunt_OrderMove( &g_pool, i, pos[0], pos[1], 1 ); break;
+	case DOD_MOHAA_TURNTO: DodGrunt_Face( &g_pool, i, pos[0], pos[1] ); break;
+	default: DodGrunt_OrderStop( &g_pool, i ); break;
+	}
+	return 1;
+}
+
+/* Put grunt i into the world: make or reuse its edict, place it at a spawn point of its side. */
+static bool GruntSpawn( int i, int team )
+{
+	Vector origin;
+	float yaw;
+	if( !DodGC_TeamSpawnPoint( (DodTeam)team, &origin, &yaw ) )
+		return false;
+	CDodGrunt *e = GruntDress( i, team );
+	if( !e )
+		return false;
+	/* a spread around the spawn so a wave does not stand in one spot */
+	origin.x += RANDOM_FLOAT( -64.0f, 64.0f );
+	origin.y += RANDOM_FLOAT( -64.0f, 64.0f );
 	DodGrunt_Spawn( &g_pool, i, team, origin.x, origin.y, origin.z + 36.0f, yaw, gpGlobals->time,
 		(int)CVAR_GET_FLOAT( "dod_grunt_rush" ) != 0 );
 	UTIL_SetOrigin( e->pev, Vector( origin.x, origin.y, origin.z + 36.0f ) );
@@ -400,6 +480,8 @@ void DodGrunts_Think( void )
 	/* grow one grunt a frame; shrink by hiding the highest slots */
 	int spawned_this_frame = 0;
 	for( int i = 0; i < DOD_GRUNT_MAX; i++ ) {
+		if( g_pool.script[i] )
+			continue;	/* a mission's actor: the script owns it, not the dod_grunts count */
 		if( i >= want ) {
 			if( g_pool.state[i] != DOD_GRUNT_FREE )
 				GruntHide( i );
@@ -437,6 +519,8 @@ void DodGrunts_Think( void )
 		}
 		live++;
 		DodGrunt_Move( &g_pool, i, now, dt );
+		if( DodGrunt_TakeOrderDone( &g_pool, i ) )
+			DodGC_MohaaEntityEvent( e->edict(), "movedone" );	/* "$guy waittill movedone" */
 		if( DodGrunt_CheckDue( &g_pool, i, now ) )
 			GruntCheck( i );
 		if( DodGrunt_ShotDue( &g_pool, i, now, (int)CVAR_GET_FLOAT( "dod_grunt_skill" ) ) )

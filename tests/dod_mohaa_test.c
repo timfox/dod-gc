@@ -118,6 +118,19 @@ static uint32_t m_spawn(const char *cls, const char *const *k, const char *const
 }
 static void m_sound(uint32_t id, const char *s, int loop) { snprintf(ent(id)->sound, 64, "%s%s", loop > 0 ? "loop:" : "", s); }
 
+/* actors: classname "actor" in the mock; orders are logged */
+static int m_actor(uint32_t id, int order, const float pos[3])
+{
+	static const char *names[] = {"ai_on", "ai_off", "attack", "walkto", "runto", "turnto", "stop"};
+	char line[96];
+	Ent *e = ent(id);
+	if (!e || strcmp(e->classname, "actor"))
+		return 0;
+	snprintf(line, sizeof(line), "<%s %s %.1f %.1f %.1f>\n", e->targetname, names[order], pos[0], pos[1], pos[2]);
+	logf_(line);
+	return 1;
+}
+
 static DodMohaaBackend backend(void)
 {
 	DodMohaaBackend b;
@@ -139,6 +152,7 @@ static DodMohaaBackend backend(void)
 	b.use_targets = m_use;
 	b.spawn = m_spawn;
 	b.sound = m_sound;
+	b.actor = m_actor;
 	return b;
 }
 
@@ -269,12 +283,51 @@ static void test_budget_refuses_cleanly(void)
 	assert(strstr(log_buf, "[error]"));
 }
 
+static void test_actors(void)
+{
+	DodMohaaBackend b = backend();
+	int guy;
+	reset();
+	guy = add("guy", "actor", 0, 0, 0);
+	add("node1", "info_pathnode", 72, 0, 0);
+	add("crate", "func_wall", 0, 0, 0);
+	files[0][0] = "maps/a.scr";
+	files[0][1] =
+		"main:\n"
+		"\t$guy ai_off\n"
+		"\t$guy runto $node1\n"
+		"\t$guy waittill movedone\n"
+		"\tprintln \"arrived\"\n"
+		"\t$guy walkto \"node1\"\n"
+		"\t$guy walkto (0 94 0)\n"
+		"\t$guy turnto $crate\n"
+		"\t$guy ai_on\n"
+		"\t$guy attackplayer\n"
+		"\t$guy waittill death\n"
+		"\tprintln \"guy died\"\n"
+		"\t$crate ai_on\n"
+		"end\n";
+	assert(Dod_MohaaLevelInit(&b, "a", 0, 0));
+	run(0.05f, 0.3f);
+	assert(strstr(log_buf, "<guy ai_off 0.0 0.0 0.0>\n<guy runto 72.0 0.0 0.0>\n"));
+	assert(!strstr(log_buf, "arrived"));
+	Dod_MohaaNotify(make_id(guy), "movedone");
+	run(0.35f, 0.5f);
+	assert(strstr(log_buf, "arrived\n<guy walkto 72.0 0.0 0.0>\n<guy walkto 0.0 72.0 0.0>\n<guy turnto 0.0 0.0 0.0>\n"
+		"<guy ai_on 0.0 0.0 0.0>\n<guy attack 0.0 0.0 0.0>\n"));
+	Dod_MohaaNotify(make_id(guy), "death");
+	run(0.55f, 0.7f);
+	assert(strstr(log_buf, "guy died"));
+	assert(strstr(log_buf, "ai_on: not an actor"));	/* a func_wall is no soldier: reported, script goes on */
+}
+
 int main(void)
 {
 	test_no_script_no_vm();
 	test_level_flow_and_movers();
 	test_waittill_trigger_and_freed();
 	test_budget_refuses_cleanly();
+	test_actors();
 	Dod_MohaaShutdown();
 	printf("dod_mohaa_test: ok\n");
 	return 0;

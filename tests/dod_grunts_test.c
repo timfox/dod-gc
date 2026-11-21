@@ -165,6 +165,61 @@ static void test_rand_range(void)
 	}
 }
 
+static void test_script_actor(void)
+{
+	DodGruntPool p;
+	DodGrunt_Init(&p, 3);
+	const int i = DodGrunt_FreeScriptSlot(&p);
+	assert(i == DOD_GRUNT_MAX - 1);
+	DodGrunt_SpawnScripted(&p, i, DOD_TEAM_AXIS, 0, 0, 0, 0, 0.0f);
+	assert(p.state[i] == DOD_GRUNT_HOLD && p.script[i] == DOD_GRUNT_SCRIPTED);
+	assert(DodGrunt_FreeScriptSlot(&p) == DOD_GRUNT_MAX - 2);
+	/* holding: a far enemy turns it but does not make it wander; a close one makes it shoot */
+	DodGrunt_Looked(&p, i, 0.1f, 1, 2, 0, 1000, 1000, 0);
+	assert(p.state[i] == DOD_GRUNT_HOLD && fabsf(p.heading[i] - 90.0f) < 0.01f);
+	DodGrunt_Looked(&p, i, 0.2f, 1, 2, 100, 0, 100, 0);
+	assert(p.state[i] == DOD_GRUNT_SHOOT);
+	DodGrunt_Looked(&p, i, 0.3f, 0, 0, 0, 0, 0, 1);
+	assert(p.state[i] == DOD_GRUNT_HOLD);	/* the cvar's rush does not apply to script actors */
+	/* ai off: blind and still */
+	DodGrunt_SetAI(&p, i, 0);
+	DodGrunt_Looked(&p, i, 0.4f, 1, 2, 100, 0, 100, 0);
+	assert(p.state[i] == DOD_GRUNT_HOLD && p.target[i] == 0);
+	assert(!DodGrunt_ShotDue(&p, i, 10.0f, 1));
+	float x0 = p.x[i];
+	DodGrunt_Move(&p, i, 1.0f, 0.1f);
+	assert(p.x[i] == x0);
+	/* runto: arrives, holds, reports once */
+	DodGrunt_OrderMove(&p, i, 400, 0, 1);
+	float now = 1.0f;
+	int f;
+	for (f = 0; f < 200 && !p.order_done[i]; f++, now += 0.05f) {
+		DodGrunt_Looked(&p, i, now, 1, 2, 100, 0, 100, 0);	/* an order wins over what it sees */
+		assert(p.state[i] == DOD_GRUNT_ADVANCE);
+		DodGrunt_Move(&p, i, now, 0.05f);
+	}
+	assert(f < 60);			/* 400 units at 190 u/s: a bit over 2 s */
+	assert(fabsf(p.x[i] - 400.0f) <= DOD_GRUNT_ARRIVE + 0.01f);
+	assert(p.state[i] == DOD_GRUNT_HOLD);
+	assert(DodGrunt_TakeOrderDone(&p, i) == 1 && DodGrunt_TakeOrderDone(&p, i) == 0);
+	/* turnto */
+	DodGrunt_Face(&p, i, p.x[i], p.y[i] - 100.0f);
+	for (f = 0; f < 20; f++)
+		DodGrunt_Move(&p, i, now, 0.05f);
+	assert(fabsf(p.yaw[i] + 90.0f) < 0.5f);
+	/* attackplayer: AI back on, runs at a far enemy */
+	DodGrunt_SetAttack(&p, i, 1);
+	DodGrunt_Looked(&p, i, now, 1, 2, p.x[i] + 1500.0f, p.y[i], 1500, 0);
+	assert(p.state[i] == DOD_GRUNT_ADVANCE);
+	/* a dead script actor never comes back */
+	assert(DodGrunt_Hurt(&p, i, 1000, now));
+	assert(!DodGrunt_RespawnDue(&p, i, now + 1000.0f));
+	/* an ordinary grunt still does */
+	DodGrunt_Spawn(&p, 0, DOD_TEAM_AXIS, 0, 0, 0, 0, 0.0f, 0);
+	assert(p.script[0] == 0);
+	assert(DodGrunt_Hurt(&p, 0, 1000, 0.0f) && DodGrunt_RespawnDue(&p, 0, DOD_GRUNT_RESPAWN));
+}
+
 int main(void)
 {
 	test_count();
@@ -178,6 +233,7 @@ int main(void)
 	test_move_check_stagger();
 	test_shooting();
 	test_rand_range();
+	test_script_actor();
 	printf("dod_grunts_test: ok (row %d bytes, pool %d bytes)\n", DodGrunt_RowBytes(), (int)sizeof(DodGruntPool));
 	return 0;
 }

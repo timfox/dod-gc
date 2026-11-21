@@ -89,6 +89,19 @@ static int dest_arg(ms_call *c, int i, float out[3])
 	}
 	if (v->type != MS_VECTOR && v->type != MS_STRING)
 		return 0;
+	if (v->type == MS_STRING) {
+		/* "$node" or "node": a targetname (MOHAA path nodes are often passed by name) */
+		const char *name = ms_arg_string(c, i);
+		if (name[0] == '$')
+			name++;
+		if ((name[0] >= 'a' && name[0] <= 'z') || (name[0] >= 'A' && name[0] <= 'Z') || name[0] == '_') {
+			uint32_t id = 0;
+			if (S.be.find(name, &id, 1) < 1 || !id || !S.be.valid(id))
+				return 0;
+			S.be.get_vec(id, DOD_MOHAA_ORIGIN, out);
+			return 1;
+		}
+	}
 	{
 		float raw[3];
 		ms_arg_vector(c, i, raw);
@@ -377,6 +390,37 @@ static int c_waitmove(ms_call *c)
 	return 0;
 }
 
+/* ---- actors (MOHAA AI soldiers; the game plays them with grunts) ---- */
+
+static int actor_order(ms_call *c, int order, const float pos[3])
+{
+	static const float zero[3] = {0, 0, 0};
+	if (!S.be.actor || !S.be.actor(target_id(c), order, pos ? pos : zero))
+		return ms_call_error(c, "%s: not an actor", ms_call_name(c));
+	return 0;
+}
+
+static int c_ai_on(ms_call *c) { return actor_order(c, DOD_MOHAA_AI_ON, NULL); }
+static int c_ai_off(ms_call *c) { return actor_order(c, DOD_MOHAA_AI_OFF, NULL); }
+static int c_attackplayer(ms_call *c) { return actor_order(c, DOD_MOHAA_ATTACK, NULL); }
+
+static int c_goto(ms_call *c)
+{
+	float pos[3];
+	const char *name = ms_call_name(c);
+	if (!dest_arg(c, 0, pos))
+		return ms_call_error(c, "%s needs a vector, an entity or a node name", name);
+	return actor_order(c, (name[0] == 'r' || name[0] == 'R') ? DOD_MOHAA_RUNTO : DOD_MOHAA_WALKTO, pos);
+}
+
+static int c_turnto(ms_call *c)
+{
+	float pos[3];
+	if (!dest_arg(c, 0, pos))
+		return 0;	/* "turnto NULL" clears a facing target in MOHAA; holding still is the same here */
+	return actor_order(c, DOD_MOHAA_TURNTO, pos);
+}
+
 static int c_playsound(ms_call *c) { S.be.sound(target_id(c), ms_arg_string(c, 0), 0); return 0; }
 static int c_loopsound(ms_call *c) { S.be.sound(target_id(c), ms_arg_string(c, 0), 1); return 0; }
 static int c_stoploopsound(ms_call *c) { S.be.sound(target_id(c), "", -1); return 0; }
@@ -468,6 +512,13 @@ static void register_commands(ms_vm *vm)
 		{"playsound", MS_ON_ENTITY, c_playsound},
 		{"loopsound", MS_ON_ENTITY, c_loopsound},
 		{"stoploopsound", MS_ON_ENTITY, c_stoploopsound},
+		{"ai_on", MS_ON_ENTITY, c_ai_on},
+		{"ai_off", MS_ON_ENTITY, c_ai_off},
+		{"attackplayer", MS_ON_ENTITY, c_attackplayer},
+		{"runto", MS_ON_ENTITY, c_goto},
+		{"walkto", MS_ON_ENTITY, c_goto},
+		{"turnto", MS_ON_ENTITY, c_turnto},
+		{"lookat", MS_ON_ENTITY, c_turnto},
 		{"trigger", MS_ON_THREAD, c_trigger},
 		{"spawn", MS_ON_THREAD, c_spawn},
 		{"centerprint", MS_ON_THREAD, c_centerprint},

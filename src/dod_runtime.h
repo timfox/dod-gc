@@ -69,6 +69,13 @@ void DodFilm_Think( void );
 /* Grunts (dod_grunt.cpp): opt-in cheap fodder for co-op matches (dod_grunts > 0). Init at map start, Think each server frame. */
 void DodGrunts_Init( void );
 void DodGrunts_Think( void );
+/* MOHAA mission actors played by grunts (dod_mohaa_ents.cpp). Precache both sides' bodies once a script runs; spawn a
+ * script-owned grunt (NULL when the pool or the edicts are full); give it a DOD_MOHAA_* order (0: not a grunt). */
+void DodGrunts_PrecacheBodies( void );
+edict_t *DodGrunts_ScriptSpawn( int team, const Vector &origin, float yaw );
+int DodGrunts_ScriptOrder( edict_t *e, int order, const float pos[3] );
+/* A script removes its actor: frees the slot and the edict. 0: not a script grunt. */
+int DodGrunts_ScriptRemove( edict_t *e );
 /* What the grunts need from the rules: a player's side (a DodTeam) and a random spawn point of a side. */
 int DodGC_PlayerTeam( CBasePlayer *pPlayer );
 BOOL DodGC_TeamSpawnPoint( DodTeam team, Vector *origin, float *yaw );
