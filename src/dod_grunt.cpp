@@ -49,6 +49,9 @@ static cvar_t dod_grunt_team = { "dod_grunt_team", "0", FCVAR_SERVER };
 static cvar_t dod_grunt_rush = { "dod_grunt_rush", "1", FCVAR_SERVER };
 static cvar_t dod_grunt_skill = { "dod_grunt_skill", "1", FCVAR_SERVER };
 static cvar_t dod_grunt_log = { "dod_grunt_log", "1", FCVAR_SERVER };
+/* dod_grunt_near D (test aid, default 0 off): a grunt spawns D units in front of the first human it is an enemy of, on clear
+ * ground in his sight, instead of at its side's spawn point, so a short run can show the fight. */
+static cvar_t dod_grunt_near = { "dod_grunt_near", "0", FCVAR_SERVER };
 
 class CDodGrunt : public CBaseAnimating
 {
@@ -94,6 +97,7 @@ void DodGrunts_Init( void )
 		Dod_CvarRegisterKeep( &dod_grunt_rush );
 		Dod_CvarRegisterKeep( &dod_grunt_skill );
 		Dod_CvarRegisterKeep( &dod_grunt_log );
+		Dod_CvarRegisterKeep( &dod_grunt_near );
 		g_registered = 1;
 	}
 	/* a new map: the old map's entities are gone with it */
@@ -233,6 +237,42 @@ static bool GruntSpawn( int i, int team )
 	if( !body || !body[0] || !DodGC_TeamSpawnPoint( (DodTeam)team, &origin, &yaw ) )
 		return false;
 	snprintf( model, sizeof( model ), "models/player/%s/%s.mdl", body, body );
+	const float near_d = CVAR_GET_FLOAT( "dod_grunt_near" );
+	bool placed = near_d <= 0.0f;
+	if( near_d > 0.0f ) {
+		for( int k = 1; k <= gpGlobals->maxClients; k++ ) {
+			CBasePlayer *pl = GruntPlayer( k );
+			if( !pl || ( pl->pev->flags & FL_FAKECLIENT ) || DodGC_PlayerTeam( pl ) == team )
+				continue;
+			UTIL_MakeVectors( pl->pev->v_angle );
+			Vector fwd = gpGlobals->v_forward;
+			fwd.z = 0.0f;
+			fwd = fwd.Normalize();
+			/* a few tries at a clear spot in his sight */
+			for( int attempt = 0; attempt < 10; attempt++ ) {
+				const Vector spot = pl->pev->origin + fwd * ( near_d * RANDOM_FLOAT( 0.6f, 1.2f ) ) + gpGlobals->v_right * RANDOM_FLOAT( -300.0f, 300.0f );
+				TraceResult tr;
+				UTIL_TraceLine( spot + Vector( 0, 0, 64 ), spot - Vector( 0, 0, 300 ), ignore_monsters, NULL, &tr );
+				if( tr.fStartSolid || tr.flFraction >= 1.0f )
+					continue;
+				const Vector at = tr.vecEndPos;
+				UTIL_TraceLine( pl->pev->origin + pl->pev->view_ofs, at + Vector( 0, 0, 40 ), ignore_monsters, pl->edict(), &tr );
+				if( tr.flFraction < 1.0f )
+					continue;	/* not in his sight */
+				origin = at;
+				yaw = UTIL_VecToYaw( pl->pev->origin - at );
+				placed = true;
+				break;
+			}
+			break;
+		}
+	}
+	if( !placed )
+		return false;	/* dod_grunt_near: wait until a human has a clear spot in front of him */
+	if( near_d <= 0.0f ) {
+		origin.x += RANDOM_FLOAT( -64.0f, 64.0f );
+		origin.y += RANDOM_FLOAT( -64.0f, 64.0f );
+	}
 	CDodGrunt *e = GruntLive( i ) ? g_ents[i] : NULL;
 	if( !e ) {
 		/* A full edict table hands the game NULL, and GetClassPtr does not survive it. */
@@ -244,8 +284,6 @@ static bool GruntSpawn( int i, int team )
 		g_ents[i] = e;
 	}
 	/* a spread around the spawn so a wave does not stand in one spot */
-	origin.x += RANDOM_FLOAT( -64.0f, 64.0f );
-	origin.y += RANDOM_FLOAT( -64.0f, 64.0f );
 	e->pev->classname = MAKE_STRING( "dod_grunt" );
 	e->pev->effects &= ~EF_NODRAW;
 	e->pev->movetype = MOVETYPE_NONE;
@@ -328,8 +366,14 @@ static void GruntShoot( int i )
 		return;
 	TraceResult tr;
 	UTIL_TraceLine( from, aim + dir * 8.0f, dont_ignore_monsters, e->edict(), &tr );
-	if( tr.pHit != pl->edict() )
+	if( tr.pHit != pl->edict() ) {
+		static int miss_logs;
+		if( miss_logs++ < 8 )
+			ALERT( at_console, "GRUNT %d shot missed its man: hit %s (fraction %.2f of %.0f), target at %.0f %.0f %.0f solid %d movetype %d\n", i,
+				tr.pHit ? STRING( tr.pHit->v.classname ) : "nothing", tr.flFraction, dist,
+				pl->pev->origin.x, pl->pev->origin.y, pl->pev->origin.z, (int)pl->pev->solid, (int)pl->pev->movetype );
 		return;	/* something stepped in between */
+	}
 	g_pool.stats.hits++;
 	ClearMultiDamage();
 	pl->TraceAttack( e->pev, ( gun ? gun->damage : 30.0f ) * 0.6f, dir, &tr, DMG_BULLET | DMG_NEVERGIB );
