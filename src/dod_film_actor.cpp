@@ -350,7 +350,10 @@ static void DodFilm_PlaceVehicle( CDodFilmActor *ent, const DodFilmSample *s, fl
 			turret = atan2f( a->aim[1] - origin.y, a->aim[0] - origin.x ) * 57.29578f - s->yaw;
 			turret = fmodf( turret + 540.0f, 360.0f ) - 180.0f;
 		}
-		ent->SetBoneController( 0, turret );
+		/* The byte itself, not SetBoneController: for a -180..180 controller the SDK's wrap (start + 359 <
+		 * end, so it folds into 0..360) turned every angle to the right of the hull into 180..360 and
+		 * clamped it to 255, the gun held straight back (a turret aimed 74-106 degrees right). */
+		ent->pev->controller[0] = (byte)( ( turret + 180.0f ) * ( 255.0f / 360.0f ) + 0.5f );
 	}
 	if( t >= 0.0f )
 		ent->m_phase = fmodf( ent->m_phase + dt * ent->m_flFrameRate, 256.0f );
