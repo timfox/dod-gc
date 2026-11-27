@@ -360,11 +360,12 @@ static void DodFilm_PlaceVehicle( CDodFilmActor *ent, const DodFilmSample *s, fl
 	/* Where the vehicle really is, once a second: ep02 s125's Panzer was off its path for most of the
 	 * shot and drew tilted at the end, and nothing in the log said where the game had put it. */
 	{
-		static float next_log[DOD_FILM_MAX_ACTORS];
+		/* by the shot's clock: in capture the game's clock runs several times faster than the film's */
+		static int last_sec[DOD_FILM_MAX_ACTORS];
 		const int i = ent->m_actor;
-		if( i >= 0 && i < DOD_FILM_MAX_ACTORS && ( t < 0.0f || gpGlobals->time >= next_log[i]
-			|| gpGlobals->time + 2.0f < next_log[i] ) ) {
-			next_log[i] = gpGlobals->time + 1.0f;
+		const int sec = t < 0.0f ? -1 : (int)t;
+		if( i >= 0 && i < DOD_FILM_MAX_ACTORS && ( sec < 0 || sec != last_sec[i] ) ) {
+			last_sec[i] = sec;
 			ALERT( at_console, "FILM VEHICLE %s t=%.2f org=(%.0f %.0f %.0f) ang=(%.1f %.1f %.1f) turret=%d abs=(%.0f %.0f %.0f)-(%.0f %.0f %.0f)\n",
 				g_film_cast.actors[i].name, t, origin.x, origin.y, origin.z, ent->pev->angles.x, ent->pev->angles.y,
 				ent->pev->angles.z, ent->pev->controller[0], ent->pev->absmin.x, ent->pev->absmin.y, ent->pev->absmin.z,
