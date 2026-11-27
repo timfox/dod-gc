@@ -56,6 +56,7 @@ static int g_film_precached[4];	/* by DodTeam */
  * models (its rifle counts as one); a class whose gun was not precached carries the rifle. */
 #define DOD_FILM_GUNS_PER_SIDE 4
 static int g_film_gun[4][DOD_CLASS_COUNT];
+static int g_film_sidearm[4];	/* the side's pistol is precached: cast.txt "sidearm <team>" */
 /* The vehicles cine/cast.txt asked for ("vehicle <model>" lines): a model can only be set on an
  * entity once it was precached with the map, so a cast's vehicle not on this list is left out. */
 #define DOD_FILM_MAX_VEHICLE_MODELS 4
@@ -263,6 +264,13 @@ static const char *DodFilm_ClassGun( int team, int player_class )
 	return def && def->player_model && def->player_model[0] ? def->player_model : NULL;
 }
 
+/* The side's pistol (the Colt, the Luger), for a key that plays a pistol clip. */
+static const char *DodFilm_Sidearm( int team )
+{
+	const DodWeaponDef *def = Dod_GetWeaponDef( team == DOD_TEAM_AXIS ? DOD_WEAPON_LUGER : DOD_WEAPON_COLT );
+	return def && def->player_model && def->player_model[0] ? def->player_model : NULL;
+}
+
 static const char *DodFilm_WeaponModel( int team, int player_class )
 {
 	if( team >= 0 && team < 4 && player_class > DOD_CLASS_NONE && player_class < DOD_CLASS_COUNT
@@ -427,10 +435,14 @@ static void DodFilm_Place( int i, float t, float dt )
 		ent->m_pose = s.pose;
 		ent->m_seq = s.seq;
 		{
-			/* A bare key's sequence is played empty handed; any other puts his gun back. */
+			/* A bare key's sequence is played empty handed, a pistol key's with the side's pistol (when
+			 * the cast file had it precached); any other puts his own gun back. */
 			const DodFilmActor *who = &g_film_cast.actors[i];
-			const char *gun = ( s.seq && s.bare ) ? NULL : DodFilm_WeaponModel( who->team,
-				who->player_class > DOD_CLASS_NONE ? who->player_class : DOD_CLASS_RIFLEMAN );
+			const int hands = s.seq ? s.bare : DOD_FILM_HANDS_GUN;
+			const char *gun = hands == DOD_FILM_HANDS_BARE ? NULL
+				: hands == DOD_FILM_HANDS_PISTOL && who->team >= 0 && who->team < 4 && g_film_sidearm[who->team]
+				? DodFilm_Sidearm( who->team )
+				: DodFilm_WeaponModel( who->team, who->player_class > DOD_CLASS_NONE ? who->player_class : DOD_CLASS_RIFLEMAN );
 			ent->pev->weaponmodel = gun ? MAKE_STRING( gun ) : 0;
 		}
 		/* A looping pose starts at the actor's own point in the cycle, so a squad that
@@ -818,6 +830,7 @@ void DodFilm_Init( void )
 	memset( &g_film_cast, 0, sizeof( g_film_cast ) );
 	memset( g_film_precached, 0, sizeof( g_film_precached ) );
 	memset( g_film_gun, 0, sizeof( g_film_gun ) );
+	memset( g_film_sidearm, 0, sizeof( g_film_sidearm ) );
 	memset( g_film_vehicle, 0, sizeof( g_film_vehicle ) );
 	g_film_fireball = 0;
 	memset( g_film_gibs, 0, sizeof( g_film_gibs ) );
@@ -882,6 +895,16 @@ void DodFilm_Init( void )
 					PRECACHE_MODEL( (char *)STRING( ALLOC_STRING( path ) ) );
 					snprintf( g_film_vehicle[slot], sizeof( g_film_vehicle[slot] ), "%s", vname );
 					ALERT( at_console, "FILM: precached %s for vehicles\n", path );
+				}
+				continue;
+			}
+			if( sscanf( line, "sidearm %15s", tname ) == 1 ) {
+				const int team = !strcmp( tname, "axis" ) ? DOD_TEAM_AXIS : !strcmp( tname, "allies" ) ? DOD_TEAM_ALLIES : 0;
+				const char *pistol = team ? DodFilm_Sidearm( team ) : NULL;
+				if( pistol && g_film_precached[team] && !g_film_sidearm[team] ) {
+					PRECACHE_MODEL( (char *)pistol );
+					g_film_sidearm[team] = 1;
+					ALERT( at_console, "FILM: precached %s for %s pistol clips\n", pistol, tname );
 				}
 				continue;
 			}

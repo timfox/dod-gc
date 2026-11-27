@@ -324,9 +324,12 @@ int DodFilm_ParseCast(DodFilmCast *cast, const char *text, char *err, int err_si
 				if (ntok >= 9 && (play = DodFilm_PlayFromName(tok[8])) < 0)
 					return set_err(err, err_size, lineno, "unknown play (loop, once, upper, upperloop)");
 				if (ntok >= 10) {
-					if (strcmp(tok[9], "bare"))
-						return set_err(err, err_size, lineno, "unknown hands (bare)");
-					k->bare = 1;
+					if (!strcmp(tok[9], "bare"))
+						k->bare = DOD_FILM_HANDS_BARE;
+					else if (!strcmp(tok[9], "pistol"))
+						k->bare = DOD_FILM_HANDS_PISTOL;
+					else
+						return set_err(err, err_size, lineno, "unknown hands (bare, pistol)");
 				}
 				k->seq = (unsigned char)slot;
 				k->play = (unsigned char)play;
