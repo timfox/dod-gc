@@ -233,12 +233,15 @@ def write_mdl(name, verts, vbone, norms, nbone, tris, ring, pix, pal, skin_size,
     out += b"\0" * 112
     meshindex = len(out)
     out += b"\0" * 20
-    # triangle commands: one 3-vertex strip per triangle
+    # triangle commands: one 3-vertex strip per triangle, wound clockwise as GoldSrc studio models are
+    # (retail sherman.mdl, panzer.mdl, us-inf.mdl: every triangle's (v1-v0)x(v2-v0) points against its
+    # normals). In the OBJ's counter-clockwise order the engine culled the outside of every face and the
+    # Panzer IV drew inside-out in game. The normals stay as computed, outward.
     align()
     triindex = len(out)
     for tri in tris:
         out += struct.pack("<h", 3)
-        for vi, ni, s, t in tri:
+        for vi, ni, s, t in reversed(tri):
             out += struct.pack("<4h", vi, ni, s, t)
     out += struct.pack("<h", 0)
     align()

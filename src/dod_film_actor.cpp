@@ -357,7 +357,7 @@ static void DodFilm_PlaceVehicle( CDodFilmActor *ent, const DodFilmSample *s, fl
 	ent->pev->frame = ent->m_phase;
 	ent->pev->framerate = 0.0f;
 	ent->pev->animtime = gpGlobals->time;
-	/* Where the vehicle really is, once a second: ep02 s125's Panzer was off its path for most of the
+	/* Where the vehicle really is, once a second: a test shot's Panzer was off its path for most of the
 	 * shot and drew tilted at the end, and nothing in the log said where the game had put it. */
 	{
 		/* by the shot's clock: in capture the game's clock runs several times faster than the film's */
