@@ -120,18 +120,44 @@ def classify(parts, vs, names=None):
     return {i: (1 if i in tur else 0) for i in range(len(parts))}, body
 
 
-def quantise(png, size):
+def recolour(rgb, tint, amount):
+    """Move a skin's overall colour to `tint` and keep its shading.
+
+    Each pixel's brightness relative to the skin's mean brightness is applied to `tint`, then blended
+    with the original by `amount` (0 keeps the skin, 1 is the tint alone). A dark grey-brown skin painted
+    this way reads as the paint scheme named by `tint` and as bright as it, under the same lighting.
+    `rgb` is a flat list of (r, g, b) tuples; returns a new list.
+    """
+    if not rgb or amount <= 0.0:
+        return list(rgb)
+    lum = [0.299 * r + 0.587 * g + 0.114 * b for r, g, b in rgb]
+    mean = sum(lum) / len(lum) or 1.0
+    out = []
+    for (r, g, b), l in zip(rgb, lum):
+        k = l / mean
+        px = []
+        for c, t in zip((r, g, b), tint):
+            v = (1.0 - amount) * c + amount * t * k
+            px.append(max(0, min(255, int(v + 0.5))))
+        out.append(tuple(px))
+    return out
+
+
+def quantise(png, size, tint=None, amount=0.0):
     from PIL import Image
     im = Image.open(png).convert("RGB")
     if im.size != (size, size):
         im = im.resize((size, size), Image.LANCZOS)
+    if tint and amount > 0.0:
+        im.putdata(recolour(list(im.getdata()), tint, amount))
     q = im.quantize(colors=256, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE)
     pal = (q.getpalette() or [])[:768]
     pal += [0] * (768 - len(pal))
     return bytes(q.tobytes()), bytes(pal)
 
 
-def build(parts, vs, vts, skin_png, name, length, skin_size=256, turret_names=None, report=None):
+def build(parts, vs, vts, skin_png, name, length, skin_size=256, turret_names=None, report=None,
+          tint=None, tint_amount=0.0):
     side_of, body = classify(parts, vs, turret_names)
     # scale and place: the whole length along X; the hull's footprint centred on the origin, ground at z 0
     lo, hi = _bbox([vs[c[0]] for p in parts for tri in p["tris"] for c in tri])
@@ -184,7 +210,7 @@ def build(parts, vs, vts, skin_png, name, length, skin_size=256, turret_names=No
                 t = min(skin_size - 1, max(0, int(round((1.0 - (v % 1.0 if v != 1.0 else 1.0)) * (skin_size - 1)))))
                 corner.append((vi, ni, s, t))
             tris.append(corner)
-    pix, pal = quantise(skin_png, skin_size)
+    pix, pal = quantise(skin_png, skin_size, tint, tint_amount)
     world = [place(vs[c[0]]) for p in parts for tri in p["tris"] for c in tri]
     return write_mdl(name, verts, vbone, norms, nbone, tris, ring, pix, pal, skin_size, _bbox(world)), len(tris)
 
@@ -233,12 +259,15 @@ def write_mdl(name, verts, vbone, norms, nbone, tris, ring, pix, pal, skin_size,
     out += b"\0" * 112
     meshindex = len(out)
     out += b"\0" * 20
-    # triangle commands: one 3-vertex strip per triangle
+    # triangle commands: one 3-vertex strip per triangle, wound clockwise as GoldSrc studio models are
+    # (retail sherman.mdl, panzer.mdl, us-inf.mdl: every triangle's (v1-v0)x(v2-v0) points against its
+    # normals). In the OBJ's counter-clockwise order the engine culled the outside of every face and the
+    # Panzer IV drew inside-out in game. The normals stay as computed, outward.
     align()
     triindex = len(out)
     for tri in tris:
         out += struct.pack("<h", 3)
-        for vi, ni, s, t in tri:
+        for vi, ni, s, t in reversed(tri):
             out += struct.pack("<4h", vi, ni, s, t)
     out += struct.pack("<h", 0)
     align()
@@ -293,12 +322,19 @@ def main(argv=None):
     ap.add_argument("--skin-size", type=int, default=256)
     ap.add_argument("--turret-parts", default=None, help="comma-separated group names that turn with the turret")
     ap.add_argument("--report", default=None)
+    ap.add_argument("--tint", default=None,
+                    help="R,G,B paint colour to move the skin to, keeping its shading (e.g. a period paint scheme)")
+    ap.add_argument("--tint-amount", type=float, default=0.8, help="0 keeps the skin, 1 is the tint alone")
     a = ap.parse_args(argv)
+    tint = tuple(int(c) for c in a.tint.split(",")) if a.tint else None
+    if tint is not None and (len(tint) != 3 or not all(0 <= c <= 255 for c in tint)):
+        ap.error("--tint takes R,G,B with each 0..255")
     parts, vs, vts, _ = read_obj(a.obj)
     vs = to_goldsrc(vs, a.up, a.front)
     name = a.name or a.out.rsplit("/", 1)[-1].rsplit(".", 1)[0]
     names = set(a.turret_parts.split(",")) if a.turret_parts else None
-    data, ntris = build(parts, vs, vts, a.skin, name, a.length, a.skin_size, names, a.report)
+    data, ntris = build(parts, vs, vts, a.skin, name, a.length, a.skin_size, names, a.report,
+                        tint, a.tint_amount if tint else 0.0)
     with open(a.out, "wb") as fh:
         fh.write(data)
     print(f"obj_to_mdl: {len(parts)} parts, {ntris} triangles -> {a.out} ({len(data)} bytes)")
