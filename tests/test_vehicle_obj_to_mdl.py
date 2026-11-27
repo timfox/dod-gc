@@ -85,14 +85,15 @@ def _triangles(mdl):
 
 class WindingTest(unittest.TestCase):
 	def test_triangles_wind_against_their_normals_like_retail(self):
-		from PIL import Image
-
+		# The skin is not what this checks, and the CI runner has no Pillow: a flat 8x8 one.
+		real_quantise = obj_to_mdl.quantise
+		obj_to_mdl.quantise = lambda png, size: (bytes(size * size), bytes(768))
+		self.addCleanup(setattr, obj_to_mdl, "quantise", real_quantise)
 		with tempfile.TemporaryDirectory() as tmp:
 			obj = os.path.join(tmp, "box.obj")
 			skin = os.path.join(tmp, "skin.png")
 			with open(obj, "w") as fh:
 				fh.write(BOX_OBJ)
-			Image.new("RGB", (8, 8), (200, 180, 120)).save(skin)
 			parts, vs, vts, _ = obj_to_mdl.read_obj(obj)
 			vs = obj_to_mdl.to_goldsrc(vs, "z", "x")
 			mdl, ntris = obj_to_mdl.build(parts, vs, vts, skin, "box", 100.0, 8, {"turret"})
