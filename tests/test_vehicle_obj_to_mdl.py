@@ -87,7 +87,7 @@ class WindingTest(unittest.TestCase):
 	def test_triangles_wind_against_their_normals_like_retail(self):
 		# The skin is not what this checks, and the CI runner has no Pillow: a flat 8x8 one.
 		real_quantise = obj_to_mdl.quantise
-		obj_to_mdl.quantise = lambda png, size: (bytes(size * size), bytes(768))
+		obj_to_mdl.quantise = lambda png, size, *rest: (bytes(size * size), bytes(768))
 		self.addCleanup(setattr, obj_to_mdl, "quantise", real_quantise)
 		with tempfile.TemporaryDirectory() as tmp:
 			obj = os.path.join(tmp, "box.obj")
@@ -106,6 +106,23 @@ class WindingTest(unittest.TestCase):
 			geo = obj_to_mdl._cross(e1, e2)
 			nsum = [sum(n[j] for n in norms) for j in range(3)]
 			self.assertLess(obj_to_mdl._dot(geo, nsum), 0.0)
+
+
+class RecolourTest(unittest.TestCase):
+	def test_moves_the_mean_to_the_tint_and_keeps_shading(self):
+		skin = [(40, 36, 30), (80, 72, 60), (60, 54, 45)]
+		tint = (190, 165, 110)
+		out = obj_to_mdl.recolour(skin, tint, 1.0)
+		for c in range(3):
+			mean = sum(p[c] for p in out) / len(out)
+			self.assertAlmostEqual(mean, tint[c], delta=1.5)
+		lum = [0.299 * r + 0.587 * g + 0.114 * b for r, g, b in out]
+		self.assertLess(lum[0], lum[2])
+		self.assertLess(lum[2], lum[1])
+
+	def test_zero_amount_keeps_the_skin(self):
+		skin = [(10, 20, 30), (200, 100, 50)]
+		self.assertEqual(obj_to_mdl.recolour(skin, (190, 165, 110), 0.0), skin)
 
 
 if __name__ == "__main__":
