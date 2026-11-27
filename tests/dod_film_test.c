@@ -214,6 +214,16 @@ static void test_named_sequences(void)
 	/* errors */
 	assert(DodFilm_ParseCast(&cast, "act 1\nactor a axis\nkey 0 0 0 0 - stand cower sometimes\n", err, sizeof(err)) < 0);
 	assert(strstr(err, "play"));
+	/* bare: the gun out of his hands for that sequence only */
+	assert(DodFilm_ParseCast(&cast, "act 1\nactor a allies\nkey 0 0 0 0 - stand punch once bare\nkey 2 0 0 0 - stand\n",
+		err, sizeof(err)) == 1);
+	assert(cast.actors[0].keys[0].bare == 1 && cast.actors[0].keys[1].bare == 0);
+	DodFilm_Sample(&cast.actors[0], 1.0f, &s);
+	assert(s.seq == 1 && s.bare);
+	DodFilm_Sample(&cast.actors[0], 3.0f, &s);
+	assert(s.seq == 0 && !s.bare);
+	assert(DodFilm_ParseCast(&cast, "act 1\nactor a axis\nkey 0 0 0 0 - stand punch once gloved\n", err, sizeof(err)) < 0);
+	assert(strstr(err, "hands"));
 	{
 		char big[8192] = "act 1\n";
 		int i;

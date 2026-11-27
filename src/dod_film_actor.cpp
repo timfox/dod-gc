@@ -426,6 +426,13 @@ static void DodFilm_Place( int i, float t, float dt )
 		ent->m_gait = ( s.seq || upper >= 0 ) ? gait : 0;
 		ent->m_pose = s.pose;
 		ent->m_seq = s.seq;
+		{
+			/* A bare key's sequence is played empty handed; any other puts his gun back. */
+			const DodFilmActor *who = &g_film_cast.actors[i];
+			const char *gun = ( s.seq && s.bare ) ? NULL : DodFilm_WeaponModel( who->team,
+				who->player_class > DOD_CLASS_NONE ? who->player_class : DOD_CLASS_RIFLEMAN );
+			ent->pev->weaponmodel = gun ? MAKE_STRING( gun ) : 0;
+		}
 		/* A looping pose starts at the actor's own point in the cycle, so a squad that
 		 * starts walking together does not step in lockstep. One-shot poses start at 0. */
 		ent->m_phase = DodFilm_SampleLoops( &s ) ? DodFilm_ActorPhase( i ) : 0.0f;
