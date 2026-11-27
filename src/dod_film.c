@@ -316,13 +316,21 @@ int DodFilm_ParseCast(DodFilmCast *cast, const char *text, char *err, int err_si
 			k->pose = (unsigned char)pose;
 			k->seq = 0;
 			k->play = DOD_FILM_PLAY_LOOP;
-			k->pad = 0;
+			k->bare = 0;
 			if (ntok >= 8) {
 				int slot = seq_slot(cast, tok[7]), play = DOD_FILM_PLAY_LOOP;
 				if (!slot)
 					return set_err(err, err_size, lineno, "too many named sequences");
 				if (ntok >= 9 && (play = DodFilm_PlayFromName(tok[8])) < 0)
 					return set_err(err, err_size, lineno, "unknown play (loop, once, upper, upperloop)");
+				if (ntok >= 10) {
+					if (!strcmp(tok[9], "bare"))
+						k->bare = DOD_FILM_HANDS_BARE;
+					else if (!strcmp(tok[9], "pistol"))
+						k->bare = DOD_FILM_HANDS_PISTOL;
+					else
+						return set_err(err, err_size, lineno, "unknown hands (bare, pistol)");
+				}
 				k->seq = (unsigned char)slot;
 				k->play = (unsigned char)play;
 			}
@@ -481,6 +489,7 @@ static void sample_keys(const DodFilmActor *actor, float t, DodFilmSample *out)
 		out->pose = (DodFilmPose)k->pose;
 		out->seq = k->seq;
 		out->play = (DodFilmPlay)k->play;
+		out->bare = k->bare;
 		return;
 	}
 	for (i = 0; i + 1 < actor->key_count; ++i) {
@@ -496,6 +505,7 @@ static void sample_keys(const DodFilmActor *actor, float t, DodFilmSample *out)
 			out->pose = (DodFilmPose)a->pose;
 			out->seq = a->seq;
 			out->play = (DodFilmPlay)a->play;
+			out->bare = a->bare;
 			out->moving = dist >= 1.0f && span > 0.0f;
 			out->speed = out->moving ? dist / span : 0.0f;
 			if (a->yaw != DOD_FILM_YAW_TRAVEL)
@@ -512,6 +522,7 @@ static void sample_keys(const DodFilmActor *actor, float t, DodFilmSample *out)
 		out->pose = (DodFilmPose)k->pose;
 		out->seq = k->seq;
 		out->play = (DodFilmPlay)k->play;
+		out->bare = k->bare;
 	}
 }
 

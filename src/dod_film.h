@@ -7,7 +7,7 @@
  *
  *   act 1
  *   actor <name> <allies|axis> [class]
- *   key <t> <x> <y> <z> <yaw|-> <pose> [<sequence> [loop|once|upper|upperloop]]
+ *   key <t> <x> <y> <z> <yaw|-> <pose> [<sequence> [loop|once|upper|upperloop [bare|pistol]]]
  *   ...
  *   fx <t> <kind> <x> <y> <z> [scale]
  *   fx <t> tracer <x> <y> <z> <x2> <y2> <z2>
@@ -27,6 +27,10 @@
  * it over the pose's standing legs (an upper-body sequence such as a hand signal or a
  * reload). Consecutive keys naming the same sequence keep playing it, so a key that
  * holds a one-shot does not restart it. A model without the sequence plays the pose.
+ * "bare" after the play takes the gun out of his hands while the sequence plays: a
+ * punch, a drink, a prayer or a sword cut from the asset packs is played empty handed,
+ * not with the rifle through it. "pistol" there puts the side's pistol in his hand for it
+ * (cast.txt "sidearm <team>" precaches it; without that he keeps his own gun).
  * This file is engine-free so
  * the parsing and sampling are host-tested; the entity side is dod_film_actor.cpp. */
 #ifndef DODGC_DOD_FILM_H
@@ -69,6 +73,12 @@ typedef enum {
 	DOD_FILM_PLAY_COUNT
 } DodFilmPlay;
 
+typedef enum {
+	DOD_FILM_HANDS_GUN = 0,	/* his class's gun */
+	DOD_FILM_HANDS_BARE,		/* empty handed */
+	DOD_FILM_HANDS_PISTOL		/* the side's pistol */
+} DodFilmHands;
+
 typedef struct {
 	float t;
 	float origin[3];
@@ -76,7 +86,7 @@ typedef struct {
 	unsigned char pose;	/* DodFilmPose */
 	unsigned char seq;	/* 0: the pose's own sequence; n: the cast's seq_names[n - 1] */
 	unsigned char play;	/* DodFilmPlay, when seq is set */
-	unsigned char pad;	/* the key stays 24 bytes: 64 actors of 16 keys live in MEM1 */
+	unsigned char bare;	/* DodFilmHands while the sequence plays; the key stays 24 bytes */
 } DodFilmKey;
 
 typedef struct {
@@ -136,6 +146,7 @@ typedef struct {
 	float speed;	/* units per second along the current leg */
 	int seq;	/* the key's named sequence (DodFilmKey.seq), 0 for the pose's own */
 	DodFilmPlay play;
+	int bare;	/* the key's DodFilmHands */
 } DodFilmSample;
 
 /* Parse a cast file. Returns the number of actors (0 is a valid, empty cast) or -1
