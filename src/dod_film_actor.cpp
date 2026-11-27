@@ -20,6 +20,7 @@
 #include "dod_game.h"
 #include "dod_film.h"
 #include "dod_weapons.h"
+#include "studio.h"
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -356,6 +357,42 @@ static void DodFilm_PlaceVehicle( CDodFilmActor *ent, const DodFilmSample *s, fl
 	ent->pev->frame = ent->m_phase;
 	ent->pev->framerate = 0.0f;
 	ent->pev->animtime = gpGlobals->time;
+	/* Where the vehicle really is, once a second: ep02 s125's Panzer was off its path for most of the
+	 * shot and drew tilted at the end, and nothing in the log said where the game had put it. */
+	{
+		static float next_log[DOD_FILM_MAX_ACTORS];
+		const int i = ent->m_actor;
+		if( i >= 0 && i < DOD_FILM_MAX_ACTORS && ( t < 0.0f || gpGlobals->time >= next_log[i]
+			|| gpGlobals->time + 2.0f < next_log[i] ) ) {
+			next_log[i] = gpGlobals->time + 1.0f;
+			ALERT( at_console, "FILM VEHICLE %s t=%.2f org=(%.0f %.0f %.0f) ang=(%.1f %.1f %.1f) turret=%d abs=(%.0f %.0f %.0f)-(%.0f %.0f %.0f)\n",
+				g_film_cast.actors[i].name, t, origin.x, origin.y, origin.z, ent->pev->angles.x, ent->pev->angles.y,
+				ent->pev->angles.z, ent->pev->controller[0], ent->pev->absmin.x, ent->pev->absmin.y, ent->pev->absmin.z,
+				ent->pev->absmax.x, ent->pev->absmax.y, ent->pev->absmax.z );
+		}
+	}
+}
+
+/* A vehicle's box. The engine gives a studio model no size (SV_SetModel), so a film vehicle's absmin and
+ * absmax were a 2-unit box at its tracks; the GameCube client culls a lean model by that box against the
+ * world's visible leaves, and the ground point under a tank sat in leaves the camera did not see. The
+ * model's own bounds when the game has its header; a Panzer-sized box (obj_to_mdl.py: about 230 units
+ * long) when the lean load left the game without it. */
+static void DodFilm_VehicleSize( CDodFilmActor *ent )
+{
+	const studiohdr_t *hdr = (const studiohdr_t *)GET_MODEL_PTR( ent->edict() );
+	Vector mins( -144.0f, -144.0f, 0.0f ), maxs( 144.0f, 144.0f, 128.0f );
+	if( hdr && hdr->bbmax[0] - hdr->bbmin[0] > 16.0f && hdr->bbmax[2] - hdr->bbmin[2] > 16.0f ) {
+		/* the hull turns with its yaw: a square box as wide as the model is long */
+		float r = 0.0f;
+		for( int k = 0; k < 2; k++ ) {
+			r = fmaxf( r, fabsf( hdr->bbmin[k] ) );
+			r = fmaxf( r, fabsf( hdr->bbmax[k] ) );
+		}
+		mins = Vector( -r, -r, hdr->bbmin[2] );
+		maxs = Vector( r, r, hdr->bbmax[2] );
+	}
+	UTIL_SetSize( ent->pev, mins, maxs );
 }
 
 static void DodFilm_Place( int i, float t, float dt )
@@ -766,9 +803,11 @@ static void DodFilm_CastCommand( void )
 			ent->m_seq = 0;
 			ent->m_gait = 0;
 			ent->m_phase = 0.0f;
+			DodFilm_VehicleSize( ent );
 			g_film_ents[i] = ent;
 			DodFilm_Place( i, gpGlobals->time - g_film_start, 0.0f );
-			ALERT( at_console, "FILM VEHICLE %s: %s\n", a->name, model );
+			ALERT( at_console, "FILM VEHICLE %s: %s, box (%.0f %.0f %.0f)-(%.0f %.0f %.0f)\n", a->name, model,
+				ent->pev->mins.x, ent->pev->mins.y, ent->pev->mins.z, ent->pev->maxs.x, ent->pev->maxs.y, ent->pev->maxs.z );
 			placed++;
 			continue;
 		}
