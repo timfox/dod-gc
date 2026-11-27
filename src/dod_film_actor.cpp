@@ -369,10 +369,18 @@ static void DodFilm_PlaceVehicle( CDodFilmActor *ent, const DodFilmSample *s, fl
 		const int sec = t < 0.0f ? -1 : (int)t;
 		if( i >= 0 && i < DOD_FILM_MAX_ACTORS && ( sec < 0 || sec != last_sec[i] ) ) {
 			last_sec[i] = sec;
-			ALERT( at_console, "FILM VEHICLE %s t=%.2f org=(%.0f %.0f %.0f) ang=(%.1f %.1f %.1f) turret=%d abs=(%.0f %.0f %.0f)-(%.0f %.0f %.0f)\n",
+			/* and what the floor trace under it hits: a tank sat ~20 units under cobbles that the map's
+			 * BSP puts at the keyed height */
+			TraceResult tr;
+			UTIL_TraceLine( Vector( s->origin[0], s->origin[1], s->origin[2] + 24.0f ),
+				Vector( s->origin[0], s->origin[1], s->origin[2] - 320.0f ), ignore_monsters, NULL, &tr );
+			ALERT( at_console, "FILM VEHICLE %s t=%.2f org=(%.0f %.0f %.0f) ang=(%.1f %.1f %.1f) turret=%d abs=(%.0f %.0f %.0f)-(%.0f %.0f %.0f)"
+				" key z %.1f floor %.1f (fraction %.3f, start solid %d, all solid %d, hit %d %s)\n",
 				g_film_cast.actors[i].name, t, origin.x, origin.y, origin.z, ent->pev->angles.x, ent->pev->angles.y,
 				ent->pev->angles.z, ent->pev->controller[0], ent->pev->absmin.x, ent->pev->absmin.y, ent->pev->absmin.z,
-				ent->pev->absmax.x, ent->pev->absmax.y, ent->pev->absmax.z );
+				ent->pev->absmax.x, ent->pev->absmax.y, ent->pev->absmax.z, s->origin[2], tr.vecEndPos.z, tr.flFraction,
+				tr.fStartSolid, tr.fAllSolid, tr.pHit ? ENTINDEX( tr.pHit ) : -1,
+				tr.pHit ? STRING( tr.pHit->v.classname ) : "-" );
 		}
 	}
 }
