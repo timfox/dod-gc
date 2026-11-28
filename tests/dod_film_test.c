@@ -226,6 +226,34 @@ static void test_named_sequences(void)
 	assert(cast.actors[0].keys[0].bare == DOD_FILM_HANDS_PISTOL);
 	assert(DodFilm_ParseCast(&cast, "act 1\nactor a axis\nkey 0 0 0 0 - stand punch once gloved\n", err, sizeof(err)) < 0);
 	assert(strstr(err, "hands"));
+	/* prop:<name>: a held object instead of the gun, one table entry per name */
+	assert(DodFilm_ParseCast(&cast, "act 1\nactor a allies\nkey 0 0 0 0 - stand carry_lift once prop:box\n"
+		"key 2 0 0 0 - stand carry_walk loop prop:box\nkey 4 0 0 0 - stand dig loop prop:shovel\nkey 6 0 0 0 - stand\n",
+		err, sizeof(err)) == 1);
+	assert(cast.prop_count == 2 && !strcmp(cast.prop_names[0], "box") && !strcmp(cast.prop_names[1], "shovel"));
+	assert(cast.actors[0].keys[0].bare == DOD_FILM_HANDS_PROP && cast.actors[0].keys[1].bare == DOD_FILM_HANDS_PROP);
+	assert(cast.actors[0].keys[2].bare == DOD_FILM_HANDS_PROP + 1 && cast.actors[0].keys[3].bare == 0);
+	assert(!strcmp(DodFilm_HandsProp(&cast, cast.actors[0].keys[2].bare), "shovel"));
+	assert(!DodFilm_HandsProp(&cast, DOD_FILM_HANDS_PISTOL) && !DodFilm_HandsProp(&cast, DOD_FILM_HANDS_PROP + 2));
+	DodFilm_Sample(&cast.actors[0], 5.0f, &s);
+	assert(s.bare == DOD_FILM_HANDS_PROP + 1);
+	{
+		char path[96];
+		DodFilm_PropPath("box", path, sizeof(path));
+		assert(!strcmp(path, "models/film/p_box.mdl"));
+	}
+	assert(DodFilm_ParseCast(&cast, "act 1\nactor a allies\nkey 0 0 0 0 - stand dig loop prop:\n", err, sizeof(err)) < 0);
+	/* show: a set piece drawn only in its window; aim and show in either order */
+	assert(DodFilm_ParseCast(&cast, "act 1\nvehicle crate models/film/box.mdl show 2.5 9\nkey 0 10 20 0 90 stand\n"
+		"vehicle tank sherman aim 1 2 3 show 0 4\nkey 0 0 0 0 0 stand\nvehicle t2 sherman\nkey 0 0 0 0 0 stand\n",
+		err, sizeof(err)) == 3);
+	assert(!DodFilm_Shown(&cast.actors[0], 2.0f) && DodFilm_Shown(&cast.actors[0], 2.5f) && DodFilm_Shown(&cast.actors[0], 8.0f)
+		&& !DodFilm_Shown(&cast.actors[0], 9.5f));
+	assert(cast.actors[1].has_aim && cast.actors[1].aim[2] == 3.0f && DodFilm_Shown(&cast.actors[1], 1.0f)
+		&& !DodFilm_Shown(&cast.actors[1], 5.0f));
+	assert(DodFilm_Shown(&cast.actors[2], 100.0f));
+	assert(DodFilm_ParseCast(&cast, "act 1\nvehicle crate box.mdl show 3 1\n", err, sizeof(err)) < 0);
+	assert(DodFilm_ParseCast(&cast, "act 1\nvehicle crate box.mdl spin 3\n", err, sizeof(err)) < 0);
 	{
 		char big[8192] = "act 1\n";
 		int i;

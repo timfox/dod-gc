@@ -34,6 +34,7 @@ public:
 	float m_phase;		/* sequence frame, 0..256 (the gait's, when there is one) */
 	int m_gait;		/* the legs' sequence under an upper-body aim sequence, 0 for none */
 	int m_seq;		/* the cast's named sequence being played (DodFilmKey.seq), 0 for the pose's */
+	int m_hands;		/* what his hands hold (DodFilmHands), -1 before the first key */
 };
 
 static DodFilmCast g_film_cast;
@@ -60,8 +61,22 @@ static int g_film_gun[4][DOD_CLASS_COUNT];
 static int g_film_sidearm[4];	/* the side's pistol is precached: cast.txt "sidearm <team>" */
 /* The vehicles cine/cast.txt asked for ("vehicle <model>" lines): a model can only be set on an
  * entity once it was precached with the map, so a cast's vehicle not on this list is left out. */
-#define DOD_FILM_MAX_VEHICLE_MODELS 4
+#define DOD_FILM_MAX_VEHICLE_MODELS 8	/* tanks, and set pieces: a box on the ground, a chair */
 static char g_film_vehicle[DOD_FILM_MAX_VEHICLE_MODELS][DOD_FILM_NAME];
+/* The held props cine/cast.txt asked for ("prop <name>" lines: models/film/p_<name>.mdl). A key that
+ * holds one that was not precached plays empty handed, never with the gun through the clip. */
+#define DOD_FILM_MAX_PROP_MODELS 16
+static char g_film_prop[DOD_FILM_MAX_PROP_MODELS][DOD_FILM_NAME];
+static string_t g_film_prop_path[DOD_FILM_MAX_PROP_MODELS];	/* its model path, allocated once */
+
+/* The precached model path of a held prop, 0 when it was not precached. */
+static string_t DodFilm_PropModel( const char *name )
+{
+	for( int i = 0; name && i < DOD_FILM_MAX_PROP_MODELS; i++ )
+		if( g_film_prop[i][0] && !strcmp( g_film_prop[i], name ) )
+			return g_film_prop_path[i];
+	return 0;
+}
 
 static int DodFilm_VehiclePrecached( const char *name )
 {
@@ -424,6 +439,11 @@ static void DodFilm_Place( int i, float t, float dt )
 	DodFilm_Sample( &g_film_cast.actors[i], t, &s );
 	if( g_film_cast.actors[i].model[0] ) {
 		DodFilm_PlaceVehicle( ent, &s, t, dt );
+		/* a set piece out of its show window (a box not yet put down, one picked up) is not drawn */
+		if( DodFilm_Shown( &g_film_cast.actors[i], t ) )
+			ent->pev->effects &= ~EF_NODRAW;
+		else
+			ent->pev->effects |= EF_NODRAW;
 		return;
 	}
 	s.pose = DodFilm_GaitPose( s.pose, s.moving, s.speed );
@@ -483,20 +503,33 @@ static void DodFilm_Place( int i, float t, float dt )
 		ent->m_gait = ( s.seq || upper >= 0 ) ? gait : 0;
 		ent->m_pose = s.pose;
 		ent->m_seq = s.seq;
-		{
-			/* A bare key's sequence is played empty handed, a pistol key's with the side's pistol (when
-			 * the cast file had it precached); any other puts his own gun back. */
-			const DodFilmActor *who = &g_film_cast.actors[i];
-			const int hands = s.seq ? s.bare : DOD_FILM_HANDS_GUN;
-			const char *gun = hands == DOD_FILM_HANDS_BARE ? NULL
-				: hands == DOD_FILM_HANDS_PISTOL && who->team >= 0 && who->team < 4 && g_film_sidearm[who->team]
-				? DodFilm_Sidearm( who->team )
-				: DodFilm_WeaponModel( who->team, who->player_class > DOD_CLASS_NONE ? who->player_class : DOD_CLASS_RIFLEMAN );
-			ent->pev->weaponmodel = gun ? MAKE_STRING( gun ) : 0;
-		}
 		/* A looping pose starts at the actor's own point in the cycle, so a squad that
 		 * starts walking together does not step in lockstep. One-shot poses start at 0. */
 		ent->m_phase = DodFilm_SampleLoops( &s ) ? DodFilm_ActorPhase( i ) : 0.0f;
+	}
+	/* What his hands hold, set whenever it changes: with a new sequence, or on a key that goes on playing
+	 * the same clip with something else in them (a box taken off the ground halfway through a pick-up). */
+	{
+		/* A bare key's sequence is played empty handed, a pistol key's with the side's pistol (when
+		 * the cast file had it precached); any other puts his own gun back. */
+		const DodFilmActor *who = &g_film_cast.actors[i];
+		const int hands = s.seq ? s.bare : DOD_FILM_HANDS_GUN;
+		if( hands != ent->m_hands ) {
+			ent->m_hands = hands;
+			const char *prop = DodFilm_HandsProp( &g_film_cast, hands );
+			if( prop ) {
+				ent->pev->weaponmodel = DodFilm_PropModel( prop );
+				if( !ent->pev->weaponmodel )
+					ALERT( at_console, "FILM ACTOR %s: prop %s was not precached (cine/cast.txt), empty handed\n",
+						who->name, prop );
+			}
+			const char *gun = prop || hands == DOD_FILM_HANDS_BARE ? NULL
+				: hands == DOD_FILM_HANDS_PISTOL && who->team >= 0 && who->team < 4 && g_film_sidearm[who->team]
+				? DodFilm_Sidearm( who->team )
+				: DodFilm_WeaponModel( who->team, who->player_class > DOD_CLASS_NONE ? who->player_class : DOD_CLASS_RIFLEMAN );
+			if( !prop )
+				ent->pev->weaponmodel = gun ? MAKE_STRING( gun ) : 0;
+		}
 	}
 	/* His soles on the floor under him: the pose's height above it, corrected to his legs' sequence. */
 	{
@@ -832,6 +865,8 @@ static void DodFilm_CastCommand( void )
 			ent->m_actor = i;
 			ent->m_pose = -1;
 			ent->m_seq = 0;
+		ent->m_hands = -1;
+			ent->m_hands = -1;
 			ent->m_gait = 0;
 			ent->m_phase = 0.0f;
 			DodFilm_VehicleSize( ent );
@@ -851,6 +886,7 @@ static void DodFilm_CastCommand( void )
 		ent->m_actor = i;
 		ent->m_pose = -1;
 		ent->m_seq = 0;
+		ent->m_hands = -1;
 		ent->m_gait = 0;
 		ent->m_phase = 0.0f;
 		g_film_ents[i] = ent;
@@ -883,6 +919,8 @@ void DodFilm_Init( void )
 	memset( g_film_gun, 0, sizeof( g_film_gun ) );
 	memset( g_film_sidearm, 0, sizeof( g_film_sidearm ) );
 	memset( g_film_vehicle, 0, sizeof( g_film_vehicle ) );
+	memset( g_film_prop, 0, sizeof( g_film_prop ) );
+	memset( g_film_prop_path, 0, sizeof( g_film_prop_path ) );
 	g_film_fireball = 0;
 	memset( g_film_gibs, 0, sizeof( g_film_gibs ) );
 	memset( g_film_burst, 0, sizeof( g_film_burst ) );
@@ -946,6 +984,33 @@ void DodFilm_Init( void )
 					PRECACHE_MODEL( (char *)STRING( ALLOC_STRING( path ) ) );
 					snprintf( g_film_vehicle[slot], sizeof( g_film_vehicle[slot] ), "%s", vname );
 					ALERT( at_console, "FILM: precached %s for vehicles\n", path );
+				}
+				continue;
+			}
+			if( sscanf( line, "prop %31s", vname ) == 1 ) {
+				int slot = -1;
+				for( int v = 0; v < DOD_FILM_MAX_PROP_MODELS && slot < 0; v++ )
+					if( !g_film_prop[v][0] || !strcmp( g_film_prop[v], vname ) )
+						slot = v;
+				if( slot < 0 ) {
+					ALERT( at_console, "FILM: prop %s left out (%d props at most)\n", vname, DOD_FILM_MAX_PROP_MODELS );
+					continue;
+				}
+				if( !g_film_prop[slot][0] ) {
+					char path[96];
+					int plen = 0;
+					DodFilm_PropPath( vname, path, sizeof( path ) );
+					/* only a prop that is on the disc: a precache of a missing model ends the map */
+					byte *pf = LOAD_FILE_FOR_ME( path, &plen );
+					if( !pf ) {
+						ALERT( at_console, "FILM: prop %s is not on the disc, left out\n", path );
+						continue;
+					}
+					FREE_FILE( pf );
+					g_film_prop_path[slot] = ALLOC_STRING( path );
+					PRECACHE_MODEL( (char *)STRING( g_film_prop_path[slot] ) );
+					snprintf( g_film_prop[slot], sizeof( g_film_prop[slot] ), "%s", vname );
+					ALERT( at_console, "FILM: precached %s for held props (%d bytes)\n", path, plen );
 				}
 				continue;
 			}

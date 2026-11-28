@@ -31,6 +31,12 @@
  * punch, a drink, a prayer or a sword cut from the asset packs is played empty handed,
  * not with the rifle through it. "pistol" there puts the side's pistol in his hand for it
  * (cast.txt "sidearm <team>" precaches it; without that he keeps his own gun).
+ * "prop:<name>" there puts a held object in his hands instead of the gun while the
+ * sequence plays: models/film/p_<name>.mdl, drawn on his bones like a p_ weapon (a box
+ * between his hands, a shovel, a hammer, a chair under a sitting man). cast.txt
+ * "prop <name>" precaches it; a prop that was not precached leaves him empty handed.
+ * A vehicle line can end "show <t0> <t1>": the model is drawn only between those
+ * seconds of the shot (a box on the ground until a man picks it up, one he puts down).
  * This file is engine-free so
  * the parsing and sampling are host-tested; the entity side is dod_film_actor.cpp. */
 #ifndef DODGC_DOD_FILM_H
@@ -45,6 +51,7 @@ extern "C" {
 #define DOD_FILM_NAME 32
 #define DOD_FILM_MAX_FX 512	/* a dense battle shot: MG bursts are many rounds each; 36 bytes an effect */
 #define DOD_FILM_MAX_SEQS 64	/* distinct named sequences in one cast file */
+#define DOD_FILM_MAX_PROPS 16	/* distinct held props in one cast file */
 #define DOD_FILM_YAW_TRAVEL 1000.0f	/* yaw "-": face the direction of travel */
 /* Set in an actor's pev->iuser4. The GameCube engine draws studio props on its lean listen
  * route through a model allowlist that leaves out player bodies; this tag admits the actors
@@ -76,7 +83,8 @@ typedef enum {
 typedef enum {
 	DOD_FILM_HANDS_GUN = 0,	/* his class's gun */
 	DOD_FILM_HANDS_BARE,		/* empty handed */
-	DOD_FILM_HANDS_PISTOL		/* the side's pistol */
+	DOD_FILM_HANDS_PISTOL,		/* the side's pistol */
+	DOD_FILM_HANDS_PROP		/* and up: DOD_FILM_HANDS_PROP + n holds the cast's prop_names[n] */
 } DodFilmHands;
 
 typedef struct {
@@ -104,6 +112,8 @@ typedef struct {
 	 * point while the hull moves; has_aim 0 keeps it straight ahead. */
 	int has_aim;
 	float aim[3];
+	/* "show <t0> <t1>" on a vehicle line: drawn only from t0 to t1 (seconds of the shot); always by default. */
+	float show[2];
 } DodFilmActor;
 
 typedef enum {
@@ -131,6 +141,8 @@ typedef struct {
 	DodFilmActor actors[DOD_FILM_MAX_ACTORS];
 	int seq_count;
 	char seq_names[DOD_FILM_MAX_SEQS][DOD_FILM_NAME];
+	int prop_count;
+	char prop_names[DOD_FILM_MAX_PROPS][DOD_FILM_NAME];	/* held props, "prop:<name>" on a key */
 	int fx_count;
 	DodFilmFx fx[DOD_FILM_MAX_FX];	/* sorted by time once parsed */
 } DodFilmCast;
@@ -157,6 +169,15 @@ int DodFilm_ParseCast(DodFilmCast *cast, const char *text, char *err, int err_si
 /* The model path for a vehicle's model name: models/mapmodels/<name>.mdl, or the name itself when it
  * already ends in .mdl. */
 void DodFilm_VehiclePath(const char *name, char *out, int size);
+
+/* The model path of a held prop's name: models/film/p_<name>.mdl. */
+void DodFilm_PropPath(const char *name, char *out, int size);
+
+/* The prop name a key's hands hold (DOD_FILM_HANDS_PROP + n), or NULL for a gun, bare hands or a pistol. */
+const char *DodFilm_HandsProp(const DodFilmCast *cast, int hands);
+
+/* 1 when a vehicle is drawn at time t (its show window). */
+int DodFilm_Shown(const DodFilmActor *actor, float t);
 
 /* The fx due when the shot's clock moves from t0 to t1: indices [*first, return) of
  * cast->fx with t0 < t <= t1 (an fx at exactly 0 fires on the first step past it). */
