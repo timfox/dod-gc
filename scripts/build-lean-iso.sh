@@ -264,6 +264,13 @@ if [[ -n "$FILM" ]]; then
 		cp -f "$gopex_film"/*.mdl "$LEAN/models/film/"
 		echo "==> film: $(ls "$LEAN/models/film"/*.mdl | wc -l) vehicle model(s) from content/gopex"
 	fi
+	# and the held props and set pieces the plan built for its clips (DIR/models/film/p_<name>.mdl, a key's
+	# "prop:<name>"; cast.txt "prop <name>" precaches them)
+	if compgen -G "$FILM/models/film/*.mdl" > /dev/null; then
+		mkdir -p "$LEAN/models/film"
+		cp -f "$FILM"/models/film/*.mdl "$LEAN/models/film/"
+		echo "==> film: $(ls "$FILM"/models/film/*.mdl | wc -l) prop model(s) from the plan"
+	fi
 	{ echo "$FILM_BEGIN"; cat "$film_cfg"; echo "$FILM_END"; } >> "$LEAN/listenserver.cfg"
 	echo "==> film: $(ls "$LEAN/cine"/*.cam | wc -l) camera path(s), $(ls "$LEAN/cine"/*.act 2>/dev/null | wc -l) cast(s), session $(basename "$film_cfg")"
 fi

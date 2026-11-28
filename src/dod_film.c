@@ -106,6 +106,39 @@ static int seq_slot(DodFilmCast *cast, const char *name)
 	return ++cast->seq_count;
 }
 
+/* The cast's number for a held prop's name (0-based), adding it when new; -1 when the table is full. */
+static int prop_slot(DodFilmCast *cast, const char *name)
+{
+	int i;
+	for (i = 0; i < cast->prop_count; ++i)
+		if (!strcmp(cast->prop_names[i], name))
+			return i;
+	if (cast->prop_count >= DOD_FILM_MAX_PROPS)
+		return -1;
+	snprintf(cast->prop_names[cast->prop_count], sizeof(cast->prop_names[0]), "%s", name);
+	return cast->prop_count++;
+}
+
+void DodFilm_PropPath(const char *name, char *out, int size)
+{
+	snprintf(out, (size_t)size, "models/film/p_%s.mdl", name ? name : "");
+}
+
+const char *DodFilm_HandsProp(const DodFilmCast *cast, int hands)
+{
+	const int n = hands - DOD_FILM_HANDS_PROP;
+	if (!cast || n < 0 || n >= cast->prop_count)
+		return NULL;
+	return cast->prop_names[n];
+}
+
+int DodFilm_Shown(const DodFilmActor *actor, float t)
+{
+	if (!actor || actor->show[0] >= actor->show[1])
+		return 1;
+	return t >= actor->show[0] && t <= actor->show[1];
+}
+
 /* The pose an actor is shown in: the keyed stance, with the gait its motion needs. A leg keyed
  * "crouch" that covers ground plays the crouch walk, not a still crouch gliding over the floor; a
  * stop keyed "run" stands. Fast legs run whatever the stance (a crouch walk at run pace slides). */
@@ -283,15 +316,29 @@ int DodFilm_ParseCast(DodFilmCast *cast, const char *text, char *err, int err_si
 			cur->team = 0;
 			cur->player_class = 0;
 			cur->has_aim = 0;
-			if (ntok >= 4 && strcmp(tok[3], "aim"))
-				return set_err(err, err_size, lineno, "vehicle takes only aim <x> <y> <z> after its model");
-			if (ntok >= 4) {
-				if (ntok < 7)
-					return set_err(err, err_size, lineno, "vehicle aim needs x y z");
-				cur->has_aim = 1;
-				cur->aim[0] = (float)atof(tok[4]);
-				cur->aim[1] = (float)atof(tok[5]);
-				cur->aim[2] = (float)atof(tok[6]);
+			cur->show[0] = cur->show[1] = 0.0f;
+			{
+				int t = 3;
+				while (t < ntok) {
+					if (!strcmp(tok[t], "aim")) {
+						if (t + 3 >= ntok)
+							return set_err(err, err_size, lineno, "vehicle aim needs x y z");
+						cur->has_aim = 1;
+						cur->aim[0] = (float)atof(tok[t + 1]);
+						cur->aim[1] = (float)atof(tok[t + 2]);
+						cur->aim[2] = (float)atof(tok[t + 3]);
+						t += 4;
+					} else if (!strcmp(tok[t], "show")) {
+						if (t + 2 >= ntok)
+							return set_err(err, err_size, lineno, "vehicle show needs t0 t1");
+						cur->show[0] = (float)atof(tok[t + 1]);
+						cur->show[1] = (float)atof(tok[t + 2]);
+						if (cur->show[1] <= cur->show[0])
+							return set_err(err, err_size, lineno, "vehicle show needs t0 < t1");
+						t += 3;
+					} else
+						return set_err(err, err_size, lineno, "vehicle takes only aim <x> <y> <z> and show <t0> <t1> after its model");
+				}
 			}
 			continue;
 		}
@@ -328,8 +375,13 @@ int DodFilm_ParseCast(DodFilmCast *cast, const char *text, char *err, int err_si
 						k->bare = DOD_FILM_HANDS_BARE;
 					else if (!strcmp(tok[9], "pistol"))
 						k->bare = DOD_FILM_HANDS_PISTOL;
-					else
-						return set_err(err, err_size, lineno, "unknown hands (bare, pistol)");
+					else if (!strncmp(tok[9], "prop:", 5) && tok[9][5]) {
+						const int n = prop_slot(cast, tok[9] + 5);
+						if (n < 0)
+							return set_err(err, err_size, lineno, "too many held props");
+						k->bare = (unsigned char)(DOD_FILM_HANDS_PROP + n);
+					} else
+						return set_err(err, err_size, lineno, "unknown hands (bare, pistol, prop:<name>)");
 				}
 				k->seq = (unsigned char)slot;
 				k->play = (unsigned char)play;
